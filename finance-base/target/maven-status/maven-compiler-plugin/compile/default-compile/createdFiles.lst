@@ -1,0 +1,5 @@
+com\wwfinance\base\config\OpenFeignConfig.class
+com\wwfinance\base\config\Swagger2Config.class
+com\wwfinance\base\dto\SmsDTO.class
+com\wwfinance\base\config\WebMvcConfig.class
+com\wwfinance\base\config\RedisConfig.class

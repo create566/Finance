@@ -1,0 +1,5 @@
+com\wwfinance\oss\controller\api\FileController.class
+com\wwfinance\oss\service\FileService.class
+com\wwfinance\oss\config\UploadConfig.class
+com\wwfinance\oss\service\impl\FileServiceImpl.class
+com\wwfinance\oss\OssApplication.class

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile default="true" name="Default" enabled="true" />
+      <profile name="Maven default annotation processors profile" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="finance-ai" />
+        <module name="finance-common" />
+        <module name="finance-oss" />
+        <module name="finance-base" />
+        <module name="api" />
+        <module name="finance-gateway" />
+        <module name="finance-message" />
+      </profile>
+    </annotationProcessing>
+  </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="api" options="-parameters" />
+      <module name="finance-ai" options="-parameters" />
+      <module name="finance-base" options="-parameters" />
+      <module name="finance-common" options="-parameters" />
+      <module name="finance-gateway" options="-parameters" />
+      <module name="finance-message" options="-parameters" />
+      <module name="finance-oss" options="-parameters" />
+    </option>
+  </component>
+</project>

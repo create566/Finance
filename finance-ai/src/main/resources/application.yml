@@ -1,0 +1,25 @@
+spring:
+  ai:
+    dashscope:
+      api-key: sk-ws-H.EPYXDML.ereg.MEQCIBnNTDppiYeUvdWedRUYufPP0jBhq-g8Nv8xpdw_EEq7AiANS0OKaprV4QijpqpNySB-W0KgUQNQ3pHooX0XHKKP0w
+      chat:
+        options:
+          model: qwen-turbo
+          temperature: 0.7
+      embedding:
+        options:
+          model: text-embedding-v3
+          dimensions: 1024
+      # 关闭重试,避免超时被放大 3 倍
+      retry:
+        max-attempts: 1
+      # 超时配置(Spring AI Alibaba 1.1.x 通用属性)
+      connection-timeout: 60000  # 连接超时：60秒
+      read-timeout: 120000      # 读取超时：120秒
+      write-timeout: 120000
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 30MB
+  # 跨域配置已迁移到 com.kzip.app.config.CorsConfig（Java 配置类）
+  # 之前的 spring.mvc.cors.mappings 已删除，避免与 Java 配置重复/覆盖

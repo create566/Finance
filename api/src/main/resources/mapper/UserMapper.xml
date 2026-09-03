@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace: 必须对应 Mapper 接口的全限定名（包名+接口名） -->
+<mapper namespace="com.example.demo.mapper.UserMapper">
+
+    <!-- 1. 通用结果映射：把数据库字段 转成 实体类属性（推荐写上，防止驼峰不生效） -->
+    <resultMap id="BaseResultMap" type="com.example.demo.entity.User">
+        <!-- id 标签代表主键，result 标签代表普通字段 -->
+        <!-- column: 数据库字段名，property: 实体类属性名 -->
+        <id column="id" property="id" />
+        <result column="name" property="name" />
+        <result column="user_type" property="userType" />
+        <result column="password" property="password" />
+        <result column="mobile" property="mobile" />
+    </resultMap>
+
+    <!-- 2. 通用查询字段列表（方便复用，防止写重复的 SQL 片段） -->
+    <sql id="Base_Column_List">
+        id, name, user_type, password, mobile
+    </sql>
+
+</mapper>

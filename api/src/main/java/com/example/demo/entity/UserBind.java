@@ -24,6 +24,15 @@ public class UserBind implements Serializable {
     @TableField("user_id")
     private Long userId;
 
+    @TableField("name")
+    private String name;
+
+    @TableField("bank_type")
+    private String bankType;
+
+    @TableField("mobile")
+    private String mobile;
+
     @TableField("bind_code")
     private String bindCode;
 

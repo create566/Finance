@@ -2,6 +2,7 @@ package com.example.demo.controller.api;
 
 import com.example.demo.Bank.FormHelper;
 import com.example.demo.Bank.HfbConst;
+import com.example.demo.client.SMSApiSmsClient;
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserBind;
 import com.example.demo.service.UserBindService;
@@ -29,13 +30,24 @@ public class BankBindController {
     @Autowired
     private UserBindService userBindService;
 
-    @ApiOperation("发起绑卡")
+    @Autowired
+    private SMSApiSmsClient smsApiSmsClient;
+
+    @ApiOperation("发起绑卡（需先实名认证+短信验证码）")
     @GetMapping("/bind")
-    public String bind() {
+    public String bind(@RequestParam(required = false) String code) {
         Integer userId = LoginUserContext.getUserid();
         User user = userService.getById(userId.longValue());
         if (user == null) {
             return "用户不存在";
+        }
+        // 前置校验1：必须先完成实名认证
+        if (user.getBorrowAuthStatus() == null || user.getBorrowAuthStatus() != 2) {
+            return "请先完成实名认证";
+        }
+        // 前置校验2：短信验证码
+        if (code == null || !smsApiSmsClient.checkCode(user.getMobile(), code)) {
+            return "验证码错误或已过期";
         }
 
         Map<String, Object> paramMap = new HashMap<>();

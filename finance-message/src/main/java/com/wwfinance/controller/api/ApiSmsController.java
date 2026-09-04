@@ -34,11 +34,8 @@ public class ApiSmsController {
             return new PccAjaxResult(500, "手机号不能为空");
         }
 
-        boolean result = coreUserInfoClient.checkMobile(mobile);
-        if (!result) {
-            return new PccAjaxResult(500, "手机号已被注册");
-        }
-
+        // 注：不再调用 checkMobile 查重——注册接口自己会查重；
+        // 绑卡等场景需要给"已注册"用户发验证码，查重会导致已注册用户永远发不了码
         String code = SmsCodeUtil.generateCode(6);
         redisTemplate.opsForValue().set("sms:code:" + mobile, code, 5, TimeUnit.MINUTES);
 

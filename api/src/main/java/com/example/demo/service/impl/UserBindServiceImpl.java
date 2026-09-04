@@ -37,7 +37,26 @@ public class UserBindServiceImpl extends ServiceImpl<UserBindMapper, UserBind> i
 
     @Override
     public UserBind bind(UserBind userBind) {
-        userBindMapper.insert(userBind);
+        // 已绑定过：更新字段（防银行重复回调撞唯一键）
+        UserBind exist = getByUserId(userBind.getUserId());
+        if (exist != null) {
+            exist.setBindCode(userBind.getBindCode());
+            exist.setIdCard(userBind.getIdCard());
+            exist.setBankNo(userBind.getBankNo());
+            if (userBind.getName() != null) {
+                exist.setName(userBind.getName());
+            }
+            if (userBind.getBankType() != null) {
+                exist.setBankType(userBind.getBankType());
+            }
+            if (userBind.getMobile() != null) {
+                exist.setMobile(userBind.getMobile());
+            }
+            exist.setStatus(userBind.getStatus());
+            userBindMapper.updateById(exist);
+        } else {
+            userBindMapper.insert(userBind);
+        }
         User user = userService.getById(userBind.getUserId());
         if (user != null) {
             user.setBindStatus(1);

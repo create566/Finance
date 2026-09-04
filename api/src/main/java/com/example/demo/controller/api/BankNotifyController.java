@@ -35,6 +35,9 @@ public class BankNotifyController {
 
         String bindCode = (String) paramMap.get("bindCode");
         String idCard = (String) paramMap.get("idCard");
+        String bankNo = (String) paramMap.get("bankNo");
+        String name = (String) paramMap.get("personalName");
+        String bankType = (String) paramMap.get("bankType");
         String agentUserId = (String) paramMap.get("agentUserId");
         String status = (String) paramMap.get("status");
 
@@ -47,6 +50,10 @@ public class BankNotifyController {
         userBind.setUserId(user.getId());
         userBind.setBindCode(bindCode);
         userBind.setIdCard(idCard);
+        userBind.setBankNo(bankNo);
+        userBind.setName(name != null ? name : user.getName());
+        userBind.setBankType(bankType);
+        userBind.setMobile(user.getMobile());
         userBind.setStatus("1".equals(status) ? 1 : 0);
         userBindService.bind(userBind);
 

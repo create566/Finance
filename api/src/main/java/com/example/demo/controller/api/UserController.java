@@ -3,9 +3,12 @@ package com.example.demo.controller.api;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserAccount;
+import com.example.demo.entity.UserBind;
 import com.example.demo.entity.dto.UserDto;
 import com.example.demo.service.UserAccountService;
+import com.example.demo.service.UserBindService;
 import com.example.demo.service.UserService;
+import com.example.demo.utils.LoginUserContext;
 import com.example.demo.utils.TokenUtil;
 import com.wwfinance.common.result.PccAjaxResult;
 import com.wwfinance.common.utils.MD5;
@@ -30,6 +33,9 @@ public class UserController {
     private UserAccountService userAccountService;
 
     @Autowired
+    private UserBindService userBindService;
+
+    @Autowired
     private SMSApiSmsClient sMSApiSmsClient;
 
     @GetMapping("/hello")
@@ -39,11 +45,60 @@ public class UserController {
 
     @GetMapping("/{id}")
     public UserDto getUser(@PathVariable Long id) {
-       User  user =   userService.getById(id);
-       UserDto userDto = new UserDto();
-        userDto.setMobile(user.getMobile()) ;
-        userDto.setUserType(user.getUserType()) ;
+        User user = userService.getById(id);
+        UserDto userDto = new UserDto();
+        userDto.setId(user.getId());
+        userDto.setMobile(user.getMobile());
+        userDto.setUserType(user.getUserType());
+        userDto.setName(user.getName());
+        userDto.setNickName(user.getNickName());
+        userDto.setIdCard(user.getIdCard());
+        userDto.setEmail(user.getEmail());
+        userDto.setHeadImg(user.getHeadImg());
+        userDto.setBindStatus(user.getBindStatus());
+        userDto.setBindCode(user.getBindCode());
         return userDto;
+    }
+
+    @GetMapping("/info")
+    public PccAjaxResult info() {
+        Integer userId = LoginUserContext.getUserid();
+        if (userId == null) {
+            return new PccAjaxResult(500, "未登录");
+        }
+        User user = userService.getById(userId.longValue());
+        UserDto userDto = new UserDto();
+        userDto.setId(user.getId());
+        userDto.setMobile(user.getMobile());
+        userDto.setUserType(user.getUserType());
+        userDto.setName(user.getName());
+        userDto.setNickName(user.getNickName());
+        userDto.setIdCard(user.getIdCard());
+        userDto.setEmail(user.getEmail());
+        userDto.setHeadImg(user.getHeadImg());
+        userDto.setBindStatus(user.getBindStatus());
+        userDto.setBindCode(user.getBindCode());
+        UserBind userBind = userBindService.getByUserId(user.getId());
+        userDto.setBindStatus(userBind != null ? userBind.getStatus() : 0);
+        return new PccAjaxResult(200, "查询成功", userDto);
+    }
+
+    @PutMapping("/profile")
+    public PccAjaxResult profile(@RequestBody UserDto userDto) {
+        Integer userId = LoginUserContext.getUserid();
+        if (userId == null) {
+            return new PccAjaxResult(500, "未登录");
+        }
+        User user = userService.getById(userId.longValue());
+        if (user == null) {
+            return new PccAjaxResult(500, "用户不存在");
+        }
+        user.setName(userDto.getName());
+        user.setNickName(userDto.getNickName());
+        user.setEmail(userDto.getEmail());
+        user.setHeadImg(userDto.getHeadImg());
+        userService.updateById(user);
+        return new PccAjaxResult(200, "修改成功");
     }
 
     @ApiOperation("发送验证码")

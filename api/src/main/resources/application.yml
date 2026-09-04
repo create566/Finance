@@ -15,6 +15,7 @@ spring:
   cloud:
       nacos:
         discovery:
+          server-addr: localhost:8848
           enabled: true         # 开启服务注册（Feign 服务名发现需要）
           register-enabled: true
 

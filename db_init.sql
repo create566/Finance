@@ -57,3 +57,17 @@ CREATE TABLE IF NOT EXISTS `borrow_info` (
     `is_deleted`       TINYINT(1)     DEFAULT 0 COMMENT '逻辑删除(1已删 0未删)',
     PRIMARY KEY (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '借款信息表';
+
+-- 用户绑定表（对应 com.example.demo.entity.UserBind）
+CREATE TABLE IF NOT EXISTS `user_bind` (
+    `id`               BIGINT         NOT NULL AUTO_INCREMENT COMMENT '编号',
+    `user_id`          BIGINT         DEFAULT NULL COMMENT '用户id',
+    `bind_code`        VARCHAR(64)    DEFAULT NULL COMMENT '绑定协议号',
+    `id_card`          VARCHAR(20)    DEFAULT NULL COMMENT '身份证号',
+    `bank_no`          VARCHAR(30)    DEFAULT NULL COMMENT '银行卡号',
+    `status`           INT            DEFAULT 0 COMMENT '状态(0未绑定 1绑定成功)',
+    `create_time`      DATETIME       DEFAULT NULL COMMENT '创建时间',
+    `update_time`      DATETIME       DEFAULT NULL COMMENT '更新时间',
+    `is_deleted`       TINYINT(1)     DEFAULT 0 COMMENT '逻辑删除(1已删 0未删)',
+    PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '用户绑定表';

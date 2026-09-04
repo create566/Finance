@@ -22,6 +22,23 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
     }
 
     @Override
+    public User getByMobile(String mobile) {
+        LambdaQueryWrapper<User> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(User::getMobile, mobile);
+        return baseMapper.selectOne(queryWrapper);
+    }
+
+    @Override
+    public void updateBindStatus(Long userId, Integer status, String bindCode) {
+        User user = baseMapper.selectById(userId);
+        if (user != null) {
+            user.setBindStatus(status);
+            user.setBindCode(bindCode);
+            baseMapper.updateById(user);
+        }
+    }
+
+    @Override
     public IPage<User> listPage(Page<User> pageParam, AdminUserQuery adminUserQuery){
         if(adminUserQuery == null){
             return baseMapper.selectPage(pageParam, null);

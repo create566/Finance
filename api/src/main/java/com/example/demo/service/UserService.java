@@ -19,4 +19,8 @@ public interface UserService  extends IService<User> {
      */
     List<User> selectByCondition(String name, String mobile);
 
+    User getByMobile(String mobile);
+
+    void updateBindStatus(Long userId, Integer status, String bindCode);
+
 }

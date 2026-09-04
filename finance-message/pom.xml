@@ -47,12 +47,6 @@
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
         </dependency>
-        <!--容联云短信sdk-->
-        <dependency>
-            <groupId>com.cloopen</groupId>
-            <artifactId>java-sms-sdk</artifactId>
-            <version>1.0.4</version>
-        </dependency>
 
     </dependencies>
 

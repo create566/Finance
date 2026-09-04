@@ -15,8 +15,8 @@ spring:
   cloud:
       nacos:
         discovery:
-          enabled: false        # 关闭服务注册
-          register-enabled: false  # 不向 nacos 注册自己
+          enabled: true         # 开启服务注册（Feign 服务名发现需要）
+          register-enabled: true
 
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml

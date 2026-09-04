@@ -11,7 +11,7 @@ public class UserDto {
     //User类对应表(后)  UserDTO对应前端接收(前)
     private Integer userType;
     private String mobile;
-
+    private String code;
     private  String Password;
     private  String Passwordto;
 

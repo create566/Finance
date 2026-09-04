@@ -2,8 +2,7 @@ package com.wwfinance.controller.api;
 
 import com.wwfinance.client.CoreUserInfoClient;
 import com.wwfinance.common.result.PccAjaxResult;
-import com.wwfinance.util.SMSUtil;
-import com.wwfinance.util.ValidateCodeUtils;
+import com.wwfinance.common.utils.SmsCodeUtil;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
@@ -17,54 +16,47 @@ import java.util.concurrent.TimeUnit;
 @RestController
 @RequestMapping("/api/sms/user")
 @Api(tags = "短信管理")
-//@CrossOrigin //跨域
 @Slf4j
 public class ApiSmsController {
 
     @Resource
-    private RedisTemplate redisTemplate;
-
-    @Resource
-    private SMSUtil smsUtil;
+    private RedisTemplate<String, Object> redisTemplate;
 
     @Resource
     private CoreUserInfoClient coreUserInfoClient;
 
-    @ApiOperation("获取验证码")
-    @PostMapping("/sendSMS")
-    public PccAjaxResult send(
+    @ApiOperation("发送验证码")
+    @PostMapping("/sendCode")
+    public PccAjaxResult sendCode(
             @ApiParam(value = "手机号", required = true)
-            @RequestParam String mobile){
+            @RequestParam String mobile) {
+        if (mobile == null) {
+            return new PccAjaxResult(500, "手机号不能为空");
+        }
 
-        if(mobile != null) {
+        boolean result = coreUserInfoClient.checkMobile(mobile);
+        if (!result) {
+            return new PccAjaxResult(500, "手机号已被注册");
+        }
 
-            boolean result = coreUserInfoClient.checkMobile(mobile);
-            if(!result) {
-                return new PccAjaxResult(500, "手机号已被注册");
-            }
+        String code = SmsCodeUtil.generateCode(6);
+        redisTemplate.opsForValue().set("sms:code:" + mobile, code, 5, TimeUnit.MINUTES);
 
-            // 生成随机的四位验证码
-//            String code = ValidateCodeUtils.generateValidateCode(4).toString();
-            //调用容联云提供的短信服务API完成发送短信
-            String code2 = String.valueOf(ValidateCodeUtils.generateValidateCode(4));
-            String code = smsUtil.sendMsg(mobile, code2);
-
-            log.info("code={}", code);
-            //将验证码存入redis
-            redisTemplate.opsForValue().set("xx:code:" + mobile, code, 5, TimeUnit.MINUTES);
-            }
-            return new PccAjaxResult(200, "手机验证码短信发送成功");
+        log.info("发送验证码成功，手机号={}，验证码={}", mobile, code);
+        return new PccAjaxResult(200, "验证码发送成功", code);
     }
 
-    @ApiOperation("发送催还款信息")
-    @GetMapping("/sendMsg/{mobile}")
-    public String sendMsg(
-            @ApiParam(value = "手机号", required = true)
-            @PathVariable String mobile){
-        //调用容联云提供的短信服务API完成发送短信
-        String code = "还款时间剩余天数小于等于3天，请尽快还款";
-        String msg = smsUtil.sendMsg(mobile, code);
-
-        return msg;
+    @ApiOperation("校验验证码")
+    @PostMapping("/checkCode")
+    public boolean checkCode(
+            @ApiParam(value = "手机号", required = true) @RequestParam String mobile,
+            @ApiParam(value = "验证码", required = true) @RequestParam String code) {
+        String key = "sms:code:" + mobile;
+        Object cacheCode = redisTemplate.opsForValue().get(key);
+        if (cacheCode != null && cacheCode.toString().equals(code)) {
+            redisTemplate.delete(key);
+            return true;
+        }
+        return false;
     }
 }

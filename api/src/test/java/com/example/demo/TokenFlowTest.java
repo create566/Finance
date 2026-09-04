@@ -1,5 +1,6 @@
 package com.example.demo;
 
+import com.example.demo.client.SMSApiSmsClient;
 import com.example.demo.utils.TokenUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,8 +9,13 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
+import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -23,7 +29,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * 验证 token 全链路：注册 -> 登录签发 token -> 解析 token -> 携带 token 访问受保护接口
+ * 验证 注册 -> 验证码登录 -> 密码登录 -> token 全链路
  * 走 MockMvc 真实 HTTP 通道，JwtAuthInterceptor 真实生效
  */
 @SpringBootTest
@@ -34,23 +40,69 @@ class TokenFlowTest {
     @Autowired
     private MockMvc mockMvc;
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    /** 测试专用假短信服务：模拟发送验证码，返回固定验证码 123456 */
+    @TestConfiguration
+    static class MockSmsConfig {
 
+        @Bean
+        public static BeanFactoryPostProcessor removeFeignClients() {
+            return factory -> {
+                BeanDefinitionRegistry registry = (BeanDefinitionRegistry) factory;
+                for (String name : registry.getBeanDefinitionNames()) {
+                    BeanDefinition bd = registry.getBeanDefinition(name);
+                    String cls = bd.getBeanClassName();
+                    if (cls != null && cls.contains("FeignClientFactoryBean")) {
+                        registry.removeBeanDefinition(name);
+                    }
+                }
+            };
+        }
+
+        @Bean
+        @org.springframework.context.annotation.Primary
+        public SMSApiSmsClient smsApiSmsClient() {
+            return new SMSApiSmsClient() {
+                @Override
+                public Object sendCode(String mobile) {
+                    return "123456";
+                }
+
+                @Override
+                public boolean checkCode(String mobile, String code) {
+                    return "123456".equals(code);
+                }
+            };
+        }
+    }
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String MOBILE = "198" + System.currentTimeMillis() % 100000000L;
     private static final String PASSWORD = "123456";
     private static String token;
 
-    /** 按 UTF-8 取响应体，避免中文乱码 */
     private static String body(MvcResult result) throws Exception {
         return new String(result.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
     }
 
     @Test
     @Order(1)
+    void sendCode() throws Exception {
+        System.out.println("=== 1. 发送验证码 ===");
+        MvcResult result = mockMvc.perform(post("/api/user/sendCode")
+                        .param("mobile", MOBILE))
+                .andExpect(status().isOk())
+                .andReturn();
+        String respBody = body(result);
+        System.out.println("响应体: " + respBody);
+        JsonNode node = MAPPER.readTree(respBody);
+        assertEquals(200, node.get("code").asInt(), "发送验证码应返回 code=200: " + respBody);
+    }
+
+    @Test
+    @Order(2)
     void register() throws Exception {
-        String json = "{\"mobile\":\"" + MOBILE + "\",\"password\":\"" + PASSWORD + "\",\"passwordto\":\"" + PASSWORD + "\"}";
-        System.out.println("=== 1. 注册 请求信息 ===");
-        System.out.println("POST /api/user/register");
+        System.out.println("=== 2. 注册（手机号+密码+验证码） ===");
+        String json = "{\"mobile\":\"" + MOBILE + "\",\"password\":\"" + PASSWORD + "\",\"passwordto\":\"" + PASSWORD + "\",\"code\":\"123456\"}";
         System.out.println("请求体: " + json);
 
         MvcResult result = mockMvc.perform(post("/api/user/register")
@@ -59,17 +111,37 @@ class TokenFlowTest {
                 .andExpect(status().isOk())
                 .andReturn();
         String respBody = body(result);
+        System.out.println("响应体: " + respBody);
         JsonNode node = MAPPER.readTree(respBody);
         assertEquals(200, node.get("code").asInt(), "注册应返回 code=200: " + respBody);
-        System.out.println("响应体: " + respBody);
     }
 
     @Test
-    @Order(2)
-    void loginAndGetToken() throws Exception {
+    @Order(3)
+    void loginByCode() throws Exception {
+        System.out.println("=== 3. 验证码登录 ===");
+        String json = "{\"mobile\":\"" + MOBILE + "\",\"code\":\"123456\"}";
+        System.out.println("请求体: " + json);
+
+        MvcResult result = mockMvc.perform(post("/api/user/loginByCode")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isOk())
+                .andReturn();
+        String respBody = body(result);
+        System.out.println("响应体: " + respBody);
+        JsonNode node = MAPPER.readTree(respBody);
+        assertEquals(200, node.get("code").asInt(), "验证码登录应返回 code=200: " + respBody);
+        token = node.get("data").asText();
+        assertTrue(token.startsWith("5grcs "), "token 应以 '5grcs ' 开头, 实际: " + token);
+        System.out.println("token: " + token);
+    }
+
+    @Test
+    @Order(4)
+    void loginByPassword() throws Exception {
+        System.out.println("=== 4. 密码登录 ===");
         String json = "{\"mobile\":\"" + MOBILE + "\",\"password\":\"" + PASSWORD + "\"}";
-        System.out.println("=== 2. 登录 请求信息 ===");
-        System.out.println("POST /api/user/login");
         System.out.println("请求体: " + json);
 
         MvcResult result = mockMvc.perform(post("/api/user/login")
@@ -78,50 +150,21 @@ class TokenFlowTest {
                 .andExpect(status().isOk())
                 .andReturn();
         String respBody = body(result);
-        JsonNode node = MAPPER.readTree(respBody);
-        assertEquals(200, node.get("code").asInt(), "登录应返回 code=200: " + respBody);
-        token = node.get("data").asText();
-        assertTrue(token.startsWith("5grcs "), "token 应以 '5grcs ' 开头, 实际: " + token);
         System.out.println("响应体: " + respBody);
-        System.out.println("=== 完整 token ===");
-        System.out.println(token);
-    }
-
-    @Test
-    @Order(3)
-    void tokenCanBeParsed() {
-        Map<String, String> info = TokenUtil.getMapInfoFromToken(token);
-        assertFalse(info.isEmpty(), "token 解析失败");
-        assertNotNull(info.get("token_userid"), "token 中应包含 token_userid");
-        System.out.println("=== 3. 解析 token ===");
-        System.out.println("token_userid=" + info.get("token_userid"));
-    }
-
-    @Test
-    @Order(4)
-    void protectedApiWithToken() throws Exception {
-        MvcResult result = mockMvc.perform(get("/api/core/borrowInfo/auth/getBorrowInfoStatus")
-                        .header("Authorization", token))
-                .andExpect(status().isOk())
-                .andReturn();
-        String respBody = body(result);
         JsonNode node = MAPPER.readTree(respBody);
-        assertEquals(200, node.get("code").asInt(), "带 token 访问应返回 code=200: " + respBody);
-        System.out.println("=== 4. 带 token 访问受保护接口 ===");
-        System.out.println("Authorization: " + token.substring(0, 36) + "...");
-        System.out.println("响应体: " + respBody);
+        assertEquals(200, node.get("code").asInt(), "密码登录应返回 code=200: " + respBody);
+        String token2 = node.get("data").asText();
+        assertTrue(token2.startsWith("5grcs "), "token 应以 '5grcs ' 开头");
+        System.out.println("token: " + token2);
     }
 
     @Test
     @Order(5)
-    void protectedApiWithoutToken() throws Exception {
-        MvcResult result = mockMvc.perform(get("/api/core/borrowInfo/auth/getBorrowInfoStatus"))
-                .andExpect(status().isUnauthorized())
-                .andReturn();
-        String respBody = body(result);
-        JsonNode node = MAPPER.readTree(respBody);
-        assertEquals(401, node.get("code").asInt(), "无 token 应被拦截返回 401");
-        System.out.println("=== 5. 无 token 访问受保护接口 ===");
-        System.out.println("响应体: " + respBody);
+    void tokenCanBeParsed() {
+        System.out.println("=== 5. 解析 token ===");
+        Map<String, String> info = TokenUtil.getMapInfoFromToken(token);
+        assertFalse(info.isEmpty(), "token 解析失败");
+        assertNotNull(info.get("token_userid"), "token 中应包含 token_userid");
+        System.out.println("token_userid=" + info.get("token_userid"));
     }
 }

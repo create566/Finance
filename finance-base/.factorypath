@@ -1,5 +1,4 @@
 <factorypath>
-    <factorypathentry kind="VARJAR" id="M2_REPO/org/example/finance-common/1.0/finance-common-1.0.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/springframework/boot/spring-boot-starter-web/2.3.4.RELEASE/spring-boot-starter-web-2.3.4.RELEASE.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/springframework/boot/spring-boot-starter-json/2.3.4.RELEASE/spring-boot-starter-json-2.3.4.RELEASE.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/com/fasterxml/jackson/datatype/jackson-datatype-jdk8/2.11.2/jackson-datatype-jdk8-2.11.2.jar" enabled="true" runInBatchMode="false"/>

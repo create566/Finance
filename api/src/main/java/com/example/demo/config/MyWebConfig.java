@@ -33,7 +33,9 @@ public class MyWebConfig  implements WebMvcConfigurer {
                         "/api/user/hello",                 // 测试接口
                         "/api/user/login",                 // 登录
                         "/api/user/register",              // 注册
-                        "/api/core/userBind/notify",       // 银行异步回调（无需token）
+                        "/api/core/userBind/notify",       // 绑卡回调（无需token）
+                        "/api/core/userAccount/notify",    // 充值回调（无需token）
+                        "/api/core/userAccount/notifyWithdraw", // 提现回调（无需token）
                         "/api/core/user/checkMobile/**",   // 微服务内部调用（短信模块查重）
                         "/admin/core/user/login",          // 后台登录
                         "/doc.html",

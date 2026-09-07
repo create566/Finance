@@ -15,21 +15,28 @@ import java.math.BigDecimal;
 public interface TransFlowService extends IService<TransFlow> {
 
     /**
-     * 充值：加余额 + 记流水（同一事务）
+     * 充值：加余额 + 记流水（同一事务，由银行回调驱动）
      *
-     * @param userId 用户id
-     * @param amount 充值金额
+     * @param userId      用户id
+     * @param amount      充值金额
+     * @param bankTransNo 银行流水号（用于幂等）
      */
-    void recharge(Long userId, BigDecimal amount);
+    void recharge(Long userId, BigDecimal amount, String bankTransNo);
 
     /**
-     * 提现：扣余额 + 记流水（同一事务）
+     * 提现：扣余额 + 记流水（同一事务，由银行回调驱动）
      * 余额不足会抛异常，事务回滚
      *
-     * @param userId 用户id
-     * @param amount 提现金额
+     * @param userId      用户id
+     * @param amount      提现金额
+     * @param bankTransNo 银行流水号（用于幂等）
      */
-    void withdraw(Long userId, BigDecimal amount);
+    void withdraw(Long userId, BigDecimal amount, String bankTransNo);
+
+    /**
+     * 判断某银行流水号是否已入账（回调幂等用）
+     */
+    boolean existsByTransNo(String bankTransNo);
 
     /**
      * 查询当前用户的交易流水（分页，按时间倒序）

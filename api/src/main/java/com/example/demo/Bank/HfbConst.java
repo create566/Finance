@@ -16,7 +16,7 @@ public class HfbConst {
     //用户绑定旺旺银行平台url地址
     public static final String USERBIND_URL = "http://localhost:9090/userBind/BindAgreeUserV2";
     //用户绑定异步回调
-    public static final String USERBIND_NOTIFY_URL = "http://localhost/api/core/userBind/notify";
+    public static final String USERBIND_NOTIFY_URL = "http://localhost:8990/api/core/userBind/notify";
     //用户绑定同步回调
     public static final String USERBIND_RETURN_URL = "http://localhost:5173/home";
 
@@ -26,7 +26,7 @@ public class HfbConst {
     //充值旺旺银行平台url地址
     public static final String RECHARGE_URL = "http://localhost:9090/userAccount/AgreeBankCharge";
     //充值异步回调
-    public static final String RECHARGE_NOTIFY_URL = "http://localhost/api/core/userAccount/notify";
+    public static final String RECHARGE_NOTIFY_URL = "http://localhost:8990/api/core/userAccount/notify";
     //充值同步回调
     public static final String RECHARGE_RETURN_URL = "http://localhost:5173/home";
 
@@ -36,7 +36,7 @@ public class HfbConst {
     //充值旺旺银行平台url地址
     public static final String INVEST_URL = "http://localhost:9090/userInvest/AgreeUserVoteProject";
     //充值异步回调
-    public static final String INVEST_NOTIFY_URL = "http://localhost/api/core/lendItem/notify";
+    public static final String INVEST_NOTIFY_URL = "http://localhost:8990/api/core/lendItem/notify";
     //充值同步回调
     public static final String INVEST_RETURN_URL = "http://localhost:5173/home";
 
@@ -51,7 +51,7 @@ public class HfbConst {
     //充值旺旺银行平台url地址
     public static final String WITHDRAW_URL = "http://localhost:9090/userAccount/CashBankManager";
     //充值异步回调
-    public static final String WITHDRAW_NOTIFY_URL = "http://localhost/api/core/userAccount/notifyWithdraw";
+    public static final String WITHDRAW_NOTIFY_URL = "http://localhost:8990/api/core/userAccount/notifyWithdraw";
     //充值同步回调
     public static final String WITHDRAW_RETURN_URL = "http://localhost:5173/home";
 
@@ -61,7 +61,7 @@ public class HfbConst {
     //充值旺旺银行平台url地址
     public static final String BORROW_RETURN_URL = "http://localhost:9090/lendReturn/AgreeUserRepayment";
     //充值异步回调
-    public static final String BORROW_RETURN_NOTIFY_URL = "http://localhost/api/core/lendReturn/notifyUrl";
+    public static final String BORROW_RETURN_NOTIFY_URL = "http://localhost:8990/api/core/lendReturn/notifyUrl";
     //充值同步回调
     public static final String BORROW_RETURN_RETURN_URL = "http://localhost:5173/home";
 

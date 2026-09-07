@@ -7,8 +7,16 @@ import com.example.demo.entity.User;
 import com.example.demo.entity.UserAccount;
 import com.example.demo.entity.dto.AdminUserQuery;
 
+import java.math.BigDecimal;
+import java.util.List;
+
 public interface UserAccountService extends IService<UserAccount> {
 
     UserAccount getUserById(Long id);
 
+    void recharge(Long userId, BigDecimal amount);
+
+    void withdraw(Long userId, BigDecimal amount);
+
+    BigDecimal getAmount(Long userId);
 }

@@ -37,40 +37,58 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
             throw new ResourceNotFoundException(500, "用户不存在");
         }
 
-        if (user.getUserType() == null || user.getUserType() != 2) {
-            throw new ResourceNotFoundException(500, "只有借款人才能提交借款申请");
-        }
+        boolean isDraft = dto.getIsDraft() != null && dto.getIsDraft();
 
-        if (user.getBorrowAuthStatus() == null || user.getBorrowAuthStatus() != 2) {
-            throw new ResourceNotFoundException(500, "请先完成借款人实名认证");
-        }
-
-        UserBind userBind = userBindService.getOne(new LambdaQueryWrapper<UserBind>()
-                .eq(UserBind::getUserId, userId)
-                .eq(UserBind::getStatus, 1));
-        if (userBind == null) {
-            throw new ResourceNotFoundException(500, "请先完成银行卡绑定");
-        }
-
-        BorrowInfo pending = getLatestByUser(userId);
-        if (pending != null && pending.getStatus() != null && pending.getStatus() == 1) {
-            throw new ResourceNotFoundException(500, "您有审核中的借款申请，请等待审核结果");
+        if (!isDraft) {
+            if (user.getUserType() == null || user.getUserType() != 2) {
+                throw new ResourceNotFoundException(500, "只有借款人才能提交借款申请");
+            }
+            if (user.getBorrowAuthStatus() == null || user.getBorrowAuthStatus() != 2) {
+                throw new ResourceNotFoundException(500, "请先完成借款人实名认证");
+            }
+            UserBind userBind = userBindService.getOne(new LambdaQueryWrapper<UserBind>()
+                    .eq(UserBind::getUserId, userId)
+                    .eq(UserBind::getStatus, 1));
+            if (userBind == null) {
+                throw new ResourceNotFoundException(500, "请先完成银行卡绑定");
+            }
+            BorrowInfo pending = this.getOne(new LambdaQueryWrapper<BorrowInfo>()
+                    .eq(BorrowInfo::getUserId, userId)
+                    .eq(BorrowInfo::getStatus, 1));
+            if (pending != null) {
+                throw new ResourceNotFoundException(500, "您有审核中的借款申请，请等待审核结果");
+            }
         }
 
         BigDecimal rate = calculateRate(dto.getAmount(), dto.getPeriod());
 
-        BorrowInfo borrowInfo = new BorrowInfo();
-        borrowInfo.setUserId(userId);
+        BorrowInfo draft = this.getOne(new LambdaQueryWrapper<BorrowInfo>()
+                .eq(BorrowInfo::getUserId, userId)
+                .eq(BorrowInfo::getStatus, 0));
+
+        BorrowInfo borrowInfo;
+        if (draft != null) {
+            borrowInfo = draft;
+        } else {
+            borrowInfo = new BorrowInfo();
+            borrowInfo.setUserId(userId);
+            borrowInfo.setCreateTime(LocalDateTime.now());
+        }
+
         borrowInfo.setAmount(dto.getAmount());
         borrowInfo.setPeriod(dto.getPeriod());
         borrowInfo.setReturnMethod(dto.getReturnMethod());
         borrowInfo.setMoneyUse(dto.getMoneyUse());
         borrowInfo.setBorrowYearRate(rate);
-        borrowInfo.setStatus(1);
-        borrowInfo.setCreateTime(LocalDateTime.now());
+        borrowInfo.setStatus(isDraft ? 0 : 1);
         borrowInfo.setUpdateTime(LocalDateTime.now());
 
-        this.save(borrowInfo);
+        if (draft != null) {
+            this.updateById(borrowInfo);
+        } else {
+            this.save(borrowInfo);
+        }
+
         return borrowInfo;
     }
 
@@ -103,6 +121,13 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
         borrowInfo.setStatus(approved ? 2 : -1);
         borrowInfo.setUpdateTime(LocalDateTime.now());
         return this.updateById(borrowInfo);
+    }
+
+    @Override
+    public boolean deleteDraft(Long userId) {
+        return this.remove(new LambdaQueryWrapper<BorrowInfo>()
+                .eq(BorrowInfo::getUserId, userId)
+                .eq(BorrowInfo::getStatus, 0));
     }
 
     private BigDecimal calculateRate(BigDecimal amount, Integer period) {

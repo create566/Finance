@@ -16,8 +16,8 @@ spring:
       nacos:
         discovery:
           server-addr: localhost:8848
-          enabled: true
-          register-enabled: true
+          enabled: false
+          register-enabled: false
 
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml

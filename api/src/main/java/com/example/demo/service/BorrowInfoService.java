@@ -16,4 +16,6 @@ public interface BorrowInfoService extends IService<BorrowInfo> {
 
     boolean approveBorrowInfo(Long borrowInfoId, boolean approved);
 
+    boolean deleteDraft(Long userId);
+
 }

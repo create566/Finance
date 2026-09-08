@@ -26,7 +26,7 @@ public class BorrowInfoController {
     @Autowired
     private BorrowInfoService borrowInfoService;
 
-    @ApiOperation("提交借款申请")
+    @ApiOperation("提交借款申请（支持保存草稿或正式提交）")
     @PostMapping("/auth/submit")
     public PccAjaxResult submit(
             @RequestBody @Validated BorrowInfoDto dto) {
@@ -36,7 +36,9 @@ public class BorrowInfoController {
         }
         log.info("用户 {} 提交借款申请: {}", userId, dto);
         BorrowInfo borrowInfo = borrowInfoService.submitBorrowInfo(userId.longValue(), dto);
-        return new PccAjaxResult(200, "借款申请已提交，等待审核", borrowInfo.getId());
+        boolean isDraft = dto.getIsDraft() != null && dto.getIsDraft();
+        String msg = isDraft ? "借款申请草稿已保存" : "借款申请已提交，等待审核";
+        return new PccAjaxResult(200, msg, borrowInfo.getId());
     }
 
     @ApiOperation("查询当前用户的借款申请列表")
@@ -66,6 +68,17 @@ public class BorrowInfoController {
             data.put("borrowInfo", latest);
         }
         return new PccAjaxResult(200, "查询成功", data);
+    }
+
+    @ApiOperation("删除当前用户的借款申请草稿")
+    @DeleteMapping("/auth/draft")
+    public PccAjaxResult deleteDraft() {
+        Integer userId = LoginUserContext.getUserid();
+        if (userId == null) {
+            return new PccAjaxResult(500, "未登录");
+        }
+        boolean removed = borrowInfoService.deleteDraft(userId.longValue());
+        return new PccAjaxResult(200, removed ? "草稿已删除" : "没有可删除的草稿", null);
     }
 
 }

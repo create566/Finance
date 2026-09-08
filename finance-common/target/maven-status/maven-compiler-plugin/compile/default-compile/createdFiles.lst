@@ -1,8 +1,0 @@
-com\wwfinance\common\utils\HttpUtils.class
-com\wwfinance\common\utils\MD5.class
-com\wwfinance\common\result\PccAjaxResult.class
-com\wwfinance\common\exception\GlobalExceptionHandler.class
-com\wwfinance\common\utils\BankSignUtil.class
-com\wwfinance\common\dto\BankBindDTO.class
-com\wwfinance\common\utils\SmsCodeUtil.class
-com\wwfinance\common\exception\ResourceNotFoundException.class

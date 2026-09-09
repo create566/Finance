@@ -71,3 +71,22 @@ CREATE TABLE IF NOT EXISTS `user_bind` (
     `is_deleted`       TINYINT(1)     DEFAULT 0 COMMENT '逻辑删除(1已删 0未删)',
     PRIMARY KEY (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '用户绑定表';
+
+-- 管理员表（后台登录用）
+CREATE TABLE IF NOT EXISTS `sys_admin` (
+    `id`           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '编号',
+    `username`     VARCHAR(50)  NOT NULL COMMENT '登录账号',
+    `password`     VARCHAR(64)  NOT NULL COMMENT '密码(MD5)',
+    `name`         VARCHAR(50)  DEFAULT NULL COMMENT '姓名',
+    `avatar`       VARCHAR(255) DEFAULT NULL COMMENT '头像',
+    `create_time`  DATETIME     DEFAULT NULL COMMENT '创建时间',
+    `update_time`  DATETIME     DEFAULT NULL COMMENT '更新时间',
+    `is_deleted`   TINYINT(1)   DEFAULT 0 COMMENT '逻辑删除',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_username` (`username`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '管理员表';
+
+-- 初始管理员：admin / 123456（密码 MD5 加密）
+INSERT INTO `sys_admin` (`username`, `password`, `name`, `create_time`)
+VALUES ('admin', 'e10adc3949ba59abbe56e057f20f883e', '超级管理员', NOW())
+ON DUPLICATE KEY UPDATE `username` = `username`;

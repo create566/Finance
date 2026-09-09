@@ -37,7 +37,7 @@ public class MyWebConfig  implements WebMvcConfigurer {
                         "/api/core/userAccount/notify",    // 充值回调（无需token）
                         "/api/core/userAccount/notifyWithdraw", // 提现回调（无需token）
                         "/api/core/user/checkMobile/**",   // 微服务内部调用（短信模块查重）
-                        "/admin/core/user/login",          // 后台登录
+                        "/admin/core/login",               // 后台管理员登录
                         "/doc.html",
                         "/webjars/**",
                         "/swagger-resources/**",

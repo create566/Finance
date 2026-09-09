@@ -65,6 +65,19 @@ public class TokenUtil {
         return tokenHead + localGenerateToken(claims);
     }
 
+    /**
+     * 生成管理员token（带 role=admin）
+     * @param adminId  管理员id
+     * @param username 管理员账号
+     */
+    public static String generateAdminToken(String adminId, String username) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("token_userid", adminId);
+        claims.put("token_username", username);
+        claims.put("token_role", "admin");
+        return tokenHead + localGenerateToken(claims);
+    }
+
 
     /**
      * 获取token信息
@@ -82,6 +95,14 @@ public class TokenUtil {
         }
         Map<String, String> tokenInfoMap = new HashMap<>();
         tokenInfoMap.put("token_userid", claims.get("token_userid").toString());
+        Object role = claims.get("token_role");
+        if (role != null) {
+            tokenInfoMap.put("token_role", role.toString());
+        }
+        Object username = claims.get("token_username");
+        if (username != null) {
+            tokenInfoMap.put("token_username", username.toString());
+        }
         return tokenInfoMap;
     }
 

@@ -14,9 +14,10 @@ import java.util.Map;
 
 /**
  * 统一 JWT 授权拦截器
- * 1. 从 Authorization 头取 token
- * 2. 解析 token 拿到手机号，写入 LoginUserContext
- * 3. 解析失败返回 401 JSON
+ * 1. 从 Authorization 头（前台用户）或 token 头（后台管理员）取 token
+ * 2. 解析 token 拿到用户ID/角色，写入 LoginUserContext
+ * 3. /admin/** 路径要求 token_role=admin，否则 403
+ * 4. 解析失败返回 401 JSON
  */
 @Slf4j
 @Component
@@ -26,21 +27,38 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        String authHeader = request.getHeader("Authorization");
-        // 没有 token 或格式不对
-        if (authHeader == null || authHeader.isEmpty() || !authHeader.startsWith("5grcs ")) {
+        // 1. 取 token：先试 Authorization（前台），再试 token 头（后台前端）
+        String token = request.getHeader("Authorization");
+        if (token == null || token.isEmpty()) {
+            token = request.getHeader("token");
+        }
+
+        if (token == null || token.isEmpty() || !token.startsWith("5grcs ")) {
             return writeUnauthorized(response, "缺少认证token");
         }
-        try {
-            //
 
-            Map<String, String> info = TokenUtil.getMapInfoFromToken(authHeader);
+        try {
+            Map<String, String> info = TokenUtil.getMapInfoFromToken(token);
             String userid = info.get("token_userid");
             if (userid == null || userid.isEmpty()) {
                 return writeUnauthorized(response, "token无效");
             }
-            // 写入上下文，供 Controller/Service 使用
+
+            // 写入上下文
             LoginUserContext.setUserid(Integer.parseInt(userid));
+            String role = info.get("token_role");
+            LoginUserContext.setRole(role);
+            LoginUserContext.setUsername(info.get("token_username"));
+
+            // /admin/** 路径要求管理员角色
+            String uri = request.getRequestURI();
+            if (uri.startsWith("/admin/") && !"admin".equals(role)) {
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.setContentType("application/json;charset=UTF-8");
+                response.getWriter().write(MAPPER.writeValueAsString(new PccAjaxResult(403, "无权限访问后台接口", null)));
+                return false;
+            }
+
             return true;
         } catch (Exception e) {
             log.warn("token解析失败: {}", e.getMessage());
@@ -50,7 +68,6 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
 
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
-        // 清理 ThreadLocal，避免线程复用导致的内存泄漏和串号
         LoginUserContext.clear();
     }
 

@@ -14,6 +14,8 @@ import com.example.demo.service.BorrowerService;
 import com.example.demo.service.UserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.example.demo.entity.dto.BorrowerApprovalDTO;
+import com.example.demo.service.UserIntegralService;
 
 import javax.annotation.Resource;
 import java.util.HashMap;
@@ -27,6 +29,8 @@ public class BorrowerServiceImpl extends ServiceImpl<BorrowerMapper, Borrower> i
 
     @Resource
     private UserService userService;
+    @Resource
+    private UserIntegralService userIntegralService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -72,22 +76,21 @@ public class BorrowerServiceImpl extends ServiceImpl<BorrowerMapper, Borrower> i
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void approveAuth(Long borrowerId, boolean approved) {
-        // 业务校验：认证记录必须存在
+    public void approveAuth(BorrowerApprovalDTO dto) {
+        Long borrowerId = dto.getBorrowerId();
         Borrower borrower = getById(borrowerId);
         if (borrower == null) {
             throw new RuntimeException("认证记录不存在");
         }
-        // 业务校验：仅认证中状态可审核
         if (!BorrowerAuthStatusEnum.AUTHING.getCode().equals(borrower.getStatus())) {
             throw new RuntimeException("仅认证中状态可审核");
         }
+        boolean approved = Integer.valueOf(2).equals(dto.getStatus());
         borrower.setStatus(approved
                 ? BorrowerAuthStatusEnum.AUTHED.getCode()
                 : BorrowerAuthStatusEnum.AUTH_FAIL.getCode());
         updateById(borrower);
 
-        // 同步 user 表：通过 → 正式借款人身份；拒绝 → 认证失败
         User user = userService.getById(borrower.getUserId());
         if (approved) {
             user.setBorrowAuthStatus(BorrowerAuthStatusEnum.AUTHED.getCode());
@@ -96,6 +99,16 @@ public class BorrowerServiceImpl extends ServiceImpl<BorrowerMapper, Borrower> i
             user.setBorrowAuthStatus(BorrowerAuthStatusEnum.AUTH_FAIL.getCode());
         }
         userService.updateById(user);
+
+        if (approved) {
+            int points = dto.getInfoIntegral() == null ? 0 : dto.getInfoIntegral();
+            if (Boolean.TRUE.equals(dto.getIsIdCardOk())) points += 20;
+            if (Boolean.TRUE.equals(dto.getIsHouseOk())) points += 30;
+            if (Boolean.TRUE.equals(dto.getIsCarOk())) points += 20;
+            if (points > 0) {
+                userIntegralService.addIntegral(borrower.getUserId(), points, "实名认证审批加分");
+            }
+        }
     }
 
     @Override

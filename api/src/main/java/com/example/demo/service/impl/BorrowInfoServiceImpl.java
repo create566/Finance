@@ -13,6 +13,7 @@ import com.example.demo.enums.UserTypeEnum;
 import com.example.demo.mapper.BorrowInfoMapper;
 import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.example.demo.service.BorrowInfoService;
+import com.example.demo.service.IntegralGradeService;
 import com.example.demo.service.UserBindService;
 import com.example.demo.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +35,9 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
 
     @Autowired
     private UserBindService userBindService;
+
+    @Autowired
+    private IntegralGradeService integralGradeService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -63,6 +67,11 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
                     .eq(BorrowInfo::getStatus, 1));
             if (pending != null) {
                 throw new ResourceNotFoundException(500, "您有审核中的借款申请，请等待审核结果");
+            }
+            // 额度校验：申请金额不得超过当前积分对应的可借额度
+            BigDecimal maxAmount = integralGradeService.getBorrowAmountByIntegral(user.getIntegral());
+            if (dto.getAmount() == null || dto.getAmount().compareTo(maxAmount) > 0) {
+                throw new ResourceNotFoundException(500, "借款金额超过可借额度：" + maxAmount);
             }
         }
 

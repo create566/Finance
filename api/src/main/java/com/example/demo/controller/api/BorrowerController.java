@@ -36,13 +36,6 @@ public class BorrowerController {
         return new PccAjaxResult(200, "认证资料已提交，等待审核", borrowerId);
     }
 
-    @ApiOperation("审核实名认证（平台）")
-    @PostMapping("/auth/approve")
-    public PccAjaxResult approve(@RequestParam Long borrowerId, @RequestParam boolean approved) {
-        borrowerService.approveAuth(borrowerId, approved);
-        return new PccAjaxResult(200, approved ? "认证通过，已成为借款人" : "认证已拒绝");
-    }
-
     @ApiOperation("查询当前用户认证状态")
     @GetMapping("/auth/status")
     public PccAjaxResult status() {

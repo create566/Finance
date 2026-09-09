@@ -6,6 +6,10 @@ import com.example.demo.entity.BorrowInfo;
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserBind;
 import com.example.demo.entity.dto.BorrowInfoDto;
+import com.example.demo.enums.BindStatusEnum;
+import com.example.demo.enums.BorrowInfoStatusEnum;
+import com.example.demo.enums.BorrowerAuthStatusEnum;
+import com.example.demo.enums.UserTypeEnum;
 import com.example.demo.mapper.BorrowInfoMapper;
 import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.example.demo.service.BorrowInfoService;
@@ -18,7 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowInfo> implements BorrowInfoService {
@@ -40,15 +46,15 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
         boolean isDraft = dto.getIsDraft() != null && dto.getIsDraft();
 
         if (!isDraft) {
-            if (user.getUserType() == null || user.getUserType() != 2) {
+            if (!UserTypeEnum.BORROWER.getCode().equals(user.getUserType())) {
                 throw new ResourceNotFoundException(500, "只有借款人才能提交借款申请");
             }
-            if (user.getBorrowAuthStatus() == null || user.getBorrowAuthStatus() != 2) {
+            if (!BorrowerAuthStatusEnum.AUTHED.getCode().equals(user.getBorrowAuthStatus())) {
                 throw new ResourceNotFoundException(500, "请先完成借款人实名认证");
             }
             UserBind userBind = userBindService.getOne(new LambdaQueryWrapper<UserBind>()
                     .eq(UserBind::getUserId, userId)
-                    .eq(UserBind::getStatus, 1));
+                    .eq(UserBind::getStatus, BindStatusEnum.BOUND.getCode()));
             if (userBind == null) {
                 throw new ResourceNotFoundException(500, "请先完成银行卡绑定");
             }
@@ -114,11 +120,13 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
         if (borrowInfo == null) {
             throw new ResourceNotFoundException(500, "借款申请不存在");
         }
-        if (borrowInfo.getStatus() == null || borrowInfo.getStatus() != 1) {
+        if (!BorrowInfoStatusEnum.AUDITING.getCode().equals(borrowInfo.getStatus())) {
             throw new ResourceNotFoundException(500, "只有审核中的申请才能审批");
         }
 
-        borrowInfo.setStatus(approved ? 2 : -1);
+        borrowInfo.setStatus(approved
+                ? BorrowInfoStatusEnum.APPROVED.getCode()
+                : BorrowInfoStatusEnum.REJECTED.getCode());
         borrowInfo.setUpdateTime(LocalDateTime.now());
         return this.updateById(borrowInfo);
     }
@@ -127,7 +135,18 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
     public boolean deleteDraft(Long userId) {
         return this.remove(new LambdaQueryWrapper<BorrowInfo>()
                 .eq(BorrowInfo::getUserId, userId)
-                .eq(BorrowInfo::getStatus, 0));
+                .eq(BorrowInfo::getStatus, BorrowInfoStatusEnum.DRAFT.getCode()));
+    }
+
+    @Override
+    public Map<String, Object> getStatusByUser(Long userId) {
+        Map<String, Object> data = new HashMap<>();
+        BorrowInfo latest = getLatestByUser(userId);
+        data.put("hasApply", latest != null);
+        if (latest != null) {
+            data.put("borrowInfo", latest);
+        }
+        return data;
     }
 
     private BigDecimal calculateRate(BigDecimal amount, Integer period) {

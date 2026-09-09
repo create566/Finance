@@ -59,15 +59,8 @@ public class BorrowInfoController {
         if (userId == null) {
             return new PccAjaxResult(500, "未登录");
         }
-        BorrowInfo latest = borrowInfoService.getLatestByUser(userId.longValue());
-        Map<String, Object> data = new HashMap<>();
-        if (latest == null) {
-            data.put("hasApply", false);
-        } else {
-            data.put("hasApply", true);
-            data.put("borrowInfo", latest);
-        }
-        return new PccAjaxResult(200, "查询成功", data);
+        return new PccAjaxResult(200, "查询成功",
+                borrowInfoService.getStatusByUser(userId.longValue()));
     }
 
     @ApiOperation("删除当前用户的借款申请草稿")

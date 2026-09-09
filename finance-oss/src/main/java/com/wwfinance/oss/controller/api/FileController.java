@@ -25,7 +25,7 @@ public class FileController {
     @Resource
     private FileService fileService;
 
-    private static String UPLOADED_FOLDER = "D:/uploads/";
+    private static String UPLOADED_FOLDER = "D:/桌面/智能仓库/实训照片/";
 
     @GetMapping("/hello")
     public String hello() {

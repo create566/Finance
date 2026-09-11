@@ -18,6 +18,11 @@ spring:
           server-addr: localhost:8848
           enabled: false
           register-enabled: false
+      sentinel:
+        enabled: false
+  autoconfigure:
+    exclude:
+      - com.alibaba.cloud.sentinel.SentinelAutoConfiguration
 
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml
@@ -27,6 +32,6 @@ mybatis-plus:
 
 devtools:
   restart:
-    enabled: true  # 开启热部署
-    additional-paths: src/main/java # 重启目录
+    enabled: false  # 关闭热部署（与CGLIB冲突）
+    additional-paths: src/main/java
     exclude: WEB-INF/**

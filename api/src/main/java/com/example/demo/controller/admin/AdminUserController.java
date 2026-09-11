@@ -50,8 +50,8 @@ public class AdminUserController {
     @PutMapping("/{id}/status")
     public PccAjaxResult updateStatus(
             @PathVariable Long id,
-            @RequestBody Map<String, Integer> body) {
-        Integer newStatus = body.get("status");
+            @RequestBody Map<String, Object> body) {
+        Integer newStatus = body.get("status") == null ? null : Integer.valueOf(body.get("status").toString());
         if (newStatus == null) {
             return new PccAjaxResult(500, "status不能为空");
         }
@@ -62,5 +62,17 @@ public class AdminUserController {
         user.setStatus(newStatus);
         userService.updateById(user);
         return new PccAjaxResult(200, "修改成功");
+    }
+
+    @ApiOperation("新增会员（管理员手动开户）")
+    @PostMapping
+    public PccAjaxResult addMember(@RequestBody Map<String, Object> body) {
+        String mobile = body.get("phone") == null ? null : body.get("phone").toString();
+        String nickName = body.get("nickname") == null ? null : body.get("nickname").toString();
+        String name = body.get("realName") == null ? null : body.get("realName").toString();
+        String idCard = body.get("idCard") == null ? null : body.get("idCard").toString();
+        Integer integral = body.get("score") == null ? 0 : Integer.valueOf(body.get("score").toString());
+        userService.addMember(mobile, nickName, name, idCard, integral);
+        return new PccAjaxResult(200, "新增成功");
     }
 }

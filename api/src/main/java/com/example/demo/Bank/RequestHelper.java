@@ -12,17 +12,8 @@ import java.util.TreeMap;
 
 @Slf4j
 public class RequestHelper {
-
-    /*public static void main(String[] args) {
-        Map<String, Object> paramMap = new HashMap<>();
-        paramMap.put("d", "4");
-        paramMap.put("b", "2");
-        paramMap.put("c", "3");
-        paramMap.put("a", "1");
-    }*/
-
     /**
-     * 请求数据获取签名
+     * 请求数据获取签名y
      * @param paramMap
      * @return
      */
@@ -34,6 +25,7 @@ public class RequestHelper {
         StringBuilder str = new StringBuilder();
         for (Map.Entry<String, Object> param : sorted.entrySet()) {
             str.append(param.getValue()).append("|");
+            
         }
         str.append(HfbConst.SIGN_KEY);
         log.info("加密前：" + str.toString());
@@ -103,26 +95,6 @@ public class RequestHelper {
         return JSONObject.parseObject(result);
     }
 
-
-//    public static String getSign(Map<String, Object> paramMap) {
-//        //1.判断map中是否包含sign，如果包含移除
-//        if(paramMap.containsKey("sign")){
-//            paramMap.remove("sign");
-//        }
-//        //2.将HashMap转换成TreeMap
-//        TreeMap<String,Object> treeMap = new TreeMap<>(paramMap);
-//        //3.创建一个StringBuilder，拼接字符串 ，拼接map集合中的值 ，使用|隔开
-//        StringBuilder sb = new StringBuilder();
-//        Set<Map.Entry<String, Object>> entries = treeMap.entrySet();
-//        for (Map.Entry<String, Object> entry : entries) {
-//            sb.append(entry.getValue()).append("|");
-//        }
-//        sb.append(HfbConst.SIGN_KEY);
-//        log.info("加密前: {} ",sb.toString());
-//        String encrypt = MD5.encrypt(sb.toString());
-//        log.info("加密后: {} ",encrypt);
-//        return encrypt;
-//    }
 
     public static void main(String[] args) {
         Map map = new HashMap();

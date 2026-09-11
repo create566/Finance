@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Service
 public class UserIntegralServiceImpl extends ServiceImpl<UserIntegralMapper, UserIntegral> implements UserIntegralService {
 
@@ -30,6 +32,8 @@ public class UserIntegralServiceImpl extends ServiceImpl<UserIntegralMapper, Use
         record.setUserId(userId);
         record.setIntegral(points);
         record.setContent(content);
+        record.setCreateTime(LocalDateTime.now());
+        record.setUpdateTime(LocalDateTime.now());
         save(record);
 
         User user = userService.getById(userId);

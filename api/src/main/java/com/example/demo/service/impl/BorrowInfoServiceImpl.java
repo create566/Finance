@@ -12,8 +12,10 @@ import com.example.demo.enums.BorrowerAuthStatusEnum;
 import com.example.demo.enums.UserTypeEnum;
 import com.example.demo.mapper.BorrowInfoMapper;
 import com.wwfinance.common.exception.ResourceNotFoundException;
+import com.example.demo.entity.Lend;
 import com.example.demo.service.BorrowInfoService;
 import com.example.demo.service.IntegralGradeService;
+import com.example.demo.service.LendService;
 import com.example.demo.service.UserBindService;
 import com.example.demo.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +40,9 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
 
     @Autowired
     private IntegralGradeService integralGradeService;
+
+    @Autowired
+    private LendService lendService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -137,7 +142,11 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
                 ? BorrowInfoStatusEnum.APPROVED.getCode()
                 : BorrowInfoStatusEnum.REJECTED.getCode());
         borrowInfo.setUpdateTime(LocalDateTime.now());
-        return this.updateById(borrowInfo);
+        boolean updated = this.updateById(borrowInfo);
+        if (approved) {
+            lendService.createLend(borrowInfo);
+        }
+        return updated;
     }
 
     @Override

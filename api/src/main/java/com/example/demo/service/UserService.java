@@ -23,4 +23,9 @@ public interface UserService  extends IService<User> {
 
     void updateBindStatus(Long userId, Integer status, String bindCode);
 
+    /**
+     * 后台新增会员（管理员手动开户）
+     */
+    void addMember(String mobile, String nickName, String name, String idCard, Integer integral);
+
 }

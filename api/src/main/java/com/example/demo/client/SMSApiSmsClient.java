@@ -14,4 +14,10 @@ public interface SMSApiSmsClient {
 
     @PostMapping("/api/sms/user/checkCode")
     boolean checkCode(@RequestParam("mobile") String mobile, @RequestParam("code") String code);
+
+    /**
+     * 发送通知类短信（逾期催收等业务通知），通道与验证码一致
+     */
+    @PostMapping("/api/sms/user/sendNotify")
+    Object sendNotify(@RequestParam("mobile") String mobile, @RequestParam("content") String content);
 }

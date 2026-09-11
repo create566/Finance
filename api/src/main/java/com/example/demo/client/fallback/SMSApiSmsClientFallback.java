@@ -18,4 +18,11 @@ public class SMSApiSmsClientFallback implements SMSApiSmsClient {
         log.error("短信服务不可用，验证码校验失败");
         return false;
     }
+
+    @Override
+    public Object sendNotify(String mobile, String content) {
+        // 通知短信熔断：仅记录日志，不阻断主业务（如逾期扫描事务）
+        log.error("短信服务不可用，通知短信发送失败，mobile={}, content={}", mobile, content);
+        return "发送失败";
+    }
 }

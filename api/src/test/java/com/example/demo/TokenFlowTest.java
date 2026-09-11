@@ -71,6 +71,11 @@ class TokenFlowTest {
                 public boolean checkCode(String mobile, String code) {
                     return "123456".equals(code);
                 }
+
+                @Override
+                public Object sendNotify(String mobile, String content) {
+                    return "ok";
+                }
             };
         }
     }

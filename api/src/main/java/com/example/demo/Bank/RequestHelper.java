@@ -90,7 +90,7 @@ public class RequestHelper {
             result = new String(respdata);
             log.info(String.format("--> 旺旺银行应答结果：result data %1s", result));
         } catch (Exception ex) {
-            ex.printStackTrace();
+            log.error("请求旺旺银行失败", ex);
         }
         return JSONObject.parseObject(result);
     }

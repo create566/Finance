@@ -8,7 +8,7 @@ import java.util.TreeMap;
 @Slf4j
 public class BankSignUtil {
 
-    public static final String SIGN_KEY = "9876543210";
+    public static final String SIGN_KEY = System.getenv().getOrDefault("BANK_SIGN_KEY", "change-me-in-prod");
 
     public static String getSign(Map<String, Object> paramMap) {
         if (paramMap.containsKey("sign")) {

@@ -12,6 +12,7 @@ import com.example.demo.mapper.BorrowerAttachMapper;
 import com.example.demo.mapper.BorrowerMapper;
 import com.example.demo.service.BorrowerService;
 import com.example.demo.service.UserService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.example.demo.entity.dto.BorrowerApprovalDTO;
@@ -31,6 +32,9 @@ public class BorrowerServiceImpl extends ServiceImpl<BorrowerMapper, Borrower> i
     private UserService userService;
     @Resource
     private UserIntegralService userIntegralService;
+
+    @Autowired
+    private com.example.demo.service.MessageService messageService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -109,6 +113,8 @@ public class BorrowerServiceImpl extends ServiceImpl<BorrowerMapper, Borrower> i
                 userIntegralService.addIntegral(borrower.getUserId(), points, "实名认证审批加分");
             }
         }
+        // 实名认证审批结果通知（通过/拒绝都通知）
+        messageService.sendBorrowerAuthNotice(borrower.getUserId(), approved);
     }
 
     @Override
@@ -126,5 +132,19 @@ public class BorrowerServiceImpl extends ServiceImpl<BorrowerMapper, Borrower> i
         data.put("borrowAuthStatus", user.getBorrowAuthStatus());
         data.put("borrower", getByUserId(userId));
         return data;
+    }
+
+    @Override
+    public com.baomidou.mybatisplus.extension.plugins.pagination.Page<Borrower> adminPageList(
+            Integer pageNum, Integer pageSize, String keyword, Integer auditStatus) {
+        com.baomidou.mybatisplus.extension.plugins.pagination.Page<Borrower> pageParam =
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageNum, pageSize);
+        LambdaQueryWrapper<Borrower> wrapper = new LambdaQueryWrapper<>();
+        wrapper.like(keyword != null && !keyword.isEmpty(), Borrower::getName, keyword);
+        wrapper.like(keyword != null && !keyword.isEmpty(), Borrower::getMobile, keyword);
+        wrapper.like(keyword != null && !keyword.isEmpty(), Borrower::getIdCard, keyword);
+        wrapper.eq(auditStatus != null, Borrower::getStatus, auditStatus);
+        wrapper.orderByDesc(Borrower::getCreateTime);
+        return this.page(pageParam, wrapper);
     }
 }

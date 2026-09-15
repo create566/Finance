@@ -1,28 +1,36 @@
 server:
-  port: 8990 #服务端口号
-
+  port: 8990
 
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/ww_finance?serverTimezone=GMT%2B8&characterEncoding=utf-8
-    username: root
-    password: 123456
-#    url: jdbc:mysql://rm-uf6ry261ghx3995253o.mysql.rds.aliyuncs.com:3306/www_finance?serverTimezone=GMT%2B8&characterEncoding=utf-8
-#    username: shangqiuedu
-#    password: shangqiuedu_kakdadajeLo90
-
+    username: ${DB_USERNAME:ww_finance}
+    password: ${DB_PASSWORD:ww_finance_2024}
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    database: 0
   cloud:
-      nacos:
-        discovery:
-          server-addr: localhost:8848
-          enabled: false
-          register-enabled: false
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+        enabled: false
+        register-enabled: false
       sentinel:
         enabled: false
   autoconfigure:
     exclude:
       - com.alibaba.cloud.sentinel.SentinelAutoConfiguration
+
+# 安全配置
+security:
+  jwt:
+    secret: ${JWT_SECRET:vsofo-5grcs-secret-change-me}
+    expiration: 604800
+  bank:
+    sign-key: ${BANK_SIGN_KEY:change-bank-sign-key-in-prod}
+    agent-id: ${BANK_AGENT_ID:999888}
 
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml
@@ -32,6 +40,6 @@ mybatis-plus:
 
 devtools:
   restart:
-    enabled: false  # 关闭热部署（与CGLIB冲突）
+    enabled: false
     additional-paths: src/main/java
     exclude: WEB-INF/**

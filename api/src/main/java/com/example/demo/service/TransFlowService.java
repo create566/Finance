@@ -1,7 +1,6 @@
 package com.example.demo.service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.example.demo.entity.TransFlow;
 
@@ -65,5 +64,18 @@ public interface TransFlowService extends IService<TransFlow> {
      * @return 分页结果
      */
     IPage<TransFlow> listByUser(Long userId, long page, long limit);
+
+    /**
+     * 管理端：全平台流水分页查询（按用户/类型/日期筛选）
+     *
+     * @param pageNum   页码
+     * @param pageSize  每页条数
+     * @param userId    用户ID（可选）
+     * @param transType 交易类型（可选，1充值2提现3投标4回款5放款6还款）
+     * @param userName  用户名/手机号模糊（可选）
+     * @return 分页结果
+     */
+    IPage<TransFlow> adminPageList(Integer pageNum, Integer pageSize,
+                                   Long userId, Integer transType, String userName);
 
 }

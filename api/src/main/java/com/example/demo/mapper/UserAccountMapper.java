@@ -35,4 +35,26 @@ public interface UserAccountMapper extends BaseMapper<UserAccount> {
             "WHERE user_id = #{userId} AND amount >= #{amount} AND is_deleted = 0")
     int deductAmount(@Param("userId") Long userId, @Param("amount") BigDecimal amount);
 
+    /**
+     * 原子冻结：投标时将可用余额转入冻结金额
+     * WHERE amount >= ? 保证余额不足时直接返回 0
+     */
+    @Update("UPDATE user_account SET amount = amount - #{amount}, freeze_amount = freeze_amount + #{amount} " +
+            "WHERE user_id = #{userId} AND amount >= #{amount} AND is_deleted = 0")
+    int freezeAmount(@Param("userId") Long userId, @Param("amount") BigDecimal amount);
+
+    /**
+     * 原子解冻：流标/失败时将冻结金额退回可用余额
+     */
+    @Update("UPDATE user_account SET amount = amount + #{amount}, freeze_amount = freeze_amount - #{amount} " +
+            "WHERE user_id = #{userId} AND freeze_amount >= #{amount} AND is_deleted = 0")
+    int unfreezeAmount(@Param("userId") Long userId, @Param("amount") BigDecimal amount);
+
+    /**
+     * 原子扣减冻结：满标放款时将投资人冻结金额划转给借款人
+     */
+    @Update("UPDATE user_account SET freeze_amount = freeze_amount - #{amount} " +
+            "WHERE user_id = #{userId} AND freeze_amount >= #{amount} AND is_deleted = 0")
+    int deductFrozen(@Param("userId") Long userId, @Param("amount") BigDecimal amount);
+
 }

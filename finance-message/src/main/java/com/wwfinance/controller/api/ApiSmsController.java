@@ -39,8 +39,17 @@ public class ApiSmsController {
         String code = SmsCodeUtil.generateCode(6);
         redisTemplate.opsForValue().set("sms:code:" + mobile, code, 5, TimeUnit.MINUTES);
 
+        // 教学演示：验证码不真发短信，直接打印到控制台，方便从控制台复制到前端登录
+        System.out.println();
+        System.out.println("================  短信验证码  ================");
+        System.out.println("  手机号: " + mobile);
+        System.out.println("  验证码: " + code);
+        System.out.println("  有效期: 5 分钟");
+        System.out.println("===============================================");
+        System.out.println();
         log.info("发送验证码成功，手机号={}，验证码={}", mobile, code);
-        return new PccAjaxResult(200, "验证码发送成功", code);
+        // HTTP 响应不带回验证码，前端拿不到，必须从控制台复制
+        return new PccAjaxResult(200, "验证码已发送，请到服务控制台查看");
     }
 
     @ApiOperation("校验验证码")

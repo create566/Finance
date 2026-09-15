@@ -5,10 +5,10 @@ package com.example.demo.Bank;
  */
 public class HfbConst {
 
-    //给商户分配的唯一标识
-    public static final String AGENT_ID = "999888";
-    //签名key
-    public static final String SIGN_KEY = "9876543210";
+    //给商户分配的唯一标识（从配置读取）
+    public static final String AGENT_ID = System.getenv().getOrDefault("BANK_AGENT_ID", "999888");
+    //签名key（从配置读取）
+    public static final String SIGN_KEY = System.getenv().getOrDefault("BANK_SIGN_KEY", "9876543210");
 
     /**
      * 用户绑定
@@ -44,6 +44,10 @@ public class HfbConst {
      * 放款
      */
     public static final String MAKE_LOAD_URL = "http://localhost:9090/userInvest/AgreeAccountLendProject";
+    //放款异步回调
+    public static final String MAKE_LOAD_NOTIFY_URL = "http://localhost:8990/api/core/lend/notifyMakeLoan";
+    //放款同步回调
+    public static final String MAKE_LOAD_RETURN_URL = "http://localhost:5173/home";
 
     /**
      * 提现

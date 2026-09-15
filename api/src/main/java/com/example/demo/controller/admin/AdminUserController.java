@@ -3,7 +3,9 @@ package com.example.demo.controller.admin;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.demo.entity.User;
+import com.example.demo.entity.UserLoginRecord;
 import com.example.demo.entity.dto.AdminUserQuery;
+import com.example.demo.service.UserLoginRecordService;
 import com.example.demo.service.UserService;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
@@ -28,6 +30,9 @@ public class AdminUserController {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private UserLoginRecordService userLoginRecordService;
+
     @ApiOperation("获取会员分页列表")
     @GetMapping("/page")
     public PccAjaxResult page(
@@ -39,10 +44,10 @@ public class AdminUserController {
         AdminUserQuery query = new AdminUserQuery();
         query.setMobile(keyword);
         query.setStatus(status);
-        IPage<User> pageModel = userService.listPage(pageParam, query);
+        IPage<User> result = userService.listPage(pageParam, query);
         Map<String, Object> data = new HashMap<>();
-        data.put("list", pageModel.getRecords());
-        data.put("total", pageModel.getTotal());
+        data.put("list", result.getRecords());
+        data.put("total", result.getTotal());
         return new PccAjaxResult(200, "获取会员分页列表成功", data);
     }
 
@@ -55,13 +60,12 @@ public class AdminUserController {
         if (newStatus == null) {
             return new PccAjaxResult(500, "status不能为空");
         }
-        User user = userService.getById(id);
-        if (user == null) {
-            return new PccAjaxResult(500, "会员不存在");
+        try {
+            userService.updateStatus(id, newStatus);
+            return new PccAjaxResult(200, "修改成功");
+        } catch (RuntimeException e) {
+            return new PccAjaxResult(500, e.getMessage());
         }
-        user.setStatus(newStatus);
-        userService.updateById(user);
-        return new PccAjaxResult(200, "修改成功");
     }
 
     @ApiOperation("新增会员（管理员手动开户）")
@@ -74,5 +78,19 @@ public class AdminUserController {
         Integer integral = body.get("score") == null ? 0 : Integer.valueOf(body.get("score").toString());
         userService.addMember(mobile, nickName, name, idCard, integral);
         return new PccAjaxResult(200, "新增成功");
+    }
+
+    @ApiOperation("登录日志分页查询")
+    @GetMapping("/loginLog/page")
+    public PccAjaxResult loginLogPage(
+            @ApiParam(value = "当前页码") @RequestParam(defaultValue = "1") Integer pageNum,
+            @ApiParam(value = "每页记录数") @RequestParam(defaultValue = "10") Integer pageSize,
+            @ApiParam(value = "手机号/用户名搜索") @RequestParam(required = false) String keyword,
+            @ApiParam(value = "登录结果: 0失败 1成功") @RequestParam(required = false) Integer loginResult) {
+        Page<UserLoginRecord> result = userLoginRecordService.adminPageList(pageNum, pageSize, keyword, loginResult);
+        Map<String, Object> data = new HashMap<>();
+        data.put("list", result.getRecords());
+        data.put("total", result.getTotal());
+        return new PccAjaxResult(200, "查询成功", data);
     }
 }

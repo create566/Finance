@@ -1,7 +1,5 @@
 package com.example.demo.controller.api;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.example.demo.entity.User;
 import com.example.demo.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,8 +22,6 @@ public class CoreUserController {
      */
     @GetMapping("/checkMobile/{mobile}")
     public boolean checkMobile(@PathVariable String mobile) {
-        LambdaQueryWrapper<User> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(User::getMobile, mobile);
-        return userService.getOne(queryWrapper) == null;
+        return userService.checkMobileAvailable(mobile);
     }
 }

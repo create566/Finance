@@ -1,14 +1,12 @@
 package com.example.demo.service.impl;
 
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo.Bank.FormHelper;
 import com.example.demo.Bank.HfbConst;
 import com.example.demo.entity.User;
-import com.example.demo.entity.UserAccount;
 import com.example.demo.entity.UserBind;
 import com.example.demo.entity.dto.AccountInfoDto;
 import com.example.demo.enums.BindStatusEnum;
-import com.example.demo.mapper.UserAccountMapper;
+import com.example.demo.service.BankAccountSyncService;
 import com.example.demo.service.UserAccountService;
 import com.example.demo.service.UserBindService;
 import com.example.demo.service.UserService;
@@ -24,10 +22,7 @@ import java.util.Map;
 
 @Log4j2
 @Service
-public class UserAccountServiceImpl extends ServiceImpl<UserAccountMapper, UserAccount> implements UserAccountService {
-
-    @Autowired
-    private UserAccountMapper userAccountMapper;
+public class UserAccountServiceImpl implements UserAccountService {
 
     @Autowired
     private UserService userService;
@@ -35,33 +30,20 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountMapper, UserA
     @Autowired
     private UserBindService userBindService;
 
+    @Autowired
+    private BankAccountSyncService bankAccountSyncService;
+
+    /**
+     * 平台不持有余额，全部从银行查询
+     */
     @Override
-    public UserAccount getUserById(Long id) {
-        return baseMapper.selectById(id);
+    public BigDecimal getBalance(Long userId) {
+        return bankAccountSyncService.getBankBalance(userId);
     }
 
     @Override
-    public void recharge(Long userId, BigDecimal amount) {
-        int rows = userAccountMapper.addAmount(userId, amount);
-        if (rows == 0) {
-            throw new RuntimeException("账户不存在，充值失败");
-        }
-        log.info("充值成功，userId={}, amount={}", userId, amount);
-    }
-
-    @Override
-    public void withdraw(Long userId, BigDecimal amount) {
-        int rows = userAccountMapper.deductAmount(userId, amount);
-        if (rows == 0) {
-            throw new RuntimeException("余额不足或账户不存在");
-        }
-        log.info("提现成功，userId={}, amount={}", userId, amount);
-    }
-
-    @Override
-    public BigDecimal getAmount(Long userId) {
-        UserAccount account = getUserById(userId);
-        return account != null ? account.getAmount() : BigDecimal.ZERO;
+    public BigDecimal getFreezeAmount(Long userId) {
+        return bankAccountSyncService.getBankFreezeAmount(userId);
     }
 
     @Override
@@ -70,7 +52,8 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountMapper, UserA
         if (user == null) {
             throw new RuntimeException("用户不存在");
         }
-        UserAccount userAccount = getUserById(userId);
+        BigDecimal balance = bankAccountSyncService.getBankBalance(userId);
+        BigDecimal freezeAmount = bankAccountSyncService.getBankFreezeAmount(userId);
         UserBind userBind = userBindService.getByUserId(userId);
 
         AccountInfoDto dto = new AccountInfoDto();
@@ -80,8 +63,8 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountMapper, UserA
         dto.setIdCard(user.getIdCard());
         dto.setUserType(user.getUserType());
         dto.setBorrowAuthStatus(user.getBorrowAuthStatus());
-        dto.setAmount(userAccount != null ? userAccount.getAmount() : BigDecimal.ZERO);
-        dto.setFreezeAmount(userAccount != null ? userAccount.getFreezeAmount() : BigDecimal.ZERO);
+        dto.setAmount(balance);
+        dto.setFreezeAmount(freezeAmount);
         dto.setBindStatus(userBind != null ? userBind.getStatus() : 0);
         dto.setBindCode(userBind != null ? userBind.getBindCode() : null);
         return dto;
@@ -103,9 +86,6 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountMapper, UserA
         return FormHelper.buildForm(HfbConst.WITHDRAW_URL, paramMap);
     }
 
-    /**
-     * 校验用户存在且已绑卡，返回绑卡记录
-     */
     private UserBind getBoundUser(Long userId) {
         User user = userService.getById(userId);
         if (user == null) {
@@ -119,9 +99,6 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountMapper, UserA
         return userBind;
     }
 
-    /**
-     * 组装旺旺银行请求参数并签名
-     */
     private Map<String, Object> buildBankParams(UserBind userBind, BigDecimal amount,
                                                  String returnUrl, String notifyUrl) {
         Map<String, Object> paramMap = new HashMap<>();

@@ -5,18 +5,55 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.StringUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.example.demo.client.SMSApiSmsClient;
 import com.example.demo.entity.User;
+import com.example.demo.entity.UserAccount;
+import com.example.demo.entity.UserBind;
+import com.example.demo.entity.UserLoginRecord;
 import com.example.demo.entity.dto.AdminUserQuery;
+import com.example.demo.entity.dto.UserDto;
+import com.example.demo.mapper.UserAccountMapper;
+import com.example.demo.mapper.UserBindMapper;
 import com.example.demo.mapper.UserMapper;
+import com.example.demo.service.MessageService;
+import com.example.demo.service.UserLoginRecordService;
 import com.example.demo.service.UserService;
+import com.example.demo.service.IntegralGradeService;
+import com.example.demo.utils.TokenUtil;
 import com.wwfinance.common.utils.MD5;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements UserService {
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private SMSApiSmsClient smsApiSmsClient;
+
+    @Autowired
+    private UserLoginRecordService userLoginRecordService;
+
+    @Autowired
+    private UserAccountMapper userAccountMapper;
+
+    @Autowired
+    private UserBindMapper userBindMapper;
+
+    @Autowired
+    @Lazy
+    private MessageService messageService;
+
+    @Autowired
+    private IntegralGradeService integralGradeService;
 
     @Override
     public User getUserById(Long id) {
@@ -88,6 +125,148 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
         user.setCreateTime(now);
         user.setUpdateTime(now);
         save(user);
+    }
+
+    @Override
+    public String login(String mobile, String password) {
+        User user = getByMobile(mobile);
+        if (user == null) {
+            saveLoginRecord(null, mobile, 0, 0);
+            throw new RuntimeException("用户不存在");
+        }
+        if (!passwordEncoder.matches(password, user.getPassword())) {
+            saveLoginRecord(user.getId(), mobile, 0, 0);
+            throw new RuntimeException("密码错误");
+        }
+        String token = TokenUtil.generateMerchantToken(user.getId().toString());
+        saveLoginRecord(user.getId(), mobile, 1, 1);
+        return token;
+    }
+
+    @Override
+    public String loginByCode(String mobile, String code) {
+        User user = getByMobile(mobile);
+        if (user == null) {
+            saveLoginRecord(null, mobile, 0, 0);
+            throw new RuntimeException("用户不存在");
+        }
+        if (!smsApiSmsClient.checkCode(mobile, code)) {
+            saveLoginRecord(user.getId(), mobile, 0, 0);
+            throw new RuntimeException("验证码错误或已过期");
+        }
+        String token = TokenUtil.generateMerchantToken(user.getId().toString());
+        saveLoginRecord(user.getId(), mobile, 1, 1);
+        return token;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void register(UserDto userDTO) {
+        if (!smsApiSmsClient.checkCode(userDTO.getMobile(), userDTO.getCode())) {
+            throw new RuntimeException("验证码错误或已过期");
+        }
+        User exist = getByMobile(userDTO.getMobile());
+        if (exist != null) {
+            throw new RuntimeException("手机号已经存在");
+        }
+        if (!userDTO.getPassword().equals(userDTO.getPasswordto())) {
+            throw new RuntimeException("两次输入的密码不正确");
+        }
+        User user = new User();
+        user.setMobile(userDTO.getMobile());
+        user.setUserType(userDTO.getUserType());
+        user.setName(userDTO.getMobile());
+        user.setNickName(userDTO.getMobile());
+        user.setPassword(passwordEncoder.encode(userDTO.getPassword()));
+        user.setStatus(1);
+        save(user);
+        UserAccount userAccount = new UserAccount();
+        userAccount.setUserId(user.getId());
+        userAccountMapper.insert(userAccount);
+        messageService.sendRegisterNotice(user.getId(), user.getMobile());
+    }
+
+    @Override
+    public UserDto getCurrentUserInfo(Long userId) {
+        User user = getById(userId);
+        if (user == null) {
+            throw new RuntimeException("用户不存在");
+        }
+        UserDto userDto = new UserDto();
+        userDto.setId(user.getId());
+        userDto.setMobile(user.getMobile());
+        userDto.setUserType(user.getUserType());
+        userDto.setName(user.getName());
+        userDto.setNickName(user.getNickName());
+        userDto.setIdCard(user.getIdCard());
+        userDto.setEmail(user.getEmail());
+        userDto.setHeadImg(user.getHeadImg());
+        userDto.setBindStatus(user.getBindStatus());
+        userDto.setBindCode(user.getBindCode());
+        LambdaQueryWrapper<UserBind> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(UserBind::getUserId, userId);
+        UserBind userBind = userBindMapper.selectOne(wrapper);
+        userDto.setBindStatus(userBind != null ? userBind.getStatus() : 0);
+        return userDto;
+    }
+
+    @Override
+    public void updateProfile(Long userId, UserDto userDTO) {
+        User user = getById(userId);
+        if (user == null) {
+            throw new RuntimeException("用户不存在");
+        }
+        user.setName(userDTO.getName());
+        user.setNickName(userDTO.getNickName());
+        user.setEmail(userDTO.getEmail());
+        user.setHeadImg(userDTO.getHeadImg());
+        updateById(user);
+    }
+
+    @Override
+    public void updateStatus(Long userId, Integer status) {
+        User user = getById(userId);
+        if (user == null) {
+            throw new RuntimeException("会员不存在");
+        }
+        user.setStatus(status);
+        updateById(user);
+    }
+
+    @Override
+    public boolean checkMobileAvailable(String mobile) {
+        return getByMobile(mobile) == null;
+    }
+
+    @Override
+    public java.util.Map<String, Object> getBorrowAmount(Long userId) {
+        User user = getById(userId);
+        if (user == null) {
+            throw new RuntimeException("用户不存在");
+        }
+        java.math.BigDecimal amount = integralGradeService.getBorrowAmountByIntegral(user.getIntegral());
+        java.util.Map<String, Object> data = new java.util.HashMap<>();
+        data.put("integral", user.getIntegral() == null ? 0 : user.getIntegral());
+        data.put("borrowAmount", amount);
+        return data;
+    }
+
+    /**
+     * 记录登录日志
+     */
+    private void saveLoginRecord(Long userId, String username, int loginResult, int loginType) {
+        try {
+            UserLoginRecord record = new UserLoginRecord();
+            record.setUserId(userId);
+            record.setUsername(username);
+            record.setLoginType(loginType);
+            record.setLoginResult(loginResult);
+            record.setLoginTime(LocalDateTime.now());
+            record.setLoginIp("127.0.0.1");
+            userLoginRecordService.save(record);
+        } catch (Exception e) {
+            // 登录日志记录失败不影响登录流程
+        }
     }
 
 }

@@ -1,6 +1,7 @@
 package com.example.demo.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo.entity.BorrowInfo;
 import com.example.demo.entity.User;
@@ -12,7 +13,6 @@ import com.example.demo.enums.BorrowerAuthStatusEnum;
 import com.example.demo.enums.UserTypeEnum;
 import com.example.demo.mapper.BorrowInfoMapper;
 import com.wwfinance.common.exception.ResourceNotFoundException;
-import com.example.demo.entity.Lend;
 import com.example.demo.service.BorrowInfoService;
 import com.example.demo.service.IntegralGradeService;
 import com.example.demo.service.LendService;
@@ -43,6 +43,9 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
 
     @Autowired
     private LendService lendService;
+
+    @Autowired
+    private com.example.demo.service.MessageService messageService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -146,6 +149,8 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
         if (approved) {
             lendService.createLend(borrowInfo);
         }
+        // 借款审批结果通知（通过/拒绝都通知）
+        messageService.sendBorrowApprovalNotice(borrowInfo.getUserId(), approved, borrowInfo.getAmount());
         return updated;
     }
 
@@ -176,6 +181,21 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
             base = base.add(new BigDecimal("1.0"));
         }
         return base.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    @Override
+    public Page<BorrowInfo> adminPageList(Integer pageNum, Integer pageSize, Integer status) {
+        Page<BorrowInfo> pageParam = new Page<>(pageNum, pageSize);
+        LambdaQueryWrapper<BorrowInfo> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(status != null, BorrowInfo::getStatus, status);
+        wrapper.orderByDesc(BorrowInfo::getCreateTime);
+        return this.page(pageParam, wrapper);
+    }
+
+    @Override
+    public boolean auditBorrowInfo(Long id, Integer status) {
+        boolean approved = BorrowInfoStatusEnum.APPROVED.getCode().equals(status);
+        return this.approveBorrowInfo(id, approved);
     }
 
 }

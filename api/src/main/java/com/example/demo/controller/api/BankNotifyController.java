@@ -1,5 +1,7 @@
 package com.example.demo.controller.api;
 
+import com.example.demo.service.LendItemService;
+import com.example.demo.service.LendReturnService;
 import com.example.demo.service.TransFlowService;
 import com.example.demo.service.UserBindService;
 import io.swagger.annotations.Api;
@@ -34,6 +36,12 @@ public class BankNotifyController {
     @Autowired
     private TransFlowService transFlowService;
 
+    @Autowired
+    private LendItemService lendItemService;
+
+    @Autowired
+    private LendReturnService lendReturnService;
+
     @ApiOperation("绑卡异步回调")
     @PostMapping("/userBind/notify")
     public String notify(@RequestParam Map<String, String> requestParams) {
@@ -50,5 +58,23 @@ public class BankNotifyController {
     @PostMapping("/userAccount/notifyWithdraw")
     public String withdrawNotify(@RequestParam Map<String, String> requestParams) {
         return transFlowService.handleWithdrawNotify(new HashMap<>(requestParams)) ? "success" : "fail";
+    }
+
+    @ApiOperation("投标异步回调")
+    @PostMapping("/lendItem/notify")
+    public String investNotify(@RequestParam Map<String, String> requestParams) {
+        return lendItemService.handleInvestNotify(new HashMap<>(requestParams)) ? "success" : "fail";
+    }
+
+    @ApiOperation("放款异步回调")
+    @PostMapping("/lend/notifyMakeLoan")
+    public String makeLoanNotify(@RequestParam Map<String, String> requestParams) {
+        return lendReturnService.handleMakeLoanNotify(new HashMap<>(requestParams)) ? "success" : "fail";
+    }
+
+    @ApiOperation("还款异步回调")
+    @PostMapping("/lendReturn/notifyUrl")
+    public String repayNotify(@RequestParam Map<String, String> requestParams) {
+        return lendReturnService.handleRepayNotify(new HashMap<>(requestParams)) ? "success" : "fail";
     }
 }

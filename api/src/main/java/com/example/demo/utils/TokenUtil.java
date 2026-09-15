@@ -5,7 +5,6 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 
-import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -104,14 +103,6 @@ public class TokenUtil {
             tokenInfoMap.put("token_username", username.toString());
         }
         return tokenInfoMap;
-    }
-
-    public static void main(String[] args) {
-
-        String token = generateMerchantToken("3");
-        System.out.println("args = " + token);
-        Map<String, String> map = getMapInfoFromToken(token);
-        System.out.println(map);
     }
 }
 

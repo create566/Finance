@@ -1,8 +1,5 @@
 package  com.example.demo.entity.dto;
 
-import com.example.demo.entity.User;
-import com.example.demo.entity.UserAccount;
-import com.example.demo.entity.UserBind;
 import lombok.Data;
 import java.math.BigDecimal;
 

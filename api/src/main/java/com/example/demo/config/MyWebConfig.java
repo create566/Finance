@@ -1,5 +1,6 @@
 package com.example.demo.config;
 
+import com.example.demo.config.RedisRateLimitAspect;
 import com.example.demo.interceptor.JwtAuthInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
@@ -8,40 +9,54 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
-public class MyWebConfig  implements WebMvcConfigurer {
+public class MyWebConfig implements WebMvcConfigurer {
 
     @Autowired
     private JwtAuthInterceptor jwtAuthInterceptor;
 
+    @Autowired
+    private RedisRateLimitAspect redisRateLimitAspect;
+
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // 依然可以配置 Swagger 资源
         registry.addResourceHandler("doc.html")
                 .addResourceLocations("classpath:/META-INF/resources/");
         registry.addResourceHandler("/webjars/**")
                 .addResourceLocations("classpath:/META-INF/resources/webjars/");
-        // 这时 Spring Boot 默认的静态资源路径依然有效，不需要额外配置
     }
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(jwtAuthInterceptor)
-                // 拦截所有业务接口
                 .addPathPatterns("/api/**", "/admin/**")
-                // 白名单：登录/注册/测试/swagger 资源
                 .excludePathPatterns(
-                        "/api/user/hello",                 // 测试接口
-                        "/api/user/login",                 // 登录
-                        "/api/user/register",              // 注册
-                        "/api/core/userBind/notify",       // 绑卡回调（无需token）
-                        "/api/core/userAccount/notify",    // 充值回调（无需token）
-                        "/api/core/userAccount/notifyWithdraw", // 提现回调（无需token）
-                        "/api/core/user/checkMobile/**",   // 微服务内部调用（短信模块查重）
-                        "/admin/core/login",               // 后台管理员登录
+                        "/api/user/hello",
+                        "/api/user/login",
+                        "/api/user/register",
+                        "/api/user/sendCode",
+                        "/api/user/loginByCode",
+                        "/api/core/userBind/notify",
+                        "/api/core/userAccount/notify",
+                        "/api/core/userAccount/notifyWithdraw",
+                        "/api/core/lendItem/notify",
+                        "/api/core/lend/notifyMakeLoan",
+                        "/api/core/lendReturn/notifyUrl",
+                        "/api/core/user/checkMobile/**",
+                        "/admin/core/login",
                         "/doc.html",
                         "/webjars/**",
                         "/swagger-resources/**",
                         "/v2/api-docs"
+                );
+
+        registry.addInterceptor(redisRateLimitAspect)
+                .addPathPatterns("/api/**")
+                .excludePathPatterns(
+                        "/api/user/hello",
+                        "/api/user/login",
+                        "/api/user/register",
+                        "/api/user/sendCode",
+                        "/api/user/loginByCode"
                 );
     }
 }

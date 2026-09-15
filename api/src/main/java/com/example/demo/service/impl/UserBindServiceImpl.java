@@ -7,8 +7,6 @@ import com.example.demo.Bank.HfbConst;
 import com.example.demo.client.SMSApiSmsClient;
 import com.example.demo.entity.UserBind;
 import com.example.demo.entity.User;
-import com.example.demo.enums.BankNotifyStatusEnum;
-import com.example.demo.enums.BindStatusEnum;
 import com.example.demo.enums.BorrowerAuthStatusEnum;
 import com.example.demo.mapper.UserBindMapper;
 import com.example.demo.service.UserBindService;
@@ -35,6 +33,9 @@ public class UserBindServiceImpl extends ServiceImpl<UserBindMapper, UserBind> i
 
     @Autowired
     private SMSApiSmsClient smsApiSmsClient;
+
+    @Autowired
+    private com.example.demo.service.MessageService messageService;
 
     @Override
     public UserBind getByUserId(Long userId) {
@@ -86,6 +87,10 @@ public class UserBindServiceImpl extends ServiceImpl<UserBindMapper, UserBind> i
         userBind.setMobile(user.getMobile());
         userBind.setStatus("1".equals(status) ? 1 : 0);
         bind(userBind);
+        // 绑卡成功通知（仅银行侧成功时发送）
+        if ("1".equals(status)) {
+            messageService.sendBindNotice(user.getId(), bankNo);
+        }
         return true;
     }
 

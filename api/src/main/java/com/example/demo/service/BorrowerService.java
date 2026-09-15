@@ -1,5 +1,6 @@
 package com.example.demo.service;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.example.demo.entity.Borrower;
 import com.example.demo.entity.dto.BorrowerAuthDto;
@@ -20,7 +21,6 @@ public interface BorrowerService extends IService<Borrower> {
      * 审核实名认证：校验记录存在/状态为认证中 → 通过/拒绝，同步 user 表认证状态
      * 审批通过时按 BorrowerApprovalDTO 打分累加到 user.integral
      */
-//    void approveAuth(Long borrowerId, boolean approved);
      void approveAuth(BorrowerApprovalDTO dto);
     /**
      * 查当前用户的借款人档案（可能为 null）
@@ -31,4 +31,10 @@ public interface BorrowerService extends IService<Borrower> {
      * 查询认证状态：组装用户认证状态 + 借款人档案
      */
     Map<String, Object> getAuthStatus(Long userId);
+
+    /**
+     * 后台借款人分页查询（按关键字模糊搜索姓名/手机号/身份证，按状态筛选）
+     */
+    Page<Borrower> adminPageList(Integer pageNum, Integer pageSize, String keyword, Integer auditStatus);
+
 }

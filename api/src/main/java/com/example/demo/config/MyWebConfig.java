@@ -10,19 +10,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 public class MyWebConfig implements WebMvcConfigurer {
-
     @Autowired
     private JwtAuthInterceptor jwtAuthInterceptor;
-
     @Autowired
     private RedisRateLimitAspect redisRateLimitAspect;
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         registry.addResourceHandler("doc.html")
-                .addResourceLocations("classpath:/META-INF/resources/");
+                .addResourceLocations("classpath:/META‑INF/resources/");
         registry.addResourceHandler("/webjars/**")
-                .addResourceLocations("classpath:/META-INF/resources/webjars/");
+                .addResourceLocations("classpath:/META‑INF/resources/webjars/");
     }
 
     @Override
@@ -42,13 +40,12 @@ public class MyWebConfig implements WebMvcConfigurer {
                         "/api/core/lend/notifyMakeLoan",
                         "/api/core/lendReturn/notifyUrl",
                         "/api/core/user/checkMobile/**",
-                        "/admin/core/login",
+                        "/admin/core/login",   // ✅管理员登录放行！！
                         "/doc.html",
                         "/webjars/**",
-                        "/swagger-resources/**",
-                        "/v2/api-docs"
+                        "/swagger‑resources/**",
+                        "/v2/api‑docs"
                 );
-
         registry.addInterceptor(redisRateLimitAspect)
                 .addPathPatterns("/api/**")
                 .excludePathPatterns(

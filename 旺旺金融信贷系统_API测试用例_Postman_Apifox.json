@@ -1,0 +1,2170 @@
+{
+    "info": {
+        "_postman_id": "ww-finance-api",
+        "name": "旺旺金融信贷系统 API 测试集",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        "_exporter_id": "whymcgml8963",
+        "description": "旺旺金融信贷系统全部 API 接口测试用例，Apifox/Postman 直接导入使用"
+    },
+    "item": [
+        {
+            "name": "用户接口",
+            "item": [
+                {
+                    "name": "用户登录",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/login",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "login"
+                            ]
+                        },
+                        "description": "用户登录，返回token",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"mobile\": \"13800001111\", \"password\": \"123456\"}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "验证码登录",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/loginByCode",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "loginByCode"
+                            ]
+                        },
+                        "description": "验证码登录",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"mobile\": \"13800001111\", \"code\": \"1234\"}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "用户注册",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/register",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "register"
+                            ]
+                        },
+                        "description": "用户注册",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"mobile\": \"13800001111\", \"password\": \"123456\", \"name\": \"张三\"}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "获取当前登录用户信息",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/info",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "info"
+                            ]
+                        },
+                        "description": "获取当前登录用户信息，需登录"
+                    }
+                },
+                {
+                    "name": "修改用户资料",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/profile",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "profile"
+                            ]
+                        },
+                        "description": "修改用户资料，需登录",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\": \"李四\", \"email\": \"lisi@qq.com\"}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "发送验证码",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/sendCode?mobile=13800001111",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "sendCode?mobile=13800001111"
+                            ]
+                        },
+                        "description": "发送短信验证码"
+                    }
+                },
+                {
+                    "name": "用户退出登录",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/logout",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "logout"
+                            ]
+                        },
+                        "description": "退出登录"
+                    }
+                },
+                {
+                    "name": "获取用户详情",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/1",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "1"
+                            ]
+                        },
+                        "description": "根据ID获取用户信息"
+                    }
+                },
+                {
+                    "name": "首页",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/hello",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "hello"
+                            ]
+                        },
+                        "description": "首页测试接口"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "借款信息",
+            "item": [
+                {
+                    "name": "提交借款申请(正式)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/borrowInfo/auth/submit",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "borrowInfo",
+                                "auth",
+                                "submit"
+                            ]
+                        },
+                        "description": "提交借款申请（正式提交）",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"amount\": 10000, \"period\": 12, \"returnMethod\": 1, \"moneyUse\": 1, \"isDraft\": false}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "保存借款草稿",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/borrowInfo/auth/submit",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "borrowInfo",
+                                "auth",
+                                "submit"
+                            ]
+                        },
+                        "description": "保存借款申请草稿",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"amount\": 5000, \"period\": 6, \"returnMethod\": 2, \"moneyUse\": 2, \"isDraft\": true}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "查询借款申请列表",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/borrowInfo/auth/list",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "borrowInfo",
+                                "auth",
+                                "list"
+                            ]
+                        },
+                        "description": "查询当前用户的借款申请列表"
+                    }
+                },
+                {
+                    "name": "获取借款状态",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/borrowInfo/auth/status",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "borrowInfo",
+                                "auth",
+                                "status"
+                            ]
+                        },
+                        "description": "获取当前用户最近一次借款申请的状态"
+                    }
+                },
+                {
+                    "name": "删除借款草稿",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/borrowInfo/auth/draft",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "borrowInfo",
+                                "auth",
+                                "draft"
+                            ]
+                        },
+                        "description": "删除当前用户的借款申请草稿"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "标的投资",
+            "item": [
+                {
+                    "name": "获取募资中的标的列表",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/lend/list?pageNum=1&pageSize=10",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "lend",
+                                "list?pageNum=1&pageSize=10"
+                            ]
+                        },
+                        "description": "获取募资中的标的列表"
+                    }
+                },
+                {
+                    "name": "获取标的详情",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/lend/1",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "lend",
+                                "1"
+                            ]
+                        },
+                        "description": "获取标的详情"
+                    }
+                },
+                {
+                    "name": "投资人投标",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/lend/invest/1",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "lend",
+                                "invest",
+                                "1"
+                            ]
+                        },
+                        "description": "投资人投标（跳转旺旺银行）",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"amount\": 1000}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "获取标的的投资记录",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/lend/1/investments",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "lend",
+                                "1",
+                                "investments"
+                            ]
+                        },
+                        "description": "获取标的的投资记录列表"
+                    }
+                },
+                {
+                    "name": "查询我的投资记录",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/lend/myInvestments?pageNum=1&pageSize=10",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "lend",
+                                "myInvestments?pageNum=1&pageSize=10"
+                            ]
+                        },
+                        "description": "查询我的投资记录"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "实名认证",
+            "item": [
+                {
+                    "name": "提交实名认证",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/borrower/auth/submit",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "borrower",
+                                "auth",
+                                "submit"
+                            ]
+                        },
+                        "description": "提交实名认证资料",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\": \"张三\", \"idCard\": \"110101199001011234\", \"idCardFrontUrl\": \"http://oss.com/front.jpg\", \"idCardBackUrl\": \"http://oss.com/back.jpg\", \"sex\": 1, \"age\": 30, \"education\": 1}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "查询实名认证状态",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/borrower/auth/status",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "borrower",
+                                "auth",
+                                "status"
+                            ]
+                        },
+                        "description": "查询当前用户认证状态"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "交易流水",
+            "item": [
+                {
+                    "name": "交易流水列表",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/transFlow/auth/list/1/10",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "transFlow",
+                                "auth",
+                                "list",
+                                "1",
+                                "10"
+                            ]
+                        },
+                        "description": "分页查询当前用户的交易流水"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "银行绑定",
+            "item": [
+                {
+                    "name": "发起绑卡",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/bind?code=123456",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "bind?code=123456"
+                            ]
+                        },
+                        "description": "发起绑卡（需先实名认证+短信验证码）"
+                    }
+                },
+                {
+                    "name": "查询绑卡状态",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/bindStatus",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "bindStatus"
+                            ]
+                        },
+                        "description": "查询绑卡状态"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "银行异步回调",
+            "item": [
+                {
+                    "name": "绑卡异步回调",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/userBind/notify",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "userBind",
+                                "notify"
+                            ]
+                        },
+                        "description": "银行绑卡异步回调接口"
+                    }
+                },
+                {
+                    "name": "充值异步回调",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/userAccount/notify",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "userAccount",
+                                "notify"
+                            ]
+                        },
+                        "description": "银行充值异步回调接口"
+                    }
+                },
+                {
+                    "name": "提现异步回调",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/userAccount/notifyWithdraw",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "userAccount",
+                                "notifyWithdraw"
+                            ]
+                        },
+                        "description": "银行提现异步回调接口"
+                    }
+                },
+                {
+                    "name": "投标异步回调",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/lendItem/notify",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "lendItem",
+                                "notify"
+                            ]
+                        },
+                        "description": "银行投标异步回调接口"
+                    }
+                },
+                {
+                    "name": "放款异步回调",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/lend/notifyMakeLoan",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "lend",
+                                "notifyMakeLoan"
+                            ]
+                        },
+                        "description": "银行放款异步回调接口"
+                    }
+                },
+                {
+                    "name": "还款异步回调",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/lendReturn/notifyUrl",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "lendReturn",
+                                "notifyUrl"
+                            ]
+                        },
+                        "description": "银行还款异步回调接口"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "积分等级",
+            "item": [
+                {
+                    "name": "查询可借额度",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/integralGrade/borrowAmount",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "integralGrade",
+                                "borrowAmount"
+                            ]
+                        },
+                        "description": "查询当前登录用户可借额度"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "字典",
+            "item": [
+                {
+                    "name": "查询字典分类列表",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/dict/categories",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "dict",
+                                "categories"
+                            ]
+                        },
+                        "description": "查询全部分类列表"
+                    }
+                },
+                {
+                    "name": "按分类编码查选项列表",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/dict/listByCode?dictCode=returnMethod",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "dict",
+                                "listByCode?dictCode=returnMethod"
+                            ]
+                        },
+                        "description": "按分类编码查选项列表"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "站内消息",
+            "item": [
+                {
+                    "name": "分页查询我的消息",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/message/myList?pageNum=1&pageSize=10",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "message",
+                                "myList?pageNum=1&pageSize=10"
+                            ]
+                        },
+                        "description": "分页查询我的消息"
+                    }
+                },
+                {
+                    "name": "未读消息数",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/message/unreadCount",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "message",
+                                "unreadCount"
+                            ]
+                        },
+                        "description": "获取未读消息数"
+                    }
+                },
+                {
+                    "name": "标记消息已读",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/message/read/1",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "message",
+                                "read",
+                                "1"
+                            ]
+                        },
+                        "description": "标记消息已读"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "用户账户",
+            "item": [
+                {
+                    "name": "查询账户信息",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/account/auth/getAccount",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "account",
+                                "auth",
+                                "getAccount"
+                            ]
+                        },
+                        "description": "查询账户信息（个人中心）"
+                    }
+                },
+                {
+                    "name": "发起充值",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/account/auth/recharge",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "account",
+                                "auth",
+                                "recharge"
+                            ]
+                        },
+                        "description": "发起充值（跳转旺旺银行）",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"amount\": 1000.00}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "发起提现",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/account/auth/withdraw",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "account",
+                                "auth",
+                                "withdraw"
+                            ]
+                        },
+                        "description": "发起提现（跳转旺旺银行）",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"amount\": 500.00}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "还款管理",
+            "item": [
+                {
+                    "name": "借款人还款计划",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/lendReturn/myBorrowList",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "lendReturn",
+                                "myBorrowList"
+                            ]
+                        },
+                        "description": "借款人查询我的还款计划"
+                    }
+                },
+                {
+                    "name": "借款人偿还某一期",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/lendReturn/repay/1",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "lendReturn",
+                                "repay",
+                                "1"
+                            ]
+                        },
+                        "description": "借款人偿还某一期（跳转旺旺银行）"
+                    }
+                },
+                {
+                    "name": "投资人回款计划",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/lendReturn/myInvestList",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "lendReturn",
+                                "myInvestList"
+                            ]
+                        },
+                        "description": "投资人查询我的回款计划"
+                    }
+                },
+                {
+                    "name": "投资人回款明细",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/core/lendReturn/itemReturns/1",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "core",
+                                "lendReturn",
+                                "itemReturns",
+                                "1"
+                            ]
+                        },
+                        "description": "查询某一期的投资人回款明细"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "后台管理",
+            "item": [
+                {
+                    "name": "后台管理员登录",
+                    "item": [
+                        {
+                            "name": "管理员登录",
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/login",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "login"
+                                    ]
+                                },
+                                "description": "管理员登录",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\"username\": \"admin\", \"password\": \"admin123\"}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "退出登录",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/logout",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "logout"
+                                    ]
+                                },
+                                "description": "管理员退出登录"
+                            }
+                        },
+                        {
+                            "name": "获取当前管理员信息",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/userInfo",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "userInfo"
+                                    ]
+                                },
+                                "description": "获取当前管理员信息"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "后台会员管理",
+                    "item": [
+                        {
+                            "name": "获取会员分页列表",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/member/page?pageNum=1&pageSize=10",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "member",
+                                        "page?pageNum=1&pageSize=10"
+                                    ]
+                                },
+                                "description": "获取会员分页列表"
+                            }
+                        },
+                        {
+                            "name": "修改会员状态",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/member/1/status",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "member",
+                                        "1",
+                                        "status"
+                                    ]
+                                },
+                                "description": "启用/禁用会员",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\"status\": 1}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "新增会员",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/member",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "member"
+                                    ]
+                                },
+                                "description": "管理员手动开户",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\"phone\": \"13900001111\", \"nickname\": \"李四\", \"realName\": \"李四\", \"idCard\": \"110101199001011234\", \"score\": 100}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "登录日志分页查询",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/member/loginLog/page?pageNum=1&pageSize=10",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "member",
+                                        "loginLog",
+                                        "page?pageNum=1&pageSize=10"
+                                    ]
+                                },
+                                "description": "会员登录日志分页查询"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "后台借款记录管理",
+                    "item": [
+                        {
+                            "name": "借款记录分页列表",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/borrow/record/page?pageNum=1&pageSize=10",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "borrow",
+                                        "record",
+                                        "page?pageNum=1&pageSize=10"
+                                    ]
+                                },
+                                "description": "获取借款记录分页列表"
+                            }
+                        },
+                        {
+                            "name": "审核借款申请",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/borrow/record/1/audit",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "borrow",
+                                        "record",
+                                        "1",
+                                        "audit"
+                                    ]
+                                },
+                                "description": "审核借款申请（2=通过, -1=拒绝）",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\"status\": 2}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "后台借款人管理",
+                    "item": [
+                        {
+                            "name": "借款人分页列表",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/borrower/page?pageNum=1&pageSize=10",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "borrower",
+                                        "page?pageNum=1&pageSize=10"
+                                    ]
+                                },
+                                "description": "获取借款人分页列表"
+                            }
+                        },
+                        {
+                            "name": "审核借款人实名认证",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/borrower/1/audit",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "borrower",
+                                        "1",
+                                        "audit"
+                                    ]
+                                },
+                                "description": "审核借款人实名认证",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\"status\": 2, \"score\": 85}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "后台登录日志管理",
+                    "item": [
+                        {
+                            "name": "登录日志分页查询",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/loginLog/page?pageNum=1&pageSize=10",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "loginLog",
+                                        "page?pageNum=1&pageSize=10"
+                                    ]
+                                },
+                                "description": "后台登录日志分页查询"
+                            }
+                        },
+                        {
+                            "name": "登录日志详情",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/loginLog/1",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "loginLog",
+                                        "1"
+                                    ]
+                                },
+                                "description": "获取登录日志详情"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "后台流水监控",
+                    "item": [
+                        {
+                            "name": "全平台流水分页查询",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/transFlow/page?pageNum=1&pageSize=10",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "transFlow",
+                                        "page?pageNum=1&pageSize=10"
+                                    ]
+                                },
+                                "description": "全平台流水分页查询"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "后台字典管理",
+                    "item": [
+                        {
+                            "name": "查询字典分类列表",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/dict/categories",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "dict",
+                                        "categories"
+                                    ]
+                                },
+                                "description": "查询全部分类列表"
+                            }
+                        },
+                        {
+                            "name": "按编码查选项列表",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/dict/listByCode?dictCode=returnMethod",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "dict",
+                                        "listByCode?dictCode=returnMethod"
+                                    ]
+                                },
+                                "description": "按分类编码查选项列表"
+                            }
+                        },
+                        {
+                            "name": "新增分类",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/dict/category",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "dict",
+                                        "category"
+                                    ]
+                                },
+                                "description": "新增字典分类",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\"dictCode\": \"industry\", \"name\": \"行业\"}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "新增选项",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/dict/option",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "dict",
+                                        "option"
+                                    ]
+                                },
+                                "description": "新增字典选项",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\"parentId\": 1, \"name\": \"教育\", \"value\": \"3\"}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "更新字典节点",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/dict/update",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "dict",
+                                        "update"
+                                    ]
+                                },
+                                "description": "更新字典节点",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\"id\": 1, \"name\": \"教育\", \"value\": \"3\"}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "删除字典节点",
+                            "request": {
+                                "method": "DELETE",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/dict/remove/1",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "dict",
+                                        "remove",
+                                        "1"
+                                    ]
+                                },
+                                "description": "删除字典节点"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "后台标的管理",
+                    "item": [
+                        {
+                            "name": "标的分页列表",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/loan/project/page?pageNum=1&pageSize=10",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "loan",
+                                        "project",
+                                        "page?pageNum=1&pageSize=10"
+                                    ]
+                                },
+                                "description": "获取标的分页列表"
+                            }
+                        },
+                        {
+                            "name": "下架标的",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/loan/project/1/offline",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "loan",
+                                        "project",
+                                        "1",
+                                        "offline"
+                                    ]
+                                },
+                                "description": "下架标的"
+                            }
+                        },
+                        {
+                            "name": "发布标的",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/loan/project/1/publish",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "loan",
+                                        "project",
+                                        "1",
+                                        "publish"
+                                    ]
+                                },
+                                "description": "发布标的"
+                            }
+                        },
+                        {
+                            "name": "满标放款",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/loan/project/1/makeLoan",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "loan",
+                                        "project",
+                                        "1",
+                                        "makeLoan"
+                                    ]
+                                },
+                                "description": "满标放款（跳转旺旺银行）"
+                            }
+                        },
+                        {
+                            "name": "查询标的还款计划",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/loan/project/1/returns",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "loan",
+                                        "project",
+                                        "1",
+                                        "returns"
+                                    ]
+                                },
+                                "description": "查询标的还款计划"
+                            }
+                        },
+                        {
+                            "name": "手动触发逾期扫描",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/loan/project/overdueCheck",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "loan",
+                                        "project",
+                                        "overdueCheck"
+                                    ]
+                                },
+                                "description": "手动触发逾期扫描"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "后台积分等级管理",
+                    "item": [
+                        {
+                            "name": "积分等级列表",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/integralGrade/list",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "integralGrade",
+                                        "list"
+                                    ]
+                                },
+                                "description": "查询所有积分等级"
+                            }
+                        },
+                        {
+                            "name": "积分等级分页查询",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/integralGrade/page?pageNum=1&pageSize=10",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "integralGrade",
+                                        "page?pageNum=1&pageSize=10"
+                                    ]
+                                },
+                                "description": "分页查询积分等级"
+                            }
+                        },
+                        {
+                            "name": "按ID查询积分等级",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/integralGrade/1",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "integralGrade",
+                                        "1"
+                                    ]
+                                },
+                                "description": "按ID查询积分等级"
+                            }
+                        },
+                        {
+                            "name": "新增积分等级",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/integralGrade/save",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "integralGrade",
+                                        "save"
+                                    ]
+                                },
+                                "description": "新增积分等级",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\"gradeName\": \"普通会员\", \"minScore\": 0, \"maxScore\": 999}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "更新积分等级",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/integralGrade/update",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "integralGrade",
+                                        "update"
+                                    ]
+                                },
+                                "description": "更新积分等级",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\"id\": 1, \"gradeName\": \"VIP会员\", \"minScore\": 1000, \"maxScore\": 9999}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "name": "删除积分等级",
+                            "request": {
+                                "method": "DELETE",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "{{token}}",
+                                        "description": "登录令牌"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{baseUrl}}/admin/core/integralGrade/remove/1",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "admin",
+                                        "core",
+                                        "integralGrade",
+                                        "remove",
+                                        "1"
+                                    ]
+                                },
+                                "description": "删除积分等级"
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

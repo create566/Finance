@@ -109,7 +109,7 @@ public class UserBindServiceImpl extends ServiceImpl<UserBindMapper, UserBind> i
             throw new RuntimeException("请先完成实名认证");
         }
         // 前置校验2：短信验证码
-        if (code == null || !smsApiSmsClient.checkCode(user.getMobile(), code)) {
+        if (code == null || !Boolean.TRUE.equals(smsApiSmsClient.checkCode(user.getMobile(), code).get("data"))) {
             throw new RuntimeException("验证码错误或已过期");
         }
 

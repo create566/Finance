@@ -1,22 +1,18 @@
 package com.example.demo.client;
 
-import com.example.demo.client.fallback.SMSApiSmsClientFallback;
+import com.wwfinance.common.result.PccAjaxResult;
 import org.springframework.cloud.openfeign.FeignClient;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
-@FeignClient(value = "service-sms", fallback = SMSApiSmsClientFallback.class)
+@FeignClient(value = "service-sms", url = "http://localhost:8120")
 public interface SMSApiSmsClient {
     @PostMapping("/api/sms/user/sendCode")
-    Object sendCode(@PathVariable("mobile") String mobile);
+    PccAjaxResult sendCode(@RequestParam("mobile") String mobile);
 
     @PostMapping("/api/sms/user/checkCode")
-    boolean checkCode(@RequestParam("mobile") String mobile, @RequestParam("code") String code);
+    PccAjaxResult checkCode(@RequestParam("mobile") String mobile, @RequestParam("code") String code);
 
-    /**
-     * 发送通知类短信（逾期催收等业务通知），通道与验证码一致
-     */
     @PostMapping("/api/sms/user/sendNotify")
-    Object sendNotify(@RequestParam("mobile") String mobile, @RequestParam("content") String content);
+    PccAjaxResult sendNotify(@RequestParam("mobile") String mobile, @RequestParam("content") String content);
 }

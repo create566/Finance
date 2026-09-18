@@ -6,10 +6,73 @@
         "_exporter_id": "whymcgml8963",
         "description": "旺旺金融信贷系统全部 API 接口测试用例，Apifox/Postman 直接导入使用"
     },
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:8990"
+        },
+        {
+            "key": "token",
+            "value": ""
+        }
+    ],
     "item": [
         {
             "name": "用户接口",
             "item": [
+                {
+                    "name": "发送验证码",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/sendCode?mobile=13800001111",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "sendCode"
+                            ],
+                            "query": [
+                                {
+                                    "key": "mobile",
+                                    "value": "13800001111"
+                                }
+                            ]
+                        },
+                        "description": "发送短信验证码（返回的data字段即为验证码）"
+                    }
+                },
+                {
+                    "name": "用户注册",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/user/register",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user",
+                                "register"
+                            ]
+                        },
+                        "description": "用户注册（需先调用 sendCode 获取验证码，将 code 替换为sendCode返回的6位验证码。注册成功后请调用【用户登录】获取token）",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"mobile\": \"13800001111\", \"password\": \"123456\", \"passwordto\": \"123456\", \"code\": \"验证码\"}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    }
+                },
                 {
                     "name": "用户登录",
                     "request": {
@@ -35,7 +98,23 @@
                                     "language": "json"
                                 }
                             }
-                        }
+                        },
+                        "event": [
+                            {
+                                "listen": "test",
+                                "script": {
+                                    "type": "text/javascript",
+                                    "exec": [
+                                        "var jsonData = pm.response.json();",
+                                        "if (jsonData.data) {",
+                                        "    pm.collectionVariables.set(\"token\", jsonData.data);",
+                                        "    pm.environment.set(\"token\", jsonData.data);",
+                                        "    pm.globals.set(\"token\", jsonData.data);",
+                                        "}"
+                                    ]
+                                }
+                            }
+                        ]
                     }
                 },
                 {
@@ -54,44 +133,32 @@
                                 "loginByCode"
                             ]
                         },
-                        "description": "验证码登录",
+                        "description": "验证码登录（需先调用 sendCode 获取验证码，将 code 替换为sendCode返回的6位验证码）",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\"mobile\": \"13800001111\", \"code\": \"1234\"}",
+                            "raw": "{\"mobile\": \"13800001111\", \"code\": \"验证码\"}",
                             "options": {
                                 "raw": {
                                     "language": "json"
                                 }
                             }
-                        }
-                    }
-                },
-                {
-                    "name": "用户注册",
-                    "request": {
-                        "method": "POST",
-                        "header": [],
-                        "url": {
-                            "raw": "{{baseUrl}}/api/user/register",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "api",
-                                "user",
-                                "register"
-                            ]
                         },
-                        "description": "用户注册",
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\"mobile\": \"13800001111\", \"password\": \"123456\", \"name\": \"张三\"}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
+                        "event": [
+                            {
+                                "listen": "test",
+                                "script": {
+                                    "type": "text/javascript",
+                                    "exec": [
+                                        "var jsonData = pm.response.json();",
+                                        "if (jsonData.data) {",
+                                        "    pm.collectionVariables.set(\"token\", jsonData.data);",
+                                        "    pm.environment.set(\"token\", jsonData.data);",
+                                        "    pm.globals.set(\"token\", jsonData.data);",
+                                        "}"
+                                    ]
                                 }
                             }
-                        }
+                        ]
                     }
                 },
                 {
@@ -154,25 +221,6 @@
                     }
                 },
                 {
-                    "name": "发送验证码",
-                    "request": {
-                        "method": "POST",
-                        "header": [],
-                        "url": {
-                            "raw": "{{baseUrl}}/api/user/sendCode?mobile=13800001111",
-                            "host": [
-                                "{{baseUrl}}"
-                            ],
-                            "path": [
-                                "api",
-                                "user",
-                                "sendCode?mobile=13800001111"
-                            ]
-                        },
-                        "description": "发送短信验证码"
-                    }
-                },
-                {
                     "name": "用户退出登录",
                     "request": {
                         "method": "POST",
@@ -201,7 +249,13 @@
                     "name": "获取用户详情",
                     "request": {
                         "method": "GET",
-                        "header": [],
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
                         "url": {
                             "raw": "{{baseUrl}}/api/user/1",
                             "host": [
@@ -402,7 +456,13 @@
                     "name": "获取募资中的标的列表",
                     "request": {
                         "method": "GET",
-                        "header": [],
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
                         "url": {
                             "raw": "{{baseUrl}}/api/core/lend/list?pageNum=1&pageSize=10",
                             "host": [
@@ -412,7 +472,17 @@
                                 "api",
                                 "core",
                                 "lend",
-                                "list?pageNum=1&pageSize=10"
+                                "list"
+                            ],
+                            "query": [
+                                {
+                                    "key": "pageNum",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "pageSize",
+                                    "value": "10"
+                                }
                             ]
                         },
                         "description": "获取募资中的标的列表"
@@ -422,7 +492,13 @@
                     "name": "获取标的详情",
                     "request": {
                         "method": "GET",
-                        "header": [],
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
                         "url": {
                             "raw": "{{baseUrl}}/api/core/lend/1",
                             "host": [
@@ -478,7 +554,13 @@
                     "name": "获取标的的投资记录",
                     "request": {
                         "method": "GET",
-                        "header": [],
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
                         "url": {
                             "raw": "{{baseUrl}}/api/core/lend/1/investments",
                             "host": [
@@ -515,7 +597,17 @@
                                 "api",
                                 "core",
                                 "lend",
-                                "myInvestments?pageNum=1&pageSize=10"
+                                "myInvestments"
+                            ],
+                            "query": [
+                                {
+                                    "key": "pageNum",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "pageSize",
+                                    "value": "10"
+                                }
                             ]
                         },
                         "description": "查询我的投资记录"
@@ -553,7 +645,7 @@
                         "description": "提交实名认证资料",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\"name\": \"张三\", \"idCard\": \"110101199001011234\", \"idCardFrontUrl\": \"http://oss.com/front.jpg\", \"idCardBackUrl\": \"http://oss.com/back.jpg\", \"sex\": 1, \"age\": 30, \"education\": 1}",
+                            "raw": "{\"name\": \"张三\", \"idCard\": \"110101199001011234\", \"idCardFrontUrl\": \"http://oss.com/front.jpg\", \"idCardBackUrl\": \"http://oss.com/back.jpg\", \"sex\": 1, \"age\": 30, \"education\": 1, \"isMarry\": 0, \"industry\": 1, \"income\": 3, \"returnSource\": 1, \"contactsName\": \"李四\", \"contactsMobile\": \"13800002222\", \"contactsRelation\": 1}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -647,7 +739,13 @@
                             "path": [
                                 "api",
                                 "user",
-                                "bind?code=123456"
+                                "bind"
+                            ],
+                            "query": [
+                                {
+                                    "key": "code",
+                                    "value": "123456"
+                                }
                             ]
                         },
                         "description": "发起绑卡（需先实名认证+短信验证码）"
@@ -701,6 +799,15 @@
                             ]
                         },
                         "description": "银行绑卡异步回调接口"
+                    },
+                    "body": {
+                        "mode": "raw",
+                        "raw": "{\"agentId\": \"agent001\", \"agentUserId\": \"13800001111\", \"bindCode\": \"BIND20240101\", \"status\": \"success\", \"sign\": \"test_sign\"}",
+                        "options": {
+                            "raw": {
+                                "language": "json"
+                            }
+                        }
                     }
                 },
                 {
@@ -721,6 +828,15 @@
                             ]
                         },
                         "description": "银行充值异步回调接口"
+                    },
+                    "body": {
+                        "mode": "raw",
+                        "raw": "{\"agentId\": \"agent001\", \"agentUserId\": \"13800001111\", \"amount\": \"1000.00\", \"transNo\": \"RECHARGE20240101001\", \"status\": \"success\", \"sign\": \"test_sign\"}",
+                        "options": {
+                            "raw": {
+                                "language": "json"
+                            }
+                        }
                     }
                 },
                 {
@@ -741,6 +857,15 @@
                             ]
                         },
                         "description": "银行提现异步回调接口"
+                    },
+                    "body": {
+                        "mode": "raw",
+                        "raw": "{\"agentId\": \"agent001\", \"agentUserId\": \"13800001111\", \"amount\": \"500.00\", \"transNo\": \"WITHDRAW20240101001\", \"status\": \"success\", \"sign\": \"test_sign\"}",
+                        "options": {
+                            "raw": {
+                                "language": "json"
+                            }
+                        }
                     }
                 },
                 {
@@ -761,6 +886,15 @@
                             ]
                         },
                         "description": "银行投标异步回调接口"
+                    },
+                    "body": {
+                        "mode": "raw",
+                        "raw": "{\"agentId\": \"agent001\", \"agentUserId\": \"13800001111\", \"amount\": \"1000.00\", \"transNo\": \"INVEST20240101001\", \"projectId\": \"1\", \"status\": \"success\", \"sign\": \"test_sign\"}",
+                        "options": {
+                            "raw": {
+                                "language": "json"
+                            }
+                        }
                     }
                 },
                 {
@@ -781,6 +915,15 @@
                             ]
                         },
                         "description": "银行放款异步回调接口"
+                    },
+                    "body": {
+                        "mode": "raw",
+                        "raw": "{\"agentId\": \"agent001\", \"agentUserId\": \"13800001111\", \"amount\": \"10000.00\", \"transNo\": \"LOAN20240101001\", \"projectId\": \"1\", \"status\": \"success\", \"sign\": \"test_sign\"}",
+                        "options": {
+                            "raw": {
+                                "language": "json"
+                            }
+                        }
                     }
                 },
                 {
@@ -801,6 +944,15 @@
                             ]
                         },
                         "description": "银行还款异步回调接口"
+                    },
+                    "body": {
+                        "mode": "raw",
+                        "raw": "{\"agentId\": \"agent001\", \"agentUserId\": \"13800001111\", \"amount\": \"1000.00\", \"transNo\": \"REPAY20240101001\", \"lendReturnId\": \"1\", \"status\": \"success\", \"sign\": \"test_sign\"}",
+                        "options": {
+                            "raw": {
+                                "language": "json"
+                            }
+                        }
                     }
                 }
             ]
@@ -885,7 +1037,13 @@
                                 "api",
                                 "core",
                                 "dict",
-                                "listByCode?dictCode=returnMethod"
+                                "listByCode"
+                            ],
+                            "query": [
+                                {
+                                    "key": "dictCode",
+                                    "value": "returnMethod"
+                                }
                             ]
                         },
                         "description": "按分类编码查选项列表"
@@ -916,7 +1074,17 @@
                                 "api",
                                 "core",
                                 "message",
-                                "myList?pageNum=1&pageSize=10"
+                                "myList"
+                            ],
+                            "query": [
+                                {
+                                    "key": "pageNum",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "pageSize",
+                                    "value": "10"
+                                }
                             ]
                         },
                         "description": "分页查询我的消息"
@@ -1167,7 +1335,13 @@
                     "name": "投资人回款明细",
                     "request": {
                         "method": "GET",
-                        "header": [],
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "{{token}}",
+                                "description": "登录令牌"
+                            }
+                        ],
                         "url": {
                             "raw": "{{baseUrl}}/api/core/lendReturn/itemReturns/1",
                             "host": [
@@ -1211,13 +1385,29 @@
                                 "description": "管理员登录",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\"username\": \"admin\", \"password\": \"admin123\"}",
+                                    "raw": "{\"username\": \"admin\", \"password\": \"123456\"}",
                                     "options": {
                                         "raw": {
                                             "language": "json"
                                         }
                                     }
-                                }
+                                },
+                                "event": [
+                                    {
+                                        "listen": "test",
+                                        "script": {
+                                            "type": "text/javascript",
+                                            "exec": [
+                                                "var jsonData = pm.response.json();",
+                                                "if (jsonData.data) {",
+                                                "    pm.collectionVariables.set(\"token\", jsonData.data);",
+                                                "    pm.environment.set(\"token\", jsonData.data);",
+                                                "    pm.globals.set(\"token\", jsonData.data);",
+                                                "}"
+                                            ]
+                                        }
+                                    }
+                                ]
                             }
                         },
                         {
@@ -1295,7 +1485,17 @@
                                         "admin",
                                         "core",
                                         "member",
-                                        "page?pageNum=1&pageSize=10"
+                                        "page"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "pageNum",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "key": "pageSize",
+                                            "value": "10"
+                                        }
                                     ]
                                 },
                                 "description": "获取会员分页列表"
@@ -1392,7 +1592,17 @@
                                         "core",
                                         "member",
                                         "loginLog",
-                                        "page?pageNum=1&pageSize=10"
+                                        "page"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "pageNum",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "key": "pageSize",
+                                            "value": "10"
+                                        }
                                     ]
                                 },
                                 "description": "会员登录日志分页查询"
@@ -1424,7 +1634,17 @@
                                         "core",
                                         "borrow",
                                         "record",
-                                        "page?pageNum=1&pageSize=10"
+                                        "page"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "pageNum",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "key": "pageSize",
+                                            "value": "10"
+                                        }
                                     ]
                                 },
                                 "description": "获取借款记录分页列表"
@@ -1492,7 +1712,17 @@
                                         "admin",
                                         "core",
                                         "borrower",
-                                        "page?pageNum=1&pageSize=10"
+                                        "page"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "pageNum",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "key": "pageSize",
+                                            "value": "10"
+                                        }
                                     ]
                                 },
                                 "description": "获取借款人分页列表"
@@ -1559,7 +1789,17 @@
                                         "admin",
                                         "core",
                                         "loginLog",
-                                        "page?pageNum=1&pageSize=10"
+                                        "page"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "pageNum",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "key": "pageSize",
+                                            "value": "10"
+                                        }
                                     ]
                                 },
                                 "description": "后台登录日志分页查询"
@@ -1616,7 +1856,17 @@
                                         "admin",
                                         "core",
                                         "transFlow",
-                                        "page?pageNum=1&pageSize=10"
+                                        "page"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "pageNum",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "key": "pageSize",
+                                            "value": "10"
+                                        }
                                     ]
                                 },
                                 "description": "全平台流水分页查询"
@@ -1673,7 +1923,13 @@
                                         "admin",
                                         "core",
                                         "dict",
-                                        "listByCode?dictCode=returnMethod"
+                                        "listByCode"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "dictCode",
+                                            "value": "returnMethod"
+                                        }
                                     ]
                                 },
                                 "description": "按分类编码查选项列表"
@@ -1837,7 +2093,17 @@
                                         "core",
                                         "loan",
                                         "project",
-                                        "page?pageNum=1&pageSize=10"
+                                        "page"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "pageNum",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "key": "pageSize",
+                                            "value": "10"
+                                        }
                                     ]
                                 },
                                 "description": "获取标的分页列表"
@@ -2033,7 +2299,17 @@
                                         "admin",
                                         "core",
                                         "integralGrade",
-                                        "page?pageNum=1&pageSize=10"
+                                        "page"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "pageNum",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "key": "pageSize",
+                                            "value": "10"
+                                        }
                                     ]
                                 },
                                 "description": "分页查询积分等级"
@@ -2091,7 +2367,7 @@
                                 "description": "新增积分等级",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\"gradeName\": \"普通会员\", \"minScore\": 0, \"maxScore\": 999}",
+                                    "raw": "{\"integralStart\": 0, \"integralEnd\": 999, \"borrowAmount\": 50000}",
                                     "options": {
                                         "raw": {
                                             "language": "json"
@@ -2126,7 +2402,7 @@
                                 "description": "更新积分等级",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\"id\": 1, \"gradeName\": \"VIP会员\", \"minScore\": 1000, \"maxScore\": 9999}",
+                                    "raw": "{\"id\": 1, \"integralStart\": 1000, \"integralEnd\": 9999, \"borrowAmount\": 200000}",
                                     "options": {
                                         "raw": {
                                             "language": "json"

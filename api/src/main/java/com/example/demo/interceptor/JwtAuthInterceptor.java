@@ -5,12 +5,15 @@ import com.example.demo.utils.TokenUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wwfinance.common.result.PccAjaxResult;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 统一 JWT 授权拦截器
@@ -24,6 +27,10 @@ import java.util.Map;
 public class JwtAuthInterceptor implements HandlerInterceptor {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final long TOKEN_TTL = 604800;
+
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -42,9 +49,19 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             String userid = info.get("token_userid");
             if (userid == null || userid.isEmpty()) {
                 return writeUnauthorized(response, "token无效");
+             }
+
+            String redisKey = "login:token:" + userid;
+            String redisToken = stringRedisTemplate.opsForValue().get(redisKey);
+            if (redisToken == null) {
+                return writeUnauthorized(response, "token已过期或已注销");
+            }
+            if (!token.equals(redisToken)) {
+                return writeUnauthorized(response, "token无效，请重新登录");
             }
 
-            // 写入上下文
+            stringRedisTemplate.expire(redisKey, TOKEN_TTL, TimeUnit.SECONDS);
+
             LoginUserContext.setUserid(Integer.parseInt(userid));
             String role = info.get("token_role");
             LoginUserContext.setRole(role);

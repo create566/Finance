@@ -1,6 +1,7 @@
 package com.example.demo.client.fallback;
 
 import com.example.demo.client.SMSApiSmsClient;
+import com.wwfinance.common.result.PccAjaxResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -8,21 +9,20 @@ import org.springframework.stereotype.Component;
 @Component
 public class SMSApiSmsClientFallback implements SMSApiSmsClient {
     @Override
-    public Object sendCode(String mobile) {
+    public PccAjaxResult sendCode(String mobile) {
         log.error("远程调用失败，服务熔断");
-        return "发送失败";
+        return new PccAjaxResult(500, "短信服务不可用");
     }
 
     @Override
-    public boolean checkCode(String mobile, String code) {
+    public PccAjaxResult checkCode(String mobile, String code) {
         log.error("短信服务不可用，验证码校验失败");
-        return false;
+        return new PccAjaxResult(500, "短信服务不可用", false);
     }
 
     @Override
-    public Object sendNotify(String mobile, String content) {
-        // 通知短信熔断：仅记录日志，不阻断主业务（如逾期扫描事务）
+    public PccAjaxResult sendNotify(String mobile, String content) {
         log.error("短信服务不可用，通知短信发送失败，mobile={}, content={}", mobile, content);
-        return "发送失败";
+        return new PccAjaxResult(500, "短信服务不可用");
     }
 }

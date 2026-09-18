@@ -8,6 +8,7 @@ import io.swagger.annotations.ApiOperation;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -20,6 +21,9 @@ public class AdminLoginController {
 
     @Autowired
     private AdminUserService adminUserService;
+
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
 
     @ApiOperation("管理员登录")
     @PostMapping("/login")
@@ -35,6 +39,10 @@ public class AdminLoginController {
     @ApiOperation("退出登录")
     @GetMapping("/logout")
     public PccAjaxResult logout() {
+        Integer adminId = LoginUserContext.getUserid();
+        if (adminId != null) {
+            stringRedisTemplate.delete("login:token:" + adminId);
+        }
         LoginUserContext.clear();
         return new PccAjaxResult(200, "退出成功");
     }

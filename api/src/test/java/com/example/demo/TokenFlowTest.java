@@ -1,6 +1,7 @@
 package com.example.demo;
 
 import com.example.demo.client.SMSApiSmsClient;
+import com.wwfinance.common.result.PccAjaxResult;
 import com.example.demo.utils.TokenUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -63,18 +64,19 @@ class TokenFlowTest {
         public SMSApiSmsClient smsApiSmsClient() {
             return new SMSApiSmsClient() {
                 @Override
-                public Object sendCode(String mobile) {
-                    return "123456";
+                public PccAjaxResult sendCode(String mobile) {
+                    return new PccAjaxResult(200, "验证码已发送", "123456");
                 }
 
                 @Override
-                public boolean checkCode(String mobile, String code) {
-                    return "123456".equals(code);
+                public PccAjaxResult checkCode(String mobile, String code) {
+                    boolean valid = "123456".equals(code);
+                    return new PccAjaxResult(200, valid ? "验证码正确" : "验证码错误", valid);
                 }
 
                 @Override
-                public Object sendNotify(String mobile, String content) {
-                    return "ok";
+                public PccAjaxResult sendNotify(String mobile, String content) {
+                    return new PccAjaxResult(200, "发送成功");
                 }
             };
         }

@@ -23,12 +23,14 @@ import com.example.demo.utils.TokenUtil;
 import com.wwfinance.common.utils.MD5;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements UserService {
@@ -54,6 +56,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
 
     @Autowired
     private IntegralGradeService integralGradeService;
+
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
+
+    private static final long TOKEN_TTL = 604800;
 
     @Override
     public User getUserById(Long id) {
@@ -139,6 +146,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
             throw new RuntimeException("密码错误");
         }
         String token = TokenUtil.generateMerchantToken(user.getId().toString());
+        stringRedisTemplate.opsForValue().set("login:token:" + user.getId(), token, TOKEN_TTL, TimeUnit.SECONDS);
         saveLoginRecord(user.getId(), mobile, 1, 1);
         return token;
     }
@@ -150,11 +158,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
             saveLoginRecord(null, mobile, 0, 0);
             throw new RuntimeException("用户不存在");
         }
-        if (!smsApiSmsClient.checkCode(mobile, code)) {
+        if (!Boolean.TRUE.equals(smsApiSmsClient.checkCode(mobile, code).get("data"))) {
             saveLoginRecord(user.getId(), mobile, 0, 0);
             throw new RuntimeException("验证码错误或已过期");
         }
         String token = TokenUtil.generateMerchantToken(user.getId().toString());
+        stringRedisTemplate.opsForValue().set("login:token:" + user.getId(), token, TOKEN_TTL, TimeUnit.SECONDS);
         saveLoginRecord(user.getId(), mobile, 1, 1);
         return token;
     }
@@ -162,7 +171,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void register(UserDto userDTO) {
-        if (!smsApiSmsClient.checkCode(userDTO.getMobile(), userDTO.getCode())) {
+        if (!Boolean.TRUE.equals(smsApiSmsClient.checkCode(userDTO.getMobile(), userDTO.getCode()).get("data"))) {
             throw new RuntimeException("验证码错误或已过期");
         }
         User exist = getByMobile(userDTO.getMobile());

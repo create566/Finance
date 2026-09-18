@@ -48,21 +48,20 @@ public class ApiSmsController {
         System.out.println("===============================================");
         System.out.println();
         log.info("发送验证码成功，手机号={}，验证码={}", mobile, code);
-        // HTTP 响应不带回验证码，前端拿不到，必须从控制台复制
-        return new PccAjaxResult(200, "验证码已发送，请到服务控制台查看");
+        return new PccAjaxResult(200, "验证码已发送", code);
     }
 
     @ApiOperation("校验验证码")
     @PostMapping("/checkCode")
-    public boolean checkCode(
+    public PccAjaxResult checkCode(
             @ApiParam(value = "手机号", required = true) @RequestParam String mobile,
             @ApiParam(value = "验证码", required = true) @RequestParam String code) {
         String key = "sms:code:" + mobile;
         Object cacheCode = redisTemplate.opsForValue().get(key);
         if (cacheCode != null && cacheCode.toString().equals(code)) {
             redisTemplate.delete(key);
-            return true;
+            return new PccAjaxResult(200, "验证码正确", true);
         }
-        return false;
+        return new PccAjaxResult(200, "验证码错误", false);
     }
 }

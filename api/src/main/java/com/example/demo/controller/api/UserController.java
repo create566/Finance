@@ -9,6 +9,7 @@ import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 @Api(tags = "用户接口")
@@ -21,6 +22,9 @@ public class UserController {
 
     @Autowired
     private SMSApiSmsClient sMSApiSmsClient;
+
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
 
     @GetMapping("/hello")
     public String index() {
@@ -69,8 +73,8 @@ public class UserController {
     @ApiOperation("发送验证码")
     @PostMapping("/sendCode")
     public PccAjaxResult sendCode(@RequestParam("mobile") String mobile) {
-        sMSApiSmsClient.sendCode(mobile);
-        return new PccAjaxResult(200, "验证码已发送，请到 finance-message 服务控制台查看");
+        PccAjaxResult result = sMSApiSmsClient.sendCode(mobile);
+        return result;
     }
 
     @ApiOperation("用户登录")
@@ -98,6 +102,10 @@ public class UserController {
     @ApiOperation("用户退出登录")
     @PostMapping("/logout")
     public PccAjaxResult logout() {
+        Integer userId = LoginUserContext.getUserid();
+        if (userId != null) {
+            stringRedisTemplate.delete("login:token:" + userId);
+        }
         LoginUserContext.clear();
         return new PccAjaxResult(200, "退出成功");
     }

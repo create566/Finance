@@ -18,27 +18,16 @@ public class UserLoginRecord implements Serializable {
     @TableField("user_id")
     private Long userId;
 
-    @TableField("username")
-    private String username;
-
-    @TableField("login_type")
-    private Integer loginType;
-
-    @TableField("login_ip")
-    private String loginIp;
-
-    @TableField("login_time")
-    private LocalDateTime loginTime;
-
-    @TableField("login_result")
-    private Integer loginResult;
-
-    @TableField("user_agent")
-    private String userAgent;
+    @TableField("ip")
+    private String ip;
 
     @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
     @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
+
+    @TableLogic
+    @TableField(value = "is_deleted")
+    private Integer deleted;
 }

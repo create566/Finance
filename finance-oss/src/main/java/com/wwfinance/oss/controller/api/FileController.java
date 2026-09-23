@@ -1,23 +1,16 @@
 package com.wwfinance.oss.controller.api;
 
-
 import com.wwfinance.common.result.PccAjaxResult;
 import com.wwfinance.oss.service.FileService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
-import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
-import java.io.IOException;
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.util.Map;
 
-@Api(tags = "文件上传")
-//@CrossOrigin //跨域
+@Api(tags = "文件存储服务")
 @RestController
 @RequestMapping("/api/oss/file")
 public class FileController {
@@ -25,52 +18,62 @@ public class FileController {
     @Resource
     private FileService fileService;
 
-    private static String UPLOADED_FOLDER = "D:/桌面/智能仓库/实训照片/";
-
     @GetMapping("/hello")
     public String hello() {
-        return "<h2>hello</h2>";
+        return "<h2>OSS Service is Running</h2>";
     }
 
-    @ApiOperation("文件上传")
+    @ApiOperation("文件上传（自动分类）")
     @PostMapping("/upload")
-    public PccAjaxResult singleFileUpload(@RequestParam("file") MultipartFile file) {
-        if (file.isEmpty()) {
-            return new PccAjaxResult(500, "请选择一个文件进行上传");
-        }
+    public PccAjaxResult upload(@RequestParam("file") MultipartFile file,
+                                 @RequestParam(value = "category", defaultValue = "general") String category) {
         try {
-            // 获取文件名
-            String fileName = StringUtils.cleanPath(file.getOriginalFilename());
-            // 检查文件是否是目录中的子文件
-            if (fileName.contains("..")) {
-                return new PccAjaxResult(500, "不好意思！文件名包含无效的路径序列");
-            }
-            // 将文件拷贝到指定目标文件夹
-            byte[] bytes = file.getBytes();
-            Path path = Paths.get(UPLOADED_FOLDER + fileName);
-            Files.write(path, bytes);
-            return new PccAjaxResult(200, "文件上传成功", path);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return new PccAjaxResult(500, "文件上传失败");
-    }
-
-    @ApiOperation("删除oss文件")
-    @DeleteMapping("/remove")
-    public PccAjaxResult deleteFile(@RequestParam("url") String url) {
-        try {
-            // 删除文件
-            System.out.println(url);
-            Files.deleteIfExists(Paths.get(URI.create(url)));
-            return new PccAjaxResult(200, "文件删除成功");
+            String url = fileService.upload(file, category);
+            return new PccAjaxResult(200, "上传成功", url);
+        } catch (IllegalArgumentException e) {
+            return new PccAjaxResult(400, e.getMessage(), null);
         } catch (Exception e) {
-            e.printStackTrace();
-            return new PccAjaxResult(500, "文件删除失败");
+            return new PccAjaxResult(500, "上传失败: " + e.getMessage(), null);
         }
     }
 
-    public static void main(String[] args) throws IOException {
-        Files.deleteIfExists(Paths.get(URI.create("file:///D:/uploads/1.png")));
+    @ApiOperation("文件上传（自定义文件名）")
+    @PostMapping("/upload/custom")
+    public PccAjaxResult uploadWithCustomName(@RequestParam("file") MultipartFile file,
+                                               @RequestParam("category") String category,
+                                               @RequestParam("fileName") String fileName) {
+        try {
+            String url = fileService.uploadWithCustomName(file, category, fileName);
+            return new PccAjaxResult(200, "上传成功", url);
+        } catch (IllegalArgumentException e) {
+            return new PccAjaxResult(400, e.getMessage(), null);
+        } catch (Exception e) {
+            return new PccAjaxResult(500, "上传失败: " + e.getMessage(), null);
+        }
+    }
+
+    @ApiOperation("删除文件")
+    @DeleteMapping("/remove")
+    public PccAjaxResult delete(@RequestParam("url") String url) {
+        try {
+            fileService.delete(url);
+            return new PccAjaxResult(200, "删除成功", null);
+        } catch (Exception e) {
+            return new PccAjaxResult(500, "删除失败: " + e.getMessage(), null);
+        }
+    }
+
+    @ApiOperation("检查文件是否存在")
+    @GetMapping("/exists")
+    public PccAjaxResult exists(@RequestParam("url") String url) {
+        boolean exists = fileService.exists(url);
+        return new PccAjaxResult(200, "查询成功", exists);
+    }
+
+    @ApiOperation("获取文件信息")
+    @GetMapping("/info")
+    public PccAjaxResult getFileInfo(@RequestParam("url") String url) {
+        Map<String, Object> info = fileService.getFileInfo(url);
+        return new PccAjaxResult(200, "查询成功", info);
     }
 }

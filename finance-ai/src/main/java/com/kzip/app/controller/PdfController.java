@@ -1,150 +1,118 @@
 package com.kzip.app.controller;
 
-
 import com.kzip.app.repository.ChatHistoryRepository;
+import com.kzip.app.service.PdfRagService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.reader.ExtractedTextFormatter;
-import org.springframework.ai.reader.pdf.PagePdfDocumentReader;
-import org.springframework.ai.reader.pdf.config.PdfDocumentReaderConfig;
-import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.core.io.Resource;
+import org.springframework.ai.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.io.IOException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Objects;
-import com.kzip.app.repository.FileRepository;
 import reactor.core.publisher.Flux;
 
-import static org.springframework.ai.chat.memory.ChatMemory.CONVERSATION_ID;
-
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Objects;
 
 @Slf4j
-@RequiredArgsConstructor
 @RestController
 @RequestMapping("/ai/pdf")
-public class PdfController {
+@RequiredArgsConstructor
+public class PdfRagController {
 
-    private final FileRepository fileRepository;
-
-    private final VectorStore vectorStore;
-
-
+    private final PdfRagService pdfRagService;
     private final ChatClient pdfChatClient;
-
-    private final ChatHistoryRepository chatRepository;
+    private final ChatHistoryRepository chatHistoryRepository;
+    private final com.kzip.app.repository.FileRepository fileRepository;
 
 
     /**
-     * 文件上传
+     * 1、PDF上传接口
+     * POST /ai/pdf/upload/{chatId}
      */
-    @RequestMapping("/upload/{chatId}")
-    public Result uploadPdf(@PathVariable String chatId, @RequestParam("file") MultipartFile file) {
-        try {
-            // 1. 校验文件是否为PDF格式
-            if (!Objects.equals(file.getContentType(), "application/pdf")) {
-                return Result.fail("只能上传PDF文件！");
-            }
-            // 2.保存文件
-            boolean success = fileRepository.save(chatId, file.getResource());
-            if(! success) {
-                return Result.fail("保存文件失败！");
-            }
-            // 3.写入向量库
-            this.writeToVectorStore(file.getResource());
-            return Result.success("成功");
-        } catch (Exception e) {
-            //log.error("Failed to upload PDF.", e);
-            return Result.fail("上传文件失败！");
+    @PostMapping("/upload/{chatId}")
+    public Result<String> uploadPdf(@PathVariable String chatId,
+                                    @RequestParam("file") MultipartFile file) {
+        // 参数校验 Controller只做校验
+        if (!Objects.equals(file.getContentType(), "application/pdf")) {
+            return Result.fail("只能上传PDF文件");
+        }
+        // 直接调用service，业务逻辑全部交给service
+        boolean ok = pdfRagService.uploadPdfAndStoreVector(chatId, file.getResource());
+        if (ok) {
+            return Result.success("上传并且向量入库成功");
+        } else {
+            return Result.fail("处理PDF失败");
         }
     }
 
+
     /**
-     * 文件下载
+     * 2、RAG流式对话接口 SSE
      */
-    @GetMapping("/file/{chatId}")
-    public ResponseEntity<Resource> download(@PathVariable("chatId") String chatId) throws IOException {
-        // 1.读取文件
-        Resource resource = fileRepository.getFile(chatId);
-        if (!resource.exists()) {
-            return ResponseEntity.notFound().build();
-        }
-        // 2.文件名编码，写入响应头
-        String filename = URLEncoder.encode(Objects.requireNonNull(resource.getFilename()), StandardCharsets.UTF_8);
-        // 3.返回文件
-        return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
-                .body(resource);
-    }
+    @RequestMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<String> chat(@RequestParam String prompt, @RequestParam String chatId) {
+        chatHistoryRepository.save("pdf", chatId);
+        Resource fileResource = fileRepository.getFile(chatId);
+        String filename = fileResource.getFilename();
 
-    private void writeToVectorStore(Resource resource) {
-        // 1.创建PDF的读取器
-        PagePdfDocumentReader reader = new PagePdfDocumentReader(
-                resource, // 文件源
-                PdfDocumentReaderConfig.builder()
-                        .withPageExtractedTextFormatter(ExtractedTextFormatter.defaults())
-                        .withPagesPerDocument(1) // 每1页PDF作为一个Document
-                        .build()
-        );
-        // 2.读取PDF文档，拆分为Document
-        List<Document> documents = reader.read();
-        // 3.写入向量库
-        vectorStore.add(documents);
-    }
-
-    @RequestMapping(value = "/chat", produces = "text/html;charset=UTF-8")
-    public Flux<String> chat(String prompt, String chatId) {
-        chatRepository.save("pdf", chatId);
-        Resource file = fileRepository.getFile(chatId);
-        return pdfChatClient
-                .prompt(prompt)
-                .advisors(a -> a.param(CONVERSATION_ID, chatId))
-                .advisors(a -> a.param(QuestionAnswerAdvisor.FILTER_EXPRESSION, "file_name == '"+file.getFilename()+"'"))
+        // QuestionAnswerAdvisor会自动调用VectorStore(ChromaDB)做向量检索
+        return pdfChatClient.prompt(prompt)
+                .advisors(a -> a.param("chat_memory_conversation_id", chatId))
+                .advisors(a -> a.param(QuestionAnswerAdvisor.FILTER_EXPRESSION, "file_name == '" + filename + "'"))
                 .stream()
                 .content();
     }
 
     /**
-     * PDF 对话（同步版本，前端首次加载/需要完整结果时用）
+     * 3、同步RAG接口
      */
-    @GetMapping("/chat-sync")
+    @GetMapping("/chat‑sync")
     public Result<String> chatSync(@RequestParam String prompt, @RequestParam String chatId) {
-        chatRepository.save("pdf", chatId);
-        Resource file = fileRepository.getFile(chatId);
-        String content = pdfChatClient
-                .prompt(prompt)
-                .advisors(a -> a.param(CONVERSATION_ID, chatId))
-                .advisors(a -> a.param(QuestionAnswerAdvisor.FILTER_EXPRESSION, "file_name == '"+file.getFilename()+"'"))
+        chatHistoryRepository.save("pdf", chatId);
+        Resource fileResource = fileRepository.getFile(chatId);
+        String filename = fileResource.getFilename();
+        String answer = pdfChatClient.prompt(prompt)
+                .advisors(a -> a.param("chat_memory_conversation_id", chatId))
+                .advisors(a -> a.param(QuestionAnswerAdvisor.FILTER_EXPRESSION, "file_name == '" + filename + "'"))
                 .call()
                 .content();
-        return Result.success(content);
+        return Result.success(answer);
+    }
+
+
+    /**
+     * 文件下载接口，这个属于controller层，保留
+     */
+    @GetMapping("/file/{chatId}")
+    public ResponseEntity<Resource> download(@PathVariable String chatId) throws Exception {
+        Resource resource = fileRepository.getFile(chatId);
+        if (!resource.exists()) {
+            return ResponseEntity.notFound().build();
+        }
+        String fileName = URLEncoder.encode(Objects.requireNonNull(resource.getFilename()), StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header("Content‑Disposition", "attachment;filename=\"" + fileName + "\"")
+                .body(resource);
     }
 
     /**
-     * 获取 PDF 历史会话列表
+     * 获取会话列表
      */
     @GetMapping("/history")
-    public Result<List<String>> history() {
-        return Result.success(chatRepository.getChatIds("pdf"));
+    public Result<List<String>> getHistory() {
+        return Result.success(chatHistoryRepository.getChatIds("pdf"));
     }
 
     /**
-     * 删除 PDF 会话
+     * 删除会话
      */
     @DeleteMapping("/history/{chatId}")
-    public Result<String> deleteHistory(@PathVariable String chatId) {
-        chatRepository.delete("pdf", chatId);
+    public Result<String> delHistory(@PathVariable String chatId) {
+        chatHistoryRepository.delete("pdf", chatId);
         return Result.success("删除成功");
     }
-
 }

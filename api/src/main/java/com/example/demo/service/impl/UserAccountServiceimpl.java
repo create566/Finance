@@ -3,9 +3,15 @@ package com.example.demo.service.impl;
 import com.example.demo.Bank.FormHelper;
 import com.example.demo.Bank.HfbConst;
 import com.example.demo.entity.User;
+import com.example.demo.entity.UserAccount;
 import com.example.demo.entity.UserBind;
 import com.example.demo.entity.dto.AccountInfoDto;
 import com.example.demo.enums.BindStatusEnum;
+import com.example.demo.enums.TransTypeEnum;
+import com.example.demo.exception.BusinessException;
+import com.example.demo.exception.ResourceNotFoundException;
+import com.example.demo.mapper.UserAccountMapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.demo.service.BankAccountSyncService;
 import com.example.demo.service.UserAccountService;
 import com.example.demo.service.UserBindService;
@@ -33,6 +39,9 @@ public class UserAccountServiceImpl implements UserAccountService {
     @Autowired
     private BankAccountSyncService bankAccountSyncService;
 
+    @Autowired
+    private UserAccountMapper userAccountMapper;
+
     /**
      * 平台不持有余额，全部从银行查询
      */
@@ -50,7 +59,7 @@ public class UserAccountServiceImpl implements UserAccountService {
     public AccountInfoDto getAccountInfo(Long userId) {
         User user = userService.getById(userId);
         if (user == null) {
-            throw new RuntimeException("用户不存在");
+            throw new ResourceNotFoundException(404, "用户不存在");
         }
         BigDecimal balance = bankAccountSyncService.getBankBalance(userId);
         BigDecimal freezeAmount = bankAccountSyncService.getBankFreezeAmount(userId);
@@ -73,7 +82,7 @@ public class UserAccountServiceImpl implements UserAccountService {
     @Override
     public String buildRechargeForm(Long userId, BigDecimal amount) {
         UserBind userBind = getBoundUser(userId);
-        Map<String, Object> paramMap = buildBankParams(userBind, amount,
+        Map<String, Object> paramMap = buildBankParams(userBind, amount, "chargeAmt",
                 HfbConst.RECHARGE_RETURN_URL, HfbConst.RECHARGE_NOTIFY_URL);
         return FormHelper.buildForm(HfbConst.RECHARGE_URL, paramMap);
     }
@@ -81,7 +90,7 @@ public class UserAccountServiceImpl implements UserAccountService {
     @Override
     public String buildWithdrawForm(Long userId, BigDecimal amount) {
         UserBind userBind = getBoundUser(userId);
-        Map<String, Object> paramMap = buildBankParams(userBind, amount,
+        Map<String, Object> paramMap = buildBankParams(userBind, amount, "fetchAmt",
                 HfbConst.WITHDRAW_RETURN_URL, HfbConst.WITHDRAW_NOTIFY_URL);
         return FormHelper.buildForm(HfbConst.WITHDRAW_URL, paramMap);
     }
@@ -89,27 +98,57 @@ public class UserAccountServiceImpl implements UserAccountService {
     private UserBind getBoundUser(Long userId) {
         User user = userService.getById(userId);
         if (user == null) {
-            throw new RuntimeException("用户不存在");
+            throw new ResourceNotFoundException(404, "用户不存在");
         }
         UserBind userBind = userBindService.getByUserId(userId);
         if (userBind == null || !BindStatusEnum.BOUND.getCode().equals(userBind.getStatus())) {
-            throw new RuntimeException("请先完成绑卡");
+            throw new BusinessException(400, "请先完成绑卡");
         }
         userBind.setMobile(user.getMobile());
         return userBind;
     }
 
-    private Map<String, Object> buildBankParams(UserBind userBind, BigDecimal amount,
+    private Map<String, Object> buildBankParams(UserBind userBind, BigDecimal amount, String amountKey,
                                                  String returnUrl, String notifyUrl) {
         Map<String, Object> paramMap = new HashMap<>();
         paramMap.put("agentId", HfbConst.AGENT_ID);
         paramMap.put("agentUserId", userBind.getMobile());
         paramMap.put("bindCode", userBind.getBindCode());
-        paramMap.put("amount", amount);
+        paramMap.put(amountKey, amount);
         paramMap.put("returnUrl", returnUrl);
         paramMap.put("notifyUrl", notifyUrl);
         paramMap.put("timestamp", new Date().getTime());
         paramMap.put("sign", BankSignUtil.getSign(paramMap));
         return paramMap;
+    }
+
+    @Override
+    public void updateBalance(Long userId, TransTypeEnum type, BigDecimal amount) {
+        UserAccount account = userAccountMapper.selectOne(
+                new LambdaQueryWrapper<UserAccount>().eq(UserAccount::getUserId, userId));
+        if (account == null) {
+            account = new UserAccount();
+            account.setUserId(userId);
+            account.setAmount(BigDecimal.ZERO);
+            account.setFreezeAmount(BigDecimal.ZERO);
+            userAccountMapper.insert(account);
+        }
+        switch (type) {
+            case RECHARGE:
+            case RETURN:
+            case LOAN:
+                account.setAmount(account.getAmount().add(amount));
+                break;
+            case WITHDRAW:
+            case INVEST:
+            case REPAY:
+                account.setAmount(account.getAmount().subtract(amount));
+                break;
+            default:
+                break;
+        }
+        userAccountMapper.updateById(account);
+        log.info("账户余额更新: userId={}, type={}, amount={}, newBalance={}",
+                userId, type.getDesc(), amount, account.getAmount());
     }
 }

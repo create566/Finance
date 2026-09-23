@@ -1,3 +1,6 @@
+server:
+  port: 8081 # AI服务端口
+
 spring:
   ai:
     dashscope:
@@ -10,6 +13,12 @@ spring:
         options:
           model: text-embedding-v3
           dimensions: 1024
+      chroma:
+        client:
+          host: 127.0.0.1
+          port: 8000
+
+
       # 关闭重试,避免超时被放大 3 倍
       retry:
         max-attempts: 1
@@ -23,3 +32,15 @@ spring:
       max-request-size: 30MB
   # 跨域配置已迁移到 com.kzip.app.config.CorsConfig（Java 配置类）
   # 之前的 spring.mvc.cors.mappings 已删除，避免与 Java 配置重复/覆盖
+
+# API模块集成配置（用于回调）
+api:
+  module:
+    callback-url: ${API_CALLBACK_URL:http://localhost:8990/admin/core/knowledge}
+    health-url: ${API_HEALTH_URL:http://localhost:8990/admin/core/knowledge/health}
+
+# ChromaDB连接配置（本地环境）
+chromadb:
+  host: ${CHROMADB_HOST:127.0.0.1}
+  port: ${CHROMADB_PORT:8000}
+  auto-start: ${CHROMADB_AUTO_START:false}  # 是否自动启动ChromaDB（需要Python环境）

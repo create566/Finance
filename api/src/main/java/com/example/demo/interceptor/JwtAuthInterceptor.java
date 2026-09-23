@@ -40,7 +40,10 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             token = request.getHeader("token");
         }
 
+        log.info("JWT拦截器: uri={}, Authorization头={}, token头={}", request.getRequestURI(), request.getHeader("Authorization"), request.getHeader("token"));
+
         if (token == null || token.isEmpty() || !token.startsWith("5grcs ")) {
+            log.warn("JWT拦截器拒绝: token={}", token);
             return writeUnauthorized(response, "缺少认证token");
         }
 
@@ -67,12 +70,19 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             LoginUserContext.setRole(role);
             LoginUserContext.setUsername(info.get("token_username"));
 
-            // /admin/** 路径要求管理员角色
             String uri = request.getRequestURI();
+
             if (uri.startsWith("/admin/") && !"admin".equals(role)) {
                 response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 response.setContentType("application/json;charset=UTF-8");
                 response.getWriter().write(MAPPER.writeValueAsString(new PccAjaxResult(403, "无权限访问后台接口", null)));
+                return false;
+            }
+
+            if (uri.startsWith("/api/") && "admin".equals(role)) {
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.setContentType("application/json;charset=UTF-8");
+                response.getWriter().write(MAPPER.writeValueAsString(new PccAjaxResult(403, "管理员请使用后台管理接口", null)));
                 return false;
             }
 

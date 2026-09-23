@@ -133,7 +133,7 @@ public class LendServiceImpl extends ServiceImpl<LendMapper, Lend> implements Le
         lend.setStatus(LendStatusEnum.FUNDING.getCode());
         lend.setPublishDate(LocalDateTime.now());
         // 募集截止时间 = 发布时间 + FUNDING_DAYS 天，超时未募满则流标
-        lend.setLendEndDate(LocalDateTime.now().plusDays(FUNDING_DAYS));
+        lend.setLendEndDate(LocalDateTime.now().plusDays(FUNDING_DAYS).toLocalDate());
         lend.setUpdateTime(LocalDateTime.now());
         boolean ok = this.updateById(lend);
         // 标的发布通知（给借款人）

@@ -8,6 +8,8 @@ import com.example.demo.entity.User;
 import com.example.demo.entity.dto.BorrowerAuthDto;
 import com.example.demo.enums.BorrowerAuthStatusEnum;
 import com.example.demo.enums.UserTypeEnum;
+import com.example.demo.exception.BusinessException;
+import com.example.demo.exception.ResourceNotFoundException;
 import com.example.demo.mapper.BorrowerAttachMapper;
 import com.example.demo.mapper.BorrowerMapper;
 import com.example.demo.service.BorrowerService;
@@ -40,7 +42,55 @@ public class BorrowerServiceImpl extends ServiceImpl<BorrowerMapper, Borrower> i
     @Transactional(rollbackFor = Exception.class)
     public Long submitAuth(Long userId, BorrowerAuthDto dto) {
         User user = userService.getById(userId);
-        // 建借款人档案（认证中）
+
+        LambdaQueryWrapper<Borrower> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Borrower::getUserId, userId);
+        Borrower existingBorrower = getOne(wrapper);
+
+        if (existingBorrower != null) {
+            if (BorrowerAuthStatusEnum.AUTHED.getCode().equals(existingBorrower.getStatus())) {
+                throw new BusinessException(400, "已完成认证，无需重复提交");
+            }
+            if (BorrowerAuthStatusEnum.AUTHING.getCode().equals(existingBorrower.getStatus())) {
+                throw new BusinessException(400, "已提交认证，请等待审核");
+            }
+            existingBorrower.setName(dto.getName())
+                    .setIdCard(dto.getIdCard())
+                    .setMobile(user.getMobile())
+                    .setSex(dto.getSex())
+                    .setAge(dto.getAge())
+                    .setEducation(dto.getEducation())
+                    .setIsMarry(dto.getIsMarry())
+                    .setIndustry(dto.getIndustry())
+                    .setIncome(dto.getIncome())
+                    .setReturnSource(dto.getReturnSource())
+                    .setContactsName(dto.getContactsName())
+                    .setContactsMobile(dto.getContactsMobile())
+                    .setContactsRelation(dto.getContactsRelation())
+                    .setStatus(BorrowerAuthStatusEnum.AUTHING.getCode());
+            updateById(existingBorrower);
+
+            LambdaQueryWrapper<BorrowerAttach> attachWrapper = new LambdaQueryWrapper<>();
+            attachWrapper.eq(BorrowerAttach::getBorrowerId, existingBorrower.getId());
+            borrowerAttachMapper.delete(attachWrapper);
+
+            borrowerAttachMapper.insert(new BorrowerAttach()
+                    .setBorrowerId(existingBorrower.getId())
+                    .setImageType("idCard1")
+                    .setImageUrl(dto.getIdCardFrontUrl()));
+            borrowerAttachMapper.insert(new BorrowerAttach()
+                    .setBorrowerId(existingBorrower.getId())
+                    .setImageType("idCard2")
+                    .setImageUrl(dto.getIdCardBackUrl()));
+
+            user.setName(dto.getName());
+            user.setIdCard(dto.getIdCard());
+            user.setBorrowAuthStatus(BorrowerAuthStatusEnum.AUTHING.getCode());
+            userService.updateById(user);
+
+            return existingBorrower.getId();
+        }
+
         Borrower borrower = new Borrower()
                 .setUserId(userId)
                 .setName(dto.getName())
@@ -59,7 +109,6 @@ public class BorrowerServiceImpl extends ServiceImpl<BorrowerMapper, Borrower> i
                 .setStatus(BorrowerAuthStatusEnum.AUTHING.getCode());
         save(borrower);
 
-        // 身份证正反面附件
         borrowerAttachMapper.insert(new BorrowerAttach()
                 .setBorrowerId(borrower.getId())
                 .setImageType("idCard1")
@@ -69,7 +118,6 @@ public class BorrowerServiceImpl extends ServiceImpl<BorrowerMapper, Borrower> i
                 .setImageType("idCard2")
                 .setImageUrl(dto.getIdCardBackUrl()));
 
-        // 同步 user 表：真实姓名、身份证号、认证状态=认证中
         user.setName(dto.getName());
         user.setIdCard(dto.getIdCard());
         user.setBorrowAuthStatus(BorrowerAuthStatusEnum.AUTHING.getCode());
@@ -84,10 +132,10 @@ public class BorrowerServiceImpl extends ServiceImpl<BorrowerMapper, Borrower> i
         Long borrowerId = dto.getBorrowerId();
         Borrower borrower = getById(borrowerId);
         if (borrower == null) {
-            throw new RuntimeException("认证记录不存在");
+            throw new ResourceNotFoundException(404, "认证记录不存在");
         }
         if (!BorrowerAuthStatusEnum.AUTHING.getCode().equals(borrower.getStatus())) {
-            throw new RuntimeException("仅认证中状态可审核");
+            throw new BusinessException(400, "仅认证中状态可审核");
         }
         boolean approved = Integer.valueOf(2).equals(dto.getStatus());
         borrower.setStatus(approved
@@ -126,7 +174,7 @@ public class BorrowerServiceImpl extends ServiceImpl<BorrowerMapper, Borrower> i
     public Map<String, Object> getAuthStatus(Long userId) {
         User user = userService.getById(userId);
         if (user == null) {
-            throw new RuntimeException("用户不存在");
+            throw new ResourceNotFoundException(404, "用户不存在");
         }
         Map<String, Object> data = new HashMap<>();
         data.put("borrowAuthStatus", user.getBorrowAuthStatus());

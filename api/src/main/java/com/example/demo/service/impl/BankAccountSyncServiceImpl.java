@@ -1,5 +1,6 @@
 package com.example.demo.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo.Bank.HfbConst;
 import com.example.demo.Bank.RequestHelper;
@@ -12,6 +13,8 @@ import com.example.demo.service.UserService;
 import com.wwfinance.common.utils.HttpUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -32,18 +35,35 @@ public class BankAccountSyncServiceImpl extends ServiceImpl<UserAccountMapper, U
     @Autowired
     private UserAccountService userAccountService;
 
+    @Autowired
+    @Qualifier("bankJdbcTemplate")
+    private JdbcTemplate bankJdbcTemplate;
+
     private static final String BANK_QUERY_URL = "http://localhost:9090/userAccount/queryBalance";
     private static final String BANK_FLOW_URL = "http://localhost:9090/userAccount/queryFlow";
 
     @Override
     public BigDecimal getBankBalance(Long userId) {
         try {
-            Map<String, Object> result = queryBankAccount(userId);
-            if (result != null && result.get("amount") != null) {
-                return new BigDecimal(result.get("amount").toString());
+            String bindCode = getUserBindCode(userId);
+            if (bindCode != null) {
+                BigDecimal bankBalance = queryBankBalanceByBindCode(bindCode);
+                if (bankBalance != null) {
+                    log.info("从银行库查询余额成功，userId={}, bindCode={}, balance={}", userId, bindCode, bankBalance);
+                    return bankBalance;
+                }
             }
         } catch (Exception e) {
-            log.error("查询银行余额失败，userId={}", userId, e);
+            log.warn("从银行库查询余额失败，降级查本地表，userId={}", userId, e);
+        }
+        try {
+            UserAccount account = userAccountMapper.selectOne(
+                    new LambdaQueryWrapper<UserAccount>().eq(UserAccount::getUserId, userId));
+            if (account != null && account.getAmount() != null) {
+                return account.getAmount();
+            }
+        } catch (Exception e) {
+            log.error("查询平台余额失败，userId={}", userId, e);
         }
         return BigDecimal.ZERO;
     }
@@ -51,12 +71,24 @@ public class BankAccountSyncServiceImpl extends ServiceImpl<UserAccountMapper, U
     @Override
     public BigDecimal getBankFreezeAmount(Long userId) {
         try {
-            Map<String, Object> result = queryBankAccount(userId);
-            if (result != null && result.get("freezeAmount") != null) {
-                return new BigDecimal(result.get("freezeAmount").toString());
+            String bindCode = getUserBindCode(userId);
+            if (bindCode != null) {
+                BigDecimal freezeAmount = queryBankFreezeByBindCode(bindCode);
+                if (freezeAmount != null) {
+                    return freezeAmount;
+                }
             }
         } catch (Exception e) {
-            log.error("查询银行冻结金额失败，userId={}", userId, e);
+            log.warn("从银行库查询冻结金额失败，降级查本地表，userId={}", userId, e);
+        }
+        try {
+            UserAccount account = userAccountMapper.selectOne(
+                    new LambdaQueryWrapper<UserAccount>().eq(UserAccount::getUserId, userId));
+            if (account != null && account.getFreezeAmount() != null) {
+                return account.getFreezeAmount();
+            }
+        } catch (Exception e) {
+            log.error("查询平台冻结金额失败，userId={}", userId, e);
         }
         return BigDecimal.ZERO;
     }
@@ -113,6 +145,7 @@ public class BankAccountSyncServiceImpl extends ServiceImpl<UserAccountMapper, U
         try {
             User user = userService.getById(userId);
             if (user == null) {
+                log.warn("查询银行余额失败：用户不存在，userId={}", userId);
                 return null;
             }
             Map<String, Object> paramMap = new HashMap<>();
@@ -127,6 +160,10 @@ public class BankAccountSyncServiceImpl extends ServiceImpl<UserAccountMapper, U
                         .append(param.getValue()).append("&");
             }
             byte[] respData = HttpUtils.doPost(BANK_QUERY_URL, postdata.toString().getBytes("utf-8"));
+            if (respData == null || respData.length == 0) {
+                log.warn("查询银行余额失败：银行服务未响应或未启动，userId={}", userId);
+                return null;
+            }
             String result = new String(respData, "utf-8");
             log.info("查询银行余额结果：userId={}, result={}", userId, result);
             return parseBankResponse(result);
@@ -151,6 +188,10 @@ public class BankAccountSyncServiceImpl extends ServiceImpl<UserAccountMapper, U
                         .append(param.getValue()).append("&");
             }
             byte[] respData = HttpUtils.doPost(BANK_FLOW_URL, postdata.toString().getBytes("utf-8"));
+            if (respData == null || respData.length == 0) {
+                log.warn("查询银行流水失败：银行服务未响应或未启动，date={}", date);
+                return null;
+            }
             String result = new String(respData, "utf-8");
             log.info("查询银行流水结果：date={}, result={}", date, result);
             return parseBankFlowResponse(result);
@@ -197,5 +238,42 @@ public class BankAccountSyncServiceImpl extends ServiceImpl<UserAccountMapper, U
             }
         }
         return flows;
+    }
+
+    private String getUserBindCode(Long userId) {
+        try {
+            User user = userService.getById(userId);
+            if (user != null && user.getBindCode() != null) {
+                return user.getBindCode();
+            }
+        } catch (Exception e) {
+            log.error("获取用户bindCode失败，userId={}", userId, e);
+        }
+        return null;
+    }
+
+    private BigDecimal queryBankBalanceByBindCode(String bindCode) {
+        try {
+            BigDecimal amount = bankJdbcTemplate.queryForObject(
+                    "SELECT amount FROM user_account WHERE user_code = ? AND is_deleted = 0",
+                    BigDecimal.class, bindCode);
+            log.debug("银行库查询余额，bindCode={}, amount={}", bindCode, amount);
+            return amount;
+        } catch (Exception e) {
+            log.error("银行库查询余额失败，bindCode={}", bindCode, e);
+            return null;
+        }
+    }
+
+    private BigDecimal queryBankFreezeByBindCode(String bindCode) {
+        try {
+            BigDecimal freezeAmount = bankJdbcTemplate.queryForObject(
+                    "SELECT freeze_amount FROM user_account WHERE user_code = ? AND is_deleted = 0",
+                    BigDecimal.class, bindCode);
+            return freezeAmount;
+        } catch (Exception e) {
+            log.error("银行库查询冻结金额失败，bindCode={}", bindCode, e);
+            return null;
+        }
     }
 }

@@ -12,6 +12,8 @@ import com.example.demo.entity.UserBind;
 import com.example.demo.entity.UserLoginRecord;
 import com.example.demo.entity.dto.AdminUserQuery;
 import com.example.demo.entity.dto.UserDto;
+import com.example.demo.exception.BusinessException;
+import com.example.demo.exception.ResourceNotFoundException;
 import com.example.demo.mapper.UserAccountMapper;
 import com.example.demo.mapper.UserBindMapper;
 import com.example.demo.mapper.UserMapper;
@@ -71,6 +73,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
     public User getByMobile(String mobile) {
         LambdaQueryWrapper<User> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(User::getMobile, mobile);
+        queryWrapper.last("LIMIT 1");
         return baseMapper.selectOne(queryWrapper);
     }
 
@@ -109,12 +112,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
     public void addMember(String mobile, String nickName, String name, String idCard, Integer integral) {
         // 1. 参数校验
         if (StringUtils.isBlank(mobile)) {
-            throw new RuntimeException("手机号不能为空");
+            throw new BusinessException(400, "手机号不能为空");
         }
         // 2. 手机号不能重复注册
         User exist = getByMobile(mobile);
         if (exist != null) {
-            throw new RuntimeException("该手机号已注册");
+            throw new BusinessException(400, "该手机号已注册");
         }
         // 3. 组装用户：默认密码 123456（MD5），普通用户，正常状态
         User user = new User();
@@ -123,7 +126,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
         user.setName(name);
         user.setIdCard(idCard);
         user.setIntegral(integral == null ? 0 : integral);
-        user.setPassword(MD5.encrypt("123456"));
+        user.setPassword(passwordEncoder.encode("123456"));
         user.setUserType(0);
         user.setStatus(1);
         user.setBindStatus(0);
@@ -139,11 +142,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
         User user = getByMobile(mobile);
         if (user == null) {
             saveLoginRecord(null, mobile, 0, 0);
-            throw new RuntimeException("用户不存在");
+            throw new ResourceNotFoundException(404, "用户不存在");
         }
-        if (!passwordEncoder.matches(password, user.getPassword())) {
+        if (!matchesPassword(password, user.getPassword())) {
             saveLoginRecord(user.getId(), mobile, 0, 0);
-            throw new RuntimeException("密码错误");
+            throw new BusinessException(400, "密码错误");
+        }
+        if (isMd5Password(user.getPassword())) {
+            user.setPassword(passwordEncoder.encode(password));
+            updateById(user);
         }
         String token = TokenUtil.generateMerchantToken(user.getId().toString());
         stringRedisTemplate.opsForValue().set("login:token:" + user.getId(), token, TOKEN_TTL, TimeUnit.SECONDS);
@@ -156,11 +163,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
         User user = getByMobile(mobile);
         if (user == null) {
             saveLoginRecord(null, mobile, 0, 0);
-            throw new RuntimeException("用户不存在");
+            throw new ResourceNotFoundException(404, "用户不存在");
         }
         if (!Boolean.TRUE.equals(smsApiSmsClient.checkCode(mobile, code).get("data"))) {
             saveLoginRecord(user.getId(), mobile, 0, 0);
-            throw new RuntimeException("验证码错误或已过期");
+            throw new BusinessException(400, "验证码错误或已过期");
         }
         String token = TokenUtil.generateMerchantToken(user.getId().toString());
         stringRedisTemplate.opsForValue().set("login:token:" + user.getId(), token, TOKEN_TTL, TimeUnit.SECONDS);
@@ -172,22 +179,24 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
     @Transactional(rollbackFor = Exception.class)
     public void register(UserDto userDTO) {
         if (!Boolean.TRUE.equals(smsApiSmsClient.checkCode(userDTO.getMobile(), userDTO.getCode()).get("data"))) {
-            throw new RuntimeException("验证码错误或已过期");
+            throw new BusinessException(400, "验证码错误或已过期");
         }
         User exist = getByMobile(userDTO.getMobile());
         if (exist != null) {
-            throw new RuntimeException("手机号已经存在");
+            throw new BusinessException(400, "手机号已经存在");
         }
         if (!userDTO.getPassword().equals(userDTO.getPasswordto())) {
-            throw new RuntimeException("两次输入的密码不正确");
+            throw new BusinessException(400, "两次输入的密码不正确");
         }
         User user = new User();
         user.setMobile(userDTO.getMobile());
-        user.setUserType(userDTO.getUserType());
+        user.setUserType(userDTO.getUserType() != null ? userDTO.getUserType() : 1);
         user.setName(userDTO.getMobile());
         user.setNickName(userDTO.getMobile());
         user.setPassword(passwordEncoder.encode(userDTO.getPassword()));
         user.setStatus(1);
+        user.setBorrowAuthStatus(0);
+        user.setBindStatus(0);
         save(user);
         UserAccount userAccount = new UserAccount();
         userAccount.setUserId(user.getId());
@@ -199,7 +208,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
     public UserDto getCurrentUserInfo(Long userId) {
         User user = getById(userId);
         if (user == null) {
-            throw new RuntimeException("用户不存在");
+            throw new ResourceNotFoundException(404, "用户不存在");
         }
         UserDto userDto = new UserDto();
         userDto.setId(user.getId());
@@ -210,10 +219,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
         userDto.setIdCard(user.getIdCard());
         userDto.setEmail(user.getEmail());
         userDto.setHeadImg(user.getHeadImg());
+        userDto.setBorrowAuthStatus(user.getBorrowAuthStatus());
+        userDto.setIntegral(user.getIntegral());
         userDto.setBindStatus(user.getBindStatus());
         userDto.setBindCode(user.getBindCode());
         LambdaQueryWrapper<UserBind> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(UserBind::getUserId, userId);
+        wrapper.last("LIMIT 1");
         UserBind userBind = userBindMapper.selectOne(wrapper);
         userDto.setBindStatus(userBind != null ? userBind.getStatus() : 0);
         return userDto;
@@ -223,7 +235,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
     public void updateProfile(Long userId, UserDto userDTO) {
         User user = getById(userId);
         if (user == null) {
-            throw new RuntimeException("用户不存在");
+            throw new ResourceNotFoundException(404, "用户不存在");
         }
         user.setName(userDTO.getName());
         user.setNickName(userDTO.getNickName());
@@ -236,7 +248,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
     public void updateStatus(Long userId, Integer status) {
         User user = getById(userId);
         if (user == null) {
-            throw new RuntimeException("会员不存在");
+            throw new ResourceNotFoundException(404, "会员不存在");
         }
         user.setStatus(status);
         updateById(user);
@@ -251,7 +263,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
     public java.util.Map<String, Object> getBorrowAmount(Long userId) {
         User user = getById(userId);
         if (user == null) {
-            throw new RuntimeException("用户不存在");
+            throw new ResourceNotFoundException(404, "用户不存在");
         }
         java.math.BigDecimal amount = integralGradeService.getBorrowAmountByIntegral(user.getIntegral());
         java.util.Map<String, Object> data = new java.util.HashMap<>();
@@ -267,15 +279,24 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
         try {
             UserLoginRecord record = new UserLoginRecord();
             record.setUserId(userId);
-            record.setUsername(username);
-            record.setLoginType(loginType);
-            record.setLoginResult(loginResult);
-            record.setLoginTime(LocalDateTime.now());
-            record.setLoginIp("127.0.0.1");
+            record.setIp("127.0.0.1");
             userLoginRecordService.save(record);
         } catch (Exception e) {
-            // 登录日志记录失败不影响登录流程
         }
+    }
+
+    private boolean isMd5Password(String storedPassword) {
+        return storedPassword != null && storedPassword.length() == 32 && storedPassword.matches("[0-9a-f]{32}");
+    }
+
+    private boolean matchesPassword(String rawPassword, String storedPassword) {
+        if (storedPassword != null && storedPassword.equals(rawPassword)) {
+            return true;
+        }
+        if (isMd5Password(storedPassword)) {
+            return MD5.encrypt(rawPassword).equals(storedPassword);
+        }
+        return passwordEncoder.matches(rawPassword, storedPassword);
     }
 
 }

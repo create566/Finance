@@ -1,6 +1,7 @@
 package com.example.demo.service;
 
 import com.example.demo.entity.dto.AccountInfoDto;
+import com.example.demo.enums.TransTypeEnum;
 import java.math.BigDecimal;
 
 /**
@@ -45,4 +46,6 @@ public interface UserAccountService {
      * 发起提现（仅组装银行表单，不碰触余额）
      */
     String buildWithdrawForm(Long userId, BigDecimal amount);
+
+    void updateBalance(Long userId, TransTypeEnum type, BigDecimal amount);
 }

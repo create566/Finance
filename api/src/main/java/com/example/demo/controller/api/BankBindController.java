@@ -1,7 +1,10 @@
 package com.example.demo.controller.api;
 
 import com.example.demo.entity.UserBind;
+import com.example.demo.entity.User;
+import com.example.demo.service.BankDatabaseSyncService;
 import com.example.demo.service.UserBindService;
+import com.example.demo.service.UserService;
 import com.example.demo.utils.LoginUserContext;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
@@ -9,12 +12,8 @@ import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-/**
- * 银行绑定 Controller
- *
- * 分层约定：Controller 只做「取登录态 → 调 Service → 封装返回」，
- * 实名/验证码校验、银行表单拼装在 UserBindService。
- */
+import java.util.UUID;
+
 @Api(tags = "银行绑定")
 @RestController
 @RequestMapping("/api/user")
@@ -22,6 +21,12 @@ public class BankBindController {
 
     @Autowired
     private UserBindService userBindService;
+
+    @Autowired
+    private UserService userService;
+
+    @Autowired
+    private BankDatabaseSyncService bankDatabaseSyncService;
 
     @ApiOperation("发起绑卡（需先实名认证+短信验证码）")
     @GetMapping("/bind")
@@ -39,5 +44,41 @@ public class BankBindController {
             return new PccAjaxResult(500, "未绑定");
         }
         return new PccAjaxResult(200, "查询成功", userBind);
+    }
+
+    @ApiOperation("直接绑卡（输入银行卡号，无需跳转银行）")
+    @PostMapping("/bindDirect")
+    public PccAjaxResult bindDirect(@RequestBody java.util.Map<String, String> params) {
+        Long userId = Long.valueOf(LoginUserContext.getUserid());
+        User user = userService.getById(userId);
+        if (user == null) {
+            return new PccAjaxResult(500, "用户不存在");
+        }
+        String bankNo = params.get("bankNo");
+        String bankType = params.getOrDefault("bankType", "工商银行");
+        String name = params.getOrDefault("name", user.getName());
+        String idCard = params.getOrDefault("idCard", user.getIdCard());
+        if (bankNo == null || bankNo.length() < 16 || bankNo.length() > 19) {
+            return new PccAjaxResult(500, "请输入正确的银行卡号（16-19位数字）");
+        }
+        if (!bankNo.matches("\\d+")) {
+            return new PccAjaxResult(500, "银行卡号必须为纯数字");
+        }
+        UserBind userBind = new UserBind();
+        userBind.setUserId(userId);
+        String bindCode = UUID.randomUUID().toString().replaceAll("-", "");
+        userBind.setBindCode(bindCode);
+        userBind.setIdCard(idCard);
+        userBind.setBankNo(bankNo);
+        userBind.setName(name);
+        userBind.setBankType(bankType);
+        userBind.setMobile(user.getMobile());
+        userBind.setStatus(1);
+        userBindService.bind(userBind);
+
+        bankDatabaseSyncService.syncBindRecord(bindCode, user.getMobile(), name,
+                user.getMobile(), idCard, bankNo, bankType);
+
+        return new PccAjaxResult(200, "绑卡成功");
     }
 }

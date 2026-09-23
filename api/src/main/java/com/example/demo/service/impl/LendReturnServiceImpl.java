@@ -131,8 +131,9 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         paramMap.put("agentId", HfbConst.AGENT_ID);
         paramMap.put("agentUserId", userBind.getMobile());
         paramMap.put("bindCode", userBind.getBindCode());
-        paramMap.put("amount", lend.getAmount());
-        paramMap.put("projectId", lendId);
+        paramMap.put("voteAmt", lend.getAmount());
+        paramMap.put("agentProjectCode", lendId);
+        paramMap.put("agentProjectName", lend.getTitle());
         paramMap.put("returnUrl", HfbConst.MAKE_LOAD_RETURN_URL);
         paramMap.put("notifyUrl", HfbConst.MAKE_LOAD_NOTIFY_URL);
         paramMap.put("timestamp", new Date().getTime());
@@ -152,10 +153,14 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         }
 
         String agentUserId = (String) params.get("agentUserId");
-        String amountStr = (String) params.get("amount");
-        String transNo = (String) params.get("transNo");
-        String status = (String) params.get("status");
-        String projectIdStr = (String) params.get("projectId");
+        String amountStr = (String) params.getOrDefault("amount", params.get("voteAmt"));
+        String transNo = (String) params.getOrDefault("transNo", params.get("agentBillNo"));
+        String status = (String) params.getOrDefault("status", params.get("resultCode"));
+        String projectIdStr = (String) params.getOrDefault("projectId", params.get("agentProjectCode"));
+
+        if ("0001".equals(status)) {
+            status = BankNotifyStatusEnum.SUCCESS.getCode();
+        }
 
         // 2. 银行侧处理失败：无需重试，应答 success
         if (!BankNotifyStatusEnum.isSuccess(status)) {
@@ -304,8 +309,8 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         // 12. 更新标的状态为还款中
         lend.setStatus(LendStatusEnum.REPAYING.getCode());
         lend.setPaymentTime(now);
-        lend.setLendStartDate(loanDate.atStartOfDay());
-        lend.setLendEndDate(loanDate.plusMonths(lend.getPeriod()).atStartOfDay());
+        lend.setLendStartDate(loanDate);
+        lend.setLendEndDate(loanDate.plusMonths(lend.getPeriod()));
         lend.setRealAmount(lend.getInvestAmount());
         lend.setUpdateTime(now);
         lendService.updateById(lend);
@@ -349,14 +354,17 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
                 ? lendReturn.getOverdueTotal()
                 : lendReturn.getTotal();
 
+        Lend lend = lendService.getById(lendReturn.getLendId());
+
         // 4. 组装旺旺银行还款参数并签名
         Map<String, Object> paramMap = new HashMap<>();
         paramMap.put("agentId", HfbConst.AGENT_ID);
         paramMap.put("agentUserId", userBind.getMobile());
-        paramMap.put("bindCode", userBind.getBindCode());
-        paramMap.put("amount", payable);
-        paramMap.put("projectId", lendReturn.getLendId());
-        paramMap.put("returnId", lendReturnId);
+        paramMap.put("fromBindCode", userBind.getBindCode());
+        paramMap.put("totalAmt", payable);
+        paramMap.put("agentProjectCode", lendReturn.getLendId());
+        paramMap.put("agentBatchNo", lendReturnId);
+        paramMap.put("agentGoodsName", lend.getTitle());
         paramMap.put("returnUrl", HfbConst.BORROW_RETURN_RETURN_URL);
         paramMap.put("notifyUrl", HfbConst.BORROW_RETURN_NOTIFY_URL);
         paramMap.put("timestamp", new Date().getTime());
@@ -376,10 +384,15 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         }
 
         String agentUserId = (String) params.get("agentUserId");
-        String amountStr = (String) params.get("amount");
-        String transNo = (String) params.get("transNo");
-        String status = (String) params.get("status");
-        String returnIdStr = (String) params.get("returnId");
+        String amountStr = (String) params.getOrDefault("amount",
+                params.getOrDefault("voteAmt", params.get("totalAmt")));
+        String transNo = (String) params.getOrDefault("transNo", params.get("agentBillNo"));
+        String status = (String) params.getOrDefault("status", params.get("resultCode"));
+        String returnIdStr = (String) params.getOrDefault("returnId", params.get("agentBatchNo"));
+
+        if ("0001".equals(status)) {
+            status = BankNotifyStatusEnum.SUCCESS.getCode();
+        }
 
         // 2. 银行侧处理失败：无需重试，应答 success
         if (!BankNotifyStatusEnum.isSuccess(status)) {
@@ -734,7 +747,6 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         TransFlow flow = new TransFlow();
         flow.setUserId(userId);
         flow.setUserName(userName);
-        // 优先用银行流水号做 trans_no（回调幂等），没有则本地生成
         String transNo = (bankTransNo != null && !bankTransNo.isEmpty())
                 ? bankTransNo : LendNoUtils.getTransNo();
         flow.setTransNo(transNo);
@@ -745,5 +757,7 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         flow.setCreateTime(now);
         flow.setUpdateTime(now);
         transFlowService.save(flow);
+
+        userAccountService.updateBalance(userId, type, amount);
     }
 }

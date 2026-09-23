@@ -1,5 +1,5 @@
 server:
-  port: 80 # 服务端口
+  port: 8088 # 服务端口（修改：避免与Docker/WSL的80端口冲突）
 
 spring:
   profiles:

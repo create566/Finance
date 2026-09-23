@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -62,10 +63,10 @@ public class Lend {
     private LocalDateTime publishDate;
 
     @TableField("lend_start_date")
-    private LocalDateTime lendStartDate;
+    private LocalDate lendStartDate;
 
     @TableField("lend_end_date")
-    private LocalDateTime lendEndDate;
+    private LocalDate lendEndDate;
 
     @TableField("lend_info")
     private String lendInfo;

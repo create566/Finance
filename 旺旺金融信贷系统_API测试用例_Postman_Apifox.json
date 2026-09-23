@@ -14,6 +14,10 @@
         {
             "key": "token",
             "value": ""
+        },
+        {
+            "key": "adminToken",
+            "value": ""
         }
     ],
     "item": [
@@ -1400,9 +1404,9 @@
                                             "exec": [
                                                 "var jsonData = pm.response.json();",
                                                 "if (jsonData.data) {",
-                                                "    pm.collectionVariables.set(\"token\", jsonData.data);",
-                                                "    pm.environment.set(\"token\", jsonData.data);",
-                                                "    pm.globals.set(\"token\", jsonData.data);",
+                                                "    pm.collectionVariables.set(\"adminToken\", jsonData.data);",
+                                                "    pm.environment.set(\"adminToken\", jsonData.data);",
+                                                "    pm.globals.set(\"adminToken\", jsonData.data);",
                                                 "}"
                                             ]
                                         }
@@ -1417,7 +1421,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1442,7 +1446,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1472,7 +1476,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1508,7 +1512,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1544,7 +1548,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1578,7 +1582,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1620,7 +1624,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1657,7 +1661,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1699,7 +1703,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1735,7 +1739,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1752,10 +1756,10 @@
                                         "audit"
                                     ]
                                 },
-                                "description": "审核借款人实名认证",
+                                "description": "审核借款人实名认证（status:2通过/-1拒绝, infoIntegral:基础积分, isIdCardOk/isHouseOk/isCarOk:证件审核各加分）",
                                 "body": {
                                     "mode": "raw",
-                                    "raw": "{\"status\": 2, \"score\": 85}",
+                                    "raw": "{\"status\": 2, \"infoIntegral\": 30, \"isIdCardOk\": true, \"isHouseOk\": true, \"isCarOk\": true}",
                                     "options": {
                                         "raw": {
                                             "language": "json"
@@ -1776,7 +1780,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1812,7 +1816,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1843,7 +1847,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1884,7 +1888,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1910,7 +1914,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1942,7 +1946,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -1977,7 +1981,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -2012,7 +2016,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -2047,7 +2051,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -2079,7 +2083,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -2116,7 +2120,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -2144,7 +2148,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -2172,7 +2176,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -2200,7 +2204,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -2228,7 +2232,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -2260,7 +2264,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -2286,7 +2290,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -2322,7 +2326,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -2348,7 +2352,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -2383,7 +2387,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],
@@ -2418,7 +2422,7 @@
                                 "header": [
                                     {
                                         "key": "Authorization",
-                                        "value": "{{token}}",
+                                        "value": "{{adminToken}}",
                                         "description": "登录令牌"
                                     }
                                 ],

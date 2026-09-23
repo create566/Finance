@@ -59,25 +59,82 @@ public class LendController {
 
     @ApiOperation("投资人投标（跳转旺旺银行）")
     @PostMapping("/invest/{lendId}")
-    public String invest(
+    public PccAjaxResult invest(
             @PathVariable Long lendId,
             @RequestBody Map<String, Object> body) {
         Integer userIdInt = LoginUserContext.getUserid();
         if (userIdInt == null) {
-            throw new RuntimeException("请先登录");
+            return new PccAjaxResult(401, "请先登录");
         }
         Object amountObj = body.get("amount");
         if (amountObj == null) {
-            throw new RuntimeException("投资金额不能为空");
+            return new PccAjaxResult(400, "投资金额不能为空");
         }
         BigDecimal amount;
         try {
             amount = new BigDecimal(amountObj.toString());
         } catch (NumberFormatException e) {
-            throw new RuntimeException("投资金额格式错误");
+            return new PccAjaxResult(400, "投资金额格式错误");
         }
-        // 组装银行表单并返回，余额扣减由银行异步回调驱动
-        return lendItemService.buildInvestForm(lendId, userIdInt.longValue(), amount);
+        try {
+            String formHtml = lendItemService.buildInvestForm(lendId, userIdInt.longValue(), amount);
+            return new PccAjaxResult(200, "投标表单生成成功", formHtml);
+        } catch (Exception e) {
+            log.error("投标失败，lendId={}, userId={}, amount={}", lendId, userIdInt, amount, e);
+            return new PccAjaxResult(500, "投标失败：" + e.getClass().getSimpleName() + " - " + e.getMessage());
+        }
+    }
+
+    @ApiOperation("投标调试接口")
+    @PostMapping("/investDebug/{lendId}")
+    public PccAjaxResult investDebug(
+            @PathVariable Long lendId,
+            @RequestBody Map<String, Object> body) {
+        try {
+            Integer userIdInt = LoginUserContext.getUserid();
+            Map<String, Object> debugInfo = new HashMap<>();
+            debugInfo.put("step", "1_login");
+            debugInfo.put("userId", userIdInt);
+            if (userIdInt == null) {
+                return new PccAjaxResult(401, "请先登录", debugInfo);
+            }
+
+            Object amountObj = body.get("amount");
+            BigDecimal amount = new BigDecimal(amountObj.toString());
+            debugInfo.put("step", "2_amount");
+            debugInfo.put("amount", amount);
+
+            com.example.demo.entity.User user = lendItemService.getUserForInvest(userIdInt.longValue());
+            debugInfo.put("step", "3_user");
+            debugInfo.put("userType", user != null ? user.getUserType() : null);
+            debugInfo.put("mobile", user != null ? user.getMobile() : null);
+
+            com.example.demo.entity.UserBind bind = lendItemService.getBindForInvest(userIdInt.longValue());
+            debugInfo.put("step", "4_bind");
+            debugInfo.put("bindStatus", bind != null ? bind.getStatus() : null);
+            debugInfo.put("bindCode", bind != null ? bind.getBindCode() : null);
+            debugInfo.put("bindMobile", bind != null ? bind.getMobile() : null);
+
+            com.example.demo.entity.Lend lend = lendService.getById(lendId);
+            debugInfo.put("step", "5_lend");
+            debugInfo.put("lendStatus", lend != null ? lend.getStatus() : null);
+            debugInfo.put("lendUserId", lend != null ? lend.getUserId() : null);
+            debugInfo.put("investAmount", lend != null ? lend.getInvestAmount() : null);
+
+            java.math.BigDecimal balance = lendItemService.getBalanceForInvest(userIdInt.longValue());
+            debugInfo.put("step", "6_balance");
+            debugInfo.put("balance", balance);
+
+            return new PccAjaxResult(200, "调试信息", debugInfo);
+        } catch (Exception e) {
+            Map<String, Object> errInfo = new HashMap<>();
+            errInfo.put("exception", e.getClass().getName());
+            errInfo.put("message", e.getMessage());
+            if (e.getCause() != null) {
+                errInfo.put("cause", e.getCause().getClass().getName() + ": " + e.getCause().getMessage());
+            }
+            return new PccAjaxResult(500, "调试异常", errInfo);
+        }
     }
 
     @ApiOperation("获取标的的投资记录列表")

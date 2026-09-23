@@ -1,3 +1,5 @@
+
+
 package com.example.demo.entity.dto;
 
 import lombok.AllArgsConstructor;
@@ -14,8 +16,8 @@ public class UserDto implements Serializable {
     private Integer userType;
     private String mobile;
     private String code;
-    private String Password;
-    private String Passwordto;
+    private String password;
+    private String passwordto;
     private String name;
     private String nickName;
     private String idCard;
@@ -23,4 +25,6 @@ public class UserDto implements Serializable {
     private String headImg;
     private Integer bindStatus;
     private String bindCode;
+    private Integer borrowAuthStatus;
+    private Integer integral;
 }

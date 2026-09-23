@@ -165,8 +165,9 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         paramMap.put("agentId", HfbConst.AGENT_ID);
         paramMap.put("agentUserId", userBind.getMobile());
         paramMap.put("bindCode", userBind.getBindCode());
-        paramMap.put("amount", amount);
-        paramMap.put("projectId", lendId);
+        paramMap.put("voteAmt", amount);
+        paramMap.put("agentProjectCode", lendId);
+        paramMap.put("agentProjectName", lend.getTitle());
         paramMap.put("returnUrl", HfbConst.INVEST_RETURN_URL);
         paramMap.put("notifyUrl", HfbConst.INVEST_NOTIFY_URL);
         paramMap.put("timestamp", new Date().getTime());
@@ -210,10 +211,14 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         }
 
         String agentUserId = (String) params.get("agentUserId");
-        String amountStr = (String) params.get("amount");
-        String transNo = (String) params.get("transNo");
-        String status = (String) params.get("status");
-        String projectIdStr = (String) params.get("projectId");
+        String amountStr = (String) params.getOrDefault("amount", params.get("voteAmt"));
+        String transNo = (String) params.getOrDefault("transNo", params.get("agentBillNo"));
+        String status = (String) params.getOrDefault("status", params.get("resultCode"));
+        String projectIdStr = (String) params.getOrDefault("projectId", params.get("agentProjectCode"));
+
+        if ("0001".equals(status)) {
+            status = BankNotifyStatusEnum.SUCCESS.getCode();
+        }
 
         // 2. 银行侧处理失败：无需重试，应答 success
         if (!BankNotifyStatusEnum.isSuccess(status)) {
@@ -369,6 +374,21 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         return this.page(pageParam, wrapper);
     }
 
+    @Override
+    public com.example.demo.entity.User getUserForInvest(Long userId) {
+        return userService.getById(userId);
+    }
+
+    @Override
+    public com.example.demo.entity.UserBind getBindForInvest(Long userId) {
+        return userBindService.getByUserId(userId);
+    }
+
+    @Override
+    public BigDecimal getBalanceForInvest(Long userId) {
+        return bankAccountSyncService.getBankBalance(userId);
+    }
+
     /**
      * 记录投标流水（使用银行流水号做幂等）
      */
@@ -388,6 +408,7 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         flow.setCreateTime(now);
         flow.setUpdateTime(now);
         transFlowService.save(flow);
+        userAccountService.updateBalance(user.getId(), TransTypeEnum.INVEST, amount);
     }
 
     /**

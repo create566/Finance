@@ -18,7 +18,7 @@ public class HfbConst {
     //用户绑定异步回调
     public static final String USERBIND_NOTIFY_URL = "http://localhost:8990/api/core/userBind/notify";
     //用户绑定同步回调
-    public static final String USERBIND_RETURN_URL = "http://localhost:5173/home";
+    public static final String USERBIND_RETURN_URL = "http://localhost:5174/home";
 
     /**
      * 充值
@@ -28,7 +28,7 @@ public class HfbConst {
     //充值异步回调
     public static final String RECHARGE_NOTIFY_URL = "http://localhost:8990/api/core/userAccount/notify";
     //充值同步回调
-    public static final String RECHARGE_RETURN_URL = "http://localhost:5173/home";
+    public static final String RECHARGE_RETURN_URL = "http://localhost:5174/home";
 
     /**
      * 投标
@@ -38,7 +38,7 @@ public class HfbConst {
     //充值异步回调
     public static final String INVEST_NOTIFY_URL = "http://localhost:8990/api/core/lendItem/notify";
     //充值同步回调
-    public static final String INVEST_RETURN_URL = "http://localhost:5173/home";
+    public static final String INVEST_RETURN_URL = "http://localhost:5174/home";
 
     /**
      * 放款
@@ -47,7 +47,7 @@ public class HfbConst {
     //放款异步回调
     public static final String MAKE_LOAD_NOTIFY_URL = "http://localhost:8990/api/core/lend/notifyMakeLoan";
     //放款同步回调
-    public static final String MAKE_LOAD_RETURN_URL = "http://localhost:5173/home";
+    public static final String MAKE_LOAD_RETURN_URL = "http://localhost:5174/home";
 
     /**
      * 提现
@@ -57,7 +57,7 @@ public class HfbConst {
     //充值异步回调
     public static final String WITHDRAW_NOTIFY_URL = "http://localhost:8990/api/core/userAccount/notifyWithdraw";
     //充值同步回调
-    public static final String WITHDRAW_RETURN_URL = "http://localhost:5173/home";
+    public static final String WITHDRAW_RETURN_URL = "http://localhost:5174/home";
 
     /**
      * 还款扣款
@@ -67,6 +67,6 @@ public class HfbConst {
     //充值异步回调
     public static final String BORROW_RETURN_NOTIFY_URL = "http://localhost:8990/api/core/lendReturn/notifyUrl";
     //充值同步回调
-    public static final String BORROW_RETURN_RETURN_URL = "http://localhost:5173/home";
+    public static final String BORROW_RETURN_RETURN_URL = "http://localhost:5174/home";
 
 }

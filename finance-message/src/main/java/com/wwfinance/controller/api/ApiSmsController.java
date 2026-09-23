@@ -59,7 +59,6 @@ public class ApiSmsController {
         String key = "sms:code:" + mobile;
         Object cacheCode = redisTemplate.opsForValue().get(key);
         if (cacheCode != null && cacheCode.toString().equals(code)) {
-            redisTemplate.delete(key);
             return new PccAjaxResult(200, "验证码正确", true);
         }
         return new PccAjaxResult(200, "验证码错误", false);

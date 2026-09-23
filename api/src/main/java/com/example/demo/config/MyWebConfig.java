@@ -1,6 +1,5 @@
 package com.example.demo.config;
 
-import com.example.demo.config.RedisRateLimitAspect;
 import com.example.demo.interceptor.JwtAuthInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
@@ -13,7 +12,7 @@ public class MyWebConfig implements WebMvcConfigurer {
     @Autowired
     private JwtAuthInterceptor jwtAuthInterceptor;
     @Autowired
-    private RedisRateLimitAspect redisRateLimitAspect;
+    private RateLimitInterceptor rateLimitInterceptor;
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
@@ -21,6 +20,11 @@ public class MyWebConfig implements WebMvcConfigurer {
                 .addResourceLocations("classpath:/META‑INF/resources/");
         registry.addResourceHandler("/webjars/**")
                 .addResourceLocations("classpath:/META‑INF/resources/webjars/");
+
+        registry.addResourceHandler("/api/oss/file/images/**")
+                .addResourceLocations("file:D:/桌面/实训/demo/uploads/");
+        registry.addResourceHandler("/api/knowledge/files/**")
+                .addResourceLocations("file:D:/桌面/实训/demo/uploads/knowledge/");
     }
 
     @Override
@@ -46,7 +50,7 @@ public class MyWebConfig implements WebMvcConfigurer {
                         "/swagger‑resources/**",
                         "/v2/api‑docs"
                 );
-        registry.addInterceptor(redisRateLimitAspect)
+        registry.addInterceptor(rateLimitInterceptor)
                 .addPathPatterns("/api/**")
                 .excludePathPatterns(
                         "/api/user/hello",

@@ -77,7 +77,7 @@ public final class HttpUtils {
 			httpcon.disconnect(); // 断开连接
 			return bankXmlBuffer.toString().getBytes(); // 返回响应数据的字节数组
 		} catch (Exception ex) {
-			log.error(ex.toString(), ex);
+			log.warn("HTTP请求失败: url={}, error={}", strUrl, ex.getMessage());
 			return null;
 		}
 	}

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo.entity.IntegralGrade;
+import com.example.demo.exception.BusinessException;
 import com.example.demo.mapper.IntegralGradeMapper;
 import com.example.demo.service.IntegralGradeService;
 import org.springframework.stereotype.Service;
@@ -22,7 +23,7 @@ public class IntegralGradeServiceImpl extends ServiceImpl<IntegralGradeMapper, I
                         .ge(IntegralGrade::getIntegralEnd, integralGrade.getIntegralStart()))
                 .count();
         if (count > 0) {
-            throw new RuntimeException("积分区间与已有等级重叠");
+            throw new BusinessException(400, "积分区间与已有等级重叠");
         }
         return save(integralGrade);
     }
@@ -36,7 +37,7 @@ public class IntegralGradeServiceImpl extends ServiceImpl<IntegralGradeMapper, I
                         .ge(IntegralGrade::getIntegralEnd, integralGrade.getIntegralStart()))
                 .count();
         if (count > 0) {
-            throw new RuntimeException("积分区间与已有等级重叠");
+            throw new BusinessException(400, "积分区间与已有等级重叠");
         }
         return updateById(integralGrade);
     }
@@ -62,17 +63,17 @@ public class IntegralGradeServiceImpl extends ServiceImpl<IntegralGradeMapper, I
 
     private void checkRange(IntegralGrade integralGrade) {
         if (integralGrade.getIntegralStart() == null || integralGrade.getIntegralEnd() == null) {
-            throw new RuntimeException("积分起止不能为空");
+            throw new BusinessException(400, "积分起止不能为空");
         }
         if (integralGrade.getIntegralStart() > integralGrade.getIntegralEnd()) {
-            throw new RuntimeException("起始积分不能大于结束积分");
+            throw new BusinessException(400, "起始积分不能大于结束积分");
         }
         if (integralGrade.getIntegralStart() < 0) {
-            throw new RuntimeException("积分不能为负数");
+            throw new BusinessException(400, "积分不能为负数");
         }
         if (integralGrade.getBorrowAmount() == null
                 || integralGrade.getBorrowAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new RuntimeException("可借额度必须大于0");
+            throw new BusinessException(400, "可借额度必须大于0");
         }
     }
 }

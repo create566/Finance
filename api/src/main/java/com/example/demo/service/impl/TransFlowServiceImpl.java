@@ -7,6 +7,8 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo.entity.TransFlow;
 import com.example.demo.entity.User;
 import com.example.demo.enums.TransTypeEnum;
+import com.example.demo.exception.BusinessException;
+import com.example.demo.exception.ResourceNotFoundException;
 import com.example.demo.mapper.TransFlowMapper;
 import com.example.demo.mapper.UserMapper;
 import com.example.demo.service.*;
@@ -65,15 +67,16 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
     @Transactional(rollbackFor = Exception.class)
     public void recharge(Long userId, BigDecimal amount, String bankTransNo) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new RuntimeException("充值金额必须大于0");
+            throw new BusinessException(400, "充值金额必须大于0");
         }
         User user = userMapper.selectById(userId);
         if (user == null) {
-            throw new RuntimeException("用户不存在，充值失败");
+            throw new ResourceNotFoundException(404, "用户不存在，充值失败");
         }
         // 平台不操作余额，仅记录交易流水
         saveTransFlow(user, TransTypeEnum.RECHARGE.getCode(), TransTypeEnum.RECHARGE.getDesc(),
                 amount, "用户充值", bankTransNo);
+        userAccountService.updateBalance(userId, TransTypeEnum.RECHARGE, amount);
         int points = amount.intValue();
         if (points > 0) {
             userIntegralService.addIntegral(userId, points, "充值累计积分");
@@ -89,15 +92,16 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
     @Transactional(rollbackFor = Exception.class)
     public void withdraw(Long userId, BigDecimal amount, String bankTransNo) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new RuntimeException("提现金额必须大于0");
+            throw new BusinessException(400, "提现金额必须大于0");
         }
         User user = userMapper.selectById(userId);
         if (user == null) {
-            throw new RuntimeException("用户不存在，提现失败");
+            throw new ResourceNotFoundException(404, "用户不存在，提现失败");
         }
         // 平台不操作余额，仅记录交易流水
         saveTransFlow(user, TransTypeEnum.WITHDRAW.getCode(), TransTypeEnum.WITHDRAW.getDesc(),
                 amount, "用户提现", bankTransNo);
+        userAccountService.updateBalance(userId, TransTypeEnum.WITHDRAW, amount);
         log.info("提现流水已记录，userId={}, amount={}", userId, amount);
         messageService.sendWithdrawNotice(userId, amount);
     }
@@ -116,16 +120,22 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
      */
     @Override
     public boolean handleRechargeNotify(Map<String, Object> params) {
+        log.info("充值回调收到参数：{}", params);
         if (!BankSignUtil.isSignEquals(params)) {
             log.warn("充值回调验签失败，params={}", params);
             return false;
         }
         String agentUserId = (String) params.get("agentUserId");
-        String amountStr = (String) params.get("amount");
-        String transNo = (String) params.get("transNo");
-        String status = (String) params.get("status");
+        String amountStr = (String) params.getOrDefault("amount", params.get("chargeAmt"));
+        String transNo = (String) params.getOrDefault("transNo", params.get("agentBillNo"));
+        String status = (String) params.getOrDefault("status", params.get("resultCode"));
+
+        if ("0001".equals(status)) {
+            status = BANK_STATUS_SUCCESS;
+        }
 
         if (!BANK_STATUS_SUCCESS.equals(status)) {
+            log.warn("充值回调银行状态非成功，status={}", status);
             return true;
         }
         if (amountStr == null || !amountStr.matches(AMOUNT_REGEX)) {
@@ -154,14 +164,19 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
      */
     @Override
     public boolean handleWithdrawNotify(Map<String, Object> params) {
+        log.info("提现回调收到参数：{}", params);
         if (!BankSignUtil.isSignEquals(params)) {
             log.warn("提现回调验签失败，params={}", params);
             return false;
         }
         String agentUserId = (String) params.get("agentUserId");
-        String amountStr = (String) params.get("amount");
-        String transNo = (String) params.get("transNo");
-        String status = (String) params.get("status");
+        String amountStr = (String) params.getOrDefault("amount", params.get("fetchAmt"));
+        String transNo = (String) params.getOrDefault("transNo", params.get("agentBillNo"));
+        String status = (String) params.getOrDefault("status", params.get("resultCode"));
+
+        if ("0001".equals(status)) {
+            status = BANK_STATUS_SUCCESS;
+        }
 
         if (amountStr == null || !amountStr.matches(AMOUNT_REGEX)) {
             log.warn("提现回调金额非法，amount={}", amountStr);

@@ -8,6 +8,8 @@ import com.example.demo.client.SMSApiSmsClient;
 import com.example.demo.entity.UserBind;
 import com.example.demo.entity.User;
 import com.example.demo.enums.BorrowerAuthStatusEnum;
+import com.example.demo.exception.BusinessException;
+import com.example.demo.exception.ResourceNotFoundException;
 import com.example.demo.mapper.UserBindMapper;
 import com.example.demo.service.UserBindService;
 import com.example.demo.service.UserService;
@@ -41,6 +43,7 @@ public class UserBindServiceImpl extends ServiceImpl<UserBindMapper, UserBind> i
     public UserBind getByUserId(Long userId) {
         LambdaQueryWrapper<UserBind> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(UserBind::getUserId, userId);
+        queryWrapper.last("LIMIT 1");
         return userBindMapper.selectOne(queryWrapper);
     }
 
@@ -102,15 +105,15 @@ public class UserBindServiceImpl extends ServiceImpl<UserBindMapper, UserBind> i
     public String buildBindForm(Long userId, String code) {
         User user = userService.getById(userId);
         if (user == null) {
-            throw new RuntimeException("用户不存在");
+            throw new ResourceNotFoundException(404, "用户不存在");
         }
         // 前置校验1：必须先完成实名认证
         if (!BorrowerAuthStatusEnum.AUTHED.getCode().equals(user.getBorrowAuthStatus())) {
-            throw new RuntimeException("请先完成实名认证");
+            throw new BusinessException(400, "请先完成实名认证");
         }
         // 前置校验2：短信验证码
         if (code == null || !Boolean.TRUE.equals(smsApiSmsClient.checkCode(user.getMobile(), code).get("data"))) {
-            throw new RuntimeException("验证码错误或已过期");
+            throw new BusinessException(400, "验证码错误或已过期");
         }
 
         Map<String, Object> paramMap = new HashMap<>();

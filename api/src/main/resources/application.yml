@@ -2,9 +2,13 @@ server:
   port: 8990
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/www_finance?serverTimezone=GMT%2B8&characterEncoding=utf-8
+    url: jdbc:mysql://localhost:3306/ww_finance?serverTimezone=GMT%2B8&characterEncoding=utf-8
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:123456}
   redis:
@@ -15,8 +19,8 @@ spring:
     nacos:
       discovery:
         server-addr: localhost:8848
-        enabled: true
-        register-enabled: true
+        enabled: false
+        register-enabled: false
     sentinel:
       enabled: false
   autoconfigure:
@@ -45,14 +49,37 @@ security:
     sign-key: ${BANK_SIGN_KEY:change-bank-sign-key-in-prod}
     agent-id: ${BANK_AGENT_ID:999888}
 
+# 文件存储配置（可动态切换存储策略）
+file:
+  storage:
+    # 存储策略：local=本地存储, aliyun=阿里云OSS, tencent=腾讯云COS, minio=MinIO
+    strategy: ${FILE_STORAGE_STRATEGY:local}
+
+    # 本地存储配置
+    local:
+      base-path: ${FILE_LOCAL_PATH:D:/桌面/实训/demo/uploads}
+      url-prefix: ${FILE_LOCAL_URL_PREFIX:/api/knowledge/files}
+
+    # 阿里云OSS配置（未来扩展用，当前不启用）
+    # aliyun:
+    #   endpoint: oss-cn-hangzhou.aliyuncs.com
+    #   access-key-id: your-access-key-id
+    #   access-key-secret: your-access-key-secret
+    #   bucket-name: your-bucket-name
+
+# AI服务配置
+ai:
+  embedding:
+    service-url: ${AI_EMBEDDING_URL:http://localhost:8081/ai/knowledge/embedding}
+
+bank-datasource:
+  url: jdbc:mysql://rm-uf6ry261ghx3995253o.mysql.rds.aliyuncs.com:3306/ww_bank?serverTimezone=GMT%2B8&characterEncoding=utf-8
+  username: shangqiuedu
+  password: shangqiuedu_kakdadajeLo90
+  driver-class-name: com.mysql.cj.jdbc.Driver
+
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml
   type-aliases-package: com.example.demo.entity
   configuration:
     map-underscore-to-camel-case: true
-
-devtools:
-  restart:
-    enabled: false
-    additional-paths: src/main/java
-    exclude: WEB-INF/**

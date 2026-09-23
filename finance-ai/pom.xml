@@ -112,6 +112,12 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-advisors-vector-store</artifactId>
         </dependency>
+
+        <!-- spring‑ai chroma 依赖 -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring‑ai‑chroma‑store‑spring‑boot‑starter</artifactId>
+        </dependency>
         <!-- 注意：Spring AI 1.1.x 已废弃 spring-ai-core 模块，ChatMemory / InMemoryChatMemory 等类已搬迁至
              spring-ai-model（由 spring-ai-alibaba-starter-dashscope 间接引入），无需也无法引用 spring-ai-core，
              否则 Maven 只能拉到旧版 1.0.0-M6 的 jar，会导致与 1.1.x 其他模块签名冲突，运行期抛 AbstractMethodError。 -->

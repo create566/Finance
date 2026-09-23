@@ -18,9 +18,8 @@ public class UserLoginRecordServiceImpl extends ServiceImpl<UserLoginRecordMappe
     public Page<UserLoginRecord> adminPageList(Integer pageNum, Integer pageSize, String keyword, Integer loginResult) {
         Page<UserLoginRecord> pageParam = new Page<>(pageNum, pageSize);
         LambdaQueryWrapper<UserLoginRecord> wrapper = new LambdaQueryWrapper<>();
-        wrapper.like(keyword != null && !keyword.isEmpty(), UserLoginRecord::getUsername, keyword);
-        wrapper.eq(loginResult != null, UserLoginRecord::getLoginResult, loginResult);
-        wrapper.orderByDesc(UserLoginRecord::getLoginTime);
+        wrapper.like(keyword != null && !keyword.isEmpty(), UserLoginRecord::getIp, keyword);
+        wrapper.orderByDesc(UserLoginRecord::getCreateTime);
         return this.page(pageParam, wrapper);
     }
 }

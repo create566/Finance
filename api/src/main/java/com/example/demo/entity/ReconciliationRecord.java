@@ -28,8 +28,6 @@ public class ReconciliationRecord implements Serializable {
 
     private BigDecimal amount;
 
-    private String platformTransNo;
-
     private String bankTransNo;
 
     private Integer status;

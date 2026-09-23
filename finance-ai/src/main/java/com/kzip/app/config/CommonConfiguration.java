@@ -17,8 +17,22 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import org.springframework.ai.chroma.ChromaVectorStore;
+import org.springframework.ai.chroma.client.ChromaApi;
+
 @Configuration
 public class CommonConfiguration {
+
+
+    @Bean
+    public VectorStore vectorStore(ChromaApi chromaApi, EmbeddingModel embeddingModel) {
+        // 指定chroma集合名称，RAG全部文档存入这个集合
+        return ChromaVectorStore.builder(chromaApi, embeddingModel)
+                .collectionName("pdf_rag_collection")
+                .build();
+    }
+
+
 
     @Bean
     public VectorStore vectorStore(EmbeddingModel embeddingModel) {

@@ -176,6 +176,34 @@ public class CommonConfiguration {
     //  当前你这个 Demo 项目单厂商足够，场景 2 的代码我就不写到 Bean 里了，避免引入不必要的依赖。
     // ======================================================================================
 
+    // ---- ① Bean 级别：知识库 RAG 聊天（qwen-plus + 向量检索） ----
+    @Bean
+    public ChatClient knowledgeChatClient(
+            ChatModel model,
+            ChatMemory chatMemory,
+            VectorStore vectorStore) {
+
+        System.out.println("【knowledgeChatClient 注入的 ChatModel】实现类 = " + model.getClass().getName());
+
+        return ChatClient.builder(model)
+                .defaultOptions(DashScopeChatOptions.builder()
+                        .withModel("qwen-plus")
+                        .withTemperature(0.2)
+                        .build())
+                .defaultSystem("请根据提供的上下文回答问题，如果上下文没有相关信息，请如实告知用户。")
+                .defaultAdvisors(
+                        MessageChatMemoryAdvisor.builder(chatMemory).build(),
+                        new SimpleLoggerAdvisor(),
+                        QuestionAnswerAdvisor.builder(vectorStore)
+                                .searchRequest(SearchRequest.builder()
+                                        .similarityThreshold(0.5d)
+                                        .topK(3)
+                                        .build())
+                                .build()
+                )
+                .build();
+    }
+
     @Bean
     public ChatMemory chatMemory() {
         // Spring AI 1.1.x 架构：ChatMemory 接口的实现改为 MessageWindowChatMemory，

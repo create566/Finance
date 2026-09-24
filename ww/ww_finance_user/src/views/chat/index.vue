@@ -5,6 +5,23 @@
         <h2>智能客服</h2>
         <span class="header-desc">AI助手为您解答金融问题</span>
       </div>
+      <div class="header-center">
+        <el-select
+          v-model="selectedKbId"
+          placeholder="选择知识库（可选）"
+          size="small"
+          clearable
+          style="width: 180px"
+          @change="onKbChange"
+        >
+          <el-option
+            v-for="kb in knowledgeBases"
+            :key="kb.id"
+            :label="kb.name"
+            :value="kb.id"
+          />
+        </el-select>
+      </div>
       <div class="header-right">
         <el-button v-if="sessionId" type="danger" plain size="small" @click="handleCloseSession">结束会话</el-button>
         <el-button type="primary" size="small" @click="handleClearChat">清空对话</el-button>
@@ -65,15 +82,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { askAI, closeSession, type ChatMessage } from '@/api/chat'
+import { askAI, askKnowledgeAI, getKnowledgeBases, closeSession, type ChatMessage, type KnowledgeBase } from '@/api/chat'
 
 const chatBodyRef = ref<HTMLElement>()
 const messages = ref<ChatMessage[]>([])
 const inputText = ref('')
 const loading = ref(false)
 const sessionId = ref<number | null>(null)
+const selectedKbId = ref<number | null>(null)
+const knowledgeBases = ref<KnowledgeBase[]>([])
 
 const quickQuestions = [
   '借款利率是多少？',
@@ -98,10 +117,20 @@ async function handleSend() {
   loading.value = true
 
   try {
-    const result = await askAI({
-      question: text,
-      sessionId: sessionId.value || undefined,
-    })
+    let result: { answer: string; sessionId: number }
+
+    if (selectedKbId.value) {
+      result = await askKnowledgeAI({
+        question: text,
+        knowledgeBaseId: selectedKbId.value,
+        sessionId: sessionId.value || undefined,
+      })
+    } else {
+      result = await askAI({
+        question: text,
+        sessionId: sessionId.value || undefined,
+      })
+    }
 
     if (result.sessionId) {
       sessionId.value = result.sessionId
@@ -149,6 +178,13 @@ function handleClearChat() {
   sessionId.value = null
 }
 
+function onKbChange() {
+  // 切换知识库时清空当前对话，避免上下文混乱
+  if (messages.value.length > 0) {
+    handleClearChat()
+  }
+}
+
 function formatContent(content: string): string {
   if (!content) return ''
   return content
@@ -165,6 +201,14 @@ function scrollToBottom() {
     }
   })
 }
+
+onMounted(async () => {
+  try {
+    knowledgeBases.value = await getKnowledgeBases()
+  } catch {
+    // 知识库加载失败不影响正常聊天
+  }
+})
 </script>
 
 <style scoped>
@@ -196,6 +240,12 @@ function scrollToBottom() {
 .header-desc {
   font-size: 12px;
   opacity: 0.8;
+}
+
+.header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
 }
 
 .header-right {

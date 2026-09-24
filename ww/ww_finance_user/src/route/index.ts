@@ -51,6 +51,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '标的列表' },
       },
       {
+        path: 'invest/detail/:id',
+        name: 'InvestDetail',
+        component: () => import('@/views/invest/detail.vue'),
+        meta: { title: '标的详情' },
+      },
+      {
         path: 'invest/my',
         name: 'MyInvest',
         component: () => import('@/views/invest/my.vue'),

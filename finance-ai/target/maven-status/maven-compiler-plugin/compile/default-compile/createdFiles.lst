@@ -57,6 +57,7 @@ com\kzip\app\config\AsyncConfig.class
 com\kzip\app\service\ModelConfigService.class
 com\kzip\app\service\impl\ModelConfigServiceImpl.class
 com\kzip\app\service\KnowledgeEmbeddingService.class
+com\kzip\app\config\MyMetaObjectHandler.class
 com\kzip\app\service\impl\PromptConfigServiceImpl.class
 com\kzip\app\mapper\ModelConfigMapper.class
 com\kzip\app\controller\GlobalResponseAdvice.class

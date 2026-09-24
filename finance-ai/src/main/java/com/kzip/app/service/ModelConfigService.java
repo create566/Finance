@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.kzip.app.entity.ModelConfig;
 
 import java.util.List;
+import java.util.Map;
 
 public interface ModelConfigService extends IService<ModelConfig> {
 
@@ -14,4 +15,6 @@ public interface ModelConfigService extends IService<ModelConfig> {
     boolean updateWithCheck(ModelConfig config);
 
     boolean removeConfig(Long id);
+
+    Map<String, Object> testConnect(Long id);
 }

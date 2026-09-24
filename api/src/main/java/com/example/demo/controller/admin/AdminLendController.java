@@ -9,6 +9,7 @@ import com.example.demo.service.LendItemService;
 import com.example.demo.service.LendReturnService;
 import com.example.demo.service.LendService;
 import com.example.demo.utils.LendNoUtils;
+import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -73,7 +74,7 @@ public class AdminLendController {
             return new PccAjaxResult(200, "获取标的列表成功", data);
         } catch (Exception e) {
             log.error("查询标的列表失败: {}", e.getMessage(), e);
-            return new PccAjaxResult(500, "查询标的列表失败: " + e.getMessage(), null);
+            return new PccAjaxResult(500, "查询标的列表失败: " + getErrMsg(e), null);
         }
     }
 
@@ -148,7 +149,7 @@ public class AdminLendController {
             return new PccAjaxResult(400, "参数格式错误: " + e.getMessage(), null);
         } catch (Exception e) {
             log.error("创建标的失败: {}", e.getMessage(), e);
-            return new PccAjaxResult(500, "创建标的失败: " + e.getMessage(), null);
+            return new PccAjaxResult(500, "创建标的失败: " + getErrMsg(e), null);
         }
     }
 
@@ -172,7 +173,7 @@ public class AdminLendController {
             }
         } catch (Exception e) {
             log.error("下架标的失败: id={}, error={}", id, e.getMessage(), e);
-            return new PccAjaxResult(500, "下架失败: " + e.getMessage(), null);
+            return new PccAjaxResult(500, "下架失败: " + getErrMsg(e), null);
         }
     }
 
@@ -196,7 +197,7 @@ public class AdminLendController {
             }
         } catch (Exception e) {
             log.error("发布标的失败: id={}, error={}", id, e.getMessage(), e);
-            return new PccAjaxResult(500, "发布失败: " + e.getMessage(), null);
+            return new PccAjaxResult(500, "发布失败: " + getErrMsg(e), null);
         }
     }
 
@@ -256,7 +257,7 @@ public class AdminLendController {
             return new PccAjaxResult(200, "获取投资列表成功", data);
         } catch (Exception e) {
             log.error("查询投资列表失败: projectId={}, error={}", id, e.getMessage(), e);
-            return new PccAjaxResult(500, "查询投资列表失败: " + e.getMessage(), null);
+            return new PccAjaxResult(500, "查询投资列表失败: " + getErrMsg(e), null);
         }
     }
 
@@ -278,7 +279,7 @@ public class AdminLendController {
             return new PccAjaxResult(200, "生成放款表单成功", data);
         } catch (Exception e) {
             log.error("生成放款表单失败: projectId={}, error={}", id, e.getMessage(), e);
-            return new PccAjaxResult(500, "生成放款表单失败: " + e.getMessage(), null);
+            return new PccAjaxResult(500, "生成放款表单失败: " + getErrMsg(e), null);
         }
     }
 
@@ -298,7 +299,7 @@ public class AdminLendController {
             return new PccAjaxResult(200, "获取还款计划成功", list);
         } catch (Exception e) {
             log.error("查询还款计划失败: projectId={}, error={}", id, e.getMessage(), e);
-            return new PccAjaxResult(500, "查询还款计划失败: " + e.getMessage(), null);
+            return new PccAjaxResult(500, "查询还款计划失败: " + getErrMsg(e), null);
         }
     }
 
@@ -316,7 +317,15 @@ public class AdminLendController {
             return new PccAjaxResult(200, "逾期扫描完成，处理记录数：" + count, count);
         } catch (Exception e) {
             log.error("逾期扫描失败: error={}", e.getMessage(), e);
-            return new PccAjaxResult(500, "逾期扫描失败: " + e.getMessage(), null);
+            return new PccAjaxResult(500, "逾期扫描失败: " + getErrMsg(e), null);
         }
+    }
+
+    private String getErrMsg(Exception e) {
+        if (e instanceof ResourceNotFoundException) {
+            String msg = ((ResourceNotFoundException) e).getMsg();
+            if (msg != null) return msg;
+        }
+        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
     }
 }

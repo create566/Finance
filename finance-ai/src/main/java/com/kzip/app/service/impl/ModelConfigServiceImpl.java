@@ -10,7 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -65,5 +67,49 @@ public class ModelConfigServiceImpl extends ServiceImpl<ModelConfigMapper, Model
     @Override
     public boolean removeConfig(Long id) {
         return this.removeById(id);
+    }
+
+    @Override
+    public Map<String, Object> testConnect(Long id) {
+        Map<String, Object> result = new HashMap<>();
+        ModelConfig config = this.getById(id);
+        if (config == null) {
+            result.put("success", false);
+            result.put("latency", 0);
+            result.put("message", "模型配置不存在");
+            return result;
+        }
+        if (!StringUtils.hasText(config.getApiUrl())) {
+            result.put("success", false);
+            result.put("latency", 0);
+            result.put("message", "API地址未配置");
+            return result;
+        }
+        long start = System.currentTimeMillis();
+        try {
+            java.net.URL url = new java.net.URL(config.getApiUrl());
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(5000);
+            conn.setRequestMethod("HEAD");
+            int code = conn.getResponseCode();
+            conn.disconnect();
+            long latency = System.currentTimeMillis() - start;
+            if (code >= 200 && code < 500) {
+                result.put("success", true);
+                result.put("latency", latency);
+                result.put("message", "连接成功");
+            } else {
+                result.put("success", false);
+                result.put("latency", latency);
+                result.put("message", "HTTP " + code);
+            }
+        } catch (Exception e) {
+            long latency = System.currentTimeMillis() - start;
+            result.put("success", false);
+            result.put("latency", latency);
+            result.put("message", e.getMessage());
+        }
+        return result;
     }
 }

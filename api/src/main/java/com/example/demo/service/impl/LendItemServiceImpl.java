@@ -85,7 +85,7 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
             throw new ResourceNotFoundException(500, "用户不存在");
         }
         if (!UserTypeEnum.INVESTOR.getCode().equals(user.getUserType())) {
-            throw new ResourceNotFoundException(500, "只有投资人才能投标");
+            throw new ResourceNotFoundException(500, "你不是投资人，请去认证投资人");
         }
 
         // 2. 校验绑卡

@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/ai/admin/model/config")
@@ -56,5 +57,11 @@ public class AdminModelConfigController {
         boolean ok = modelConfigService.removeConfig(id);
         return ok ? Result.success("删除成功", null)
                 : Result.error(500, "删除失败");
+    }
+
+    @PostMapping("/test/{id}")
+    public Result<Map<String, Object>> testConnect(@PathVariable Long id) {
+        Map<String, Object> result = modelConfigService.testConnect(id);
+        return Result.success("测试完成", result);
     }
 }

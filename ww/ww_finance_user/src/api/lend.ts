@@ -47,8 +47,8 @@ export function getLendDetail(id: number): Promise<LendDetail> {
   })
 }
 
-export function investLend(lendId: number, data: { amount: number }): Promise<null> {
-  return request<null>({
+export function investLend(lendId: number, data: { amount: number }): Promise<string> {
+  return request<string>({
     url: `/core/lend/invest/${lendId}`,
     method: 'post',
     data,

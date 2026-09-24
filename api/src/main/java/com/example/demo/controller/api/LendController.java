@@ -6,6 +6,7 @@ import com.example.demo.entity.LendItem;
 import com.example.demo.service.LendItemService;
 import com.example.demo.service.LendService;
 import com.example.demo.utils.LoginUserContext;
+import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -81,7 +82,11 @@ public class LendController {
             return new PccAjaxResult(200, "投标表单生成成功", formHtml);
         } catch (Exception e) {
             log.error("投标失败，lendId={}, userId={}, amount={}", lendId, userIdInt, amount, e);
-            return new PccAjaxResult(500, "投标失败：" + e.getClass().getSimpleName() + " - " + e.getMessage());
+            String errMsg = e.getMessage();
+            if (e instanceof ResourceNotFoundException) {
+                errMsg = ((ResourceNotFoundException) e).getMsg();
+            }
+            return new PccAjaxResult(500, "投标失败：" + (errMsg != null ? errMsg : e.getClass().getSimpleName()));
         }
     }
 
@@ -129,7 +134,11 @@ public class LendController {
         } catch (Exception e) {
             Map<String, Object> errInfo = new HashMap<>();
             errInfo.put("exception", e.getClass().getName());
-            errInfo.put("message", e.getMessage());
+            String errMsg = e.getMessage();
+            if (e instanceof ResourceNotFoundException) {
+                errMsg = ((ResourceNotFoundException) e).getMsg();
+            }
+            errInfo.put("message", errMsg);
             if (e.getCause() != null) {
                 errInfo.put("cause", e.getCause().getClass().getName() + ": " + e.getCause().getMessage());
             }

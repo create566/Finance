@@ -16,6 +16,12 @@
       <div v-if="visible" class="chat-popup">
         <div class="popup-header" @mousedown="startPopupDrag">
           <span>🤖 智能客服</span>
+          <div class="popup-kb-select">
+            <select v-model="selectedKbId" class="kb-select" @change="onKbChange">
+              <option :value="null">通用模式</option>
+              <option v-for="kb in knowledgeBases" :key="kb.id" :value="kb.id">{{ kb.name }}</option>
+            </select>
+          </div>
           <div class="popup-actions">
             <span class="action-btn" title="清空对话" @click.stop="clearChat">🗑</span>
             <span class="action-btn" title="关闭窗口" @click.stop="visible = false">✕</span>
@@ -77,7 +83,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted, onUnmounted } from 'vue'
-import { askAIStream, abortStream } from '@/api/chat'
+import { askAIStream, askKnowledgeAIStream, abortStream, getKnowledgeBases, type KnowledgeBase } from '@/api/chat'
 
 interface Message {
   role: 'user' | 'assistant'

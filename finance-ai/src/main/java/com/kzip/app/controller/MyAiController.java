@@ -65,7 +65,7 @@ public class MyAiController {
     }
 
 
-    @RequestMapping(value = "/chat", produces = "text/html;charset=UTF-8")
+    @RequestMapping(value = "/rag-chat", produces = "text/html;charset=UTF-8")
     public Flux<String> chat(String prompt, String chatId) {
         chatRepository.save("pdf", chatId);
         Resource file = fileRepository.getFile(chatId);

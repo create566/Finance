@@ -1,14 +1,16 @@
 package com.kzip.app.config;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestTemplate;
 
-@Slf4j
 @Configuration
 public class AiModuleConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(AiModuleConfig.class);
 
     @Value("${api.module.callback-url:http://localhost:8990/admin/core/knowledge}")
     private String apiCallbackUrl;

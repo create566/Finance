@@ -39,6 +39,13 @@ const returnMethodOptions = [
   { label: '一次还本付息', value: 4 },
 ]
 
+const returnMethodMap: Record<number, string> = {
+  1: '等额本息',
+  2: '等额本金',
+  3: '每月还息一次还本',
+  4: '一次还本付息',
+}
+
 const moneyUseOptions = [
   { label: '消费', value: 1 },
   { label: '经营', value: 2 },
@@ -92,6 +99,29 @@ onMounted(fetchStatus)
       :closable="false"
       style="margin-bottom: 16px"
     />
+
+    <el-card v-if="borrowStatus?.hasApply" shadow="never" style="margin-bottom: 16px">
+      <template #header>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-weight:600">申请状态</span>
+          <el-tag v-if="borrowStatus.borrowInfo?.status === 0" type="info">草稿</el-tag>
+          <el-tag v-else-if="borrowStatus.borrowInfo?.status === 1" type="warning">审核中</el-tag>
+          <el-tag v-else-if="borrowStatus.borrowInfo?.status === 2" type="success">审核通过</el-tag>
+          <el-tag v-else-if="borrowStatus.borrowInfo?.status === -1" type="danger">审核拒绝</el-tag>
+          <el-tag v-else type="info">未知</el-tag>
+        </div>
+      </template>
+      <el-descriptions :column="2" border size="small">
+        <el-descriptions-item label="借款金额">¥{{ borrowStatus.borrowInfo?.amount?.toFixed(2) }}</el-descriptions-item>
+        <el-descriptions-item label="借款期限">{{ borrowStatus.borrowInfo?.period }} 个月</el-descriptions-item>
+        <el-descriptions-item label="年化利率">{{ borrowStatus.borrowInfo?.borrowYearRate }}%</el-descriptions-item>
+        <el-descriptions-item label="还款方式">
+          {{ returnMethodMap[borrowStatus.borrowInfo?.returnMethod] || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="提交时间">{{ borrowStatus.borrowInfo?.createTime }}</el-descriptions-item>
+        <el-descriptions-item label="更新时间">{{ borrowStatus.borrowInfo?.updateTime }}</el-descriptions-item>
+      </el-descriptions>
+    </el-card>
 
     <el-card shadow="never">
       <el-form ref="formRef" :model="formData" :rules="formRules" label-width="120px">

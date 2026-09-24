@@ -4,15 +4,14 @@ server:
 spring:
   ai:
     dashscope:
-      api-key: sk-ws-H.EPYXDML.ereg.MEQCIBnNTDppiYeUvdWedRUYufPP0jBhq-g8Nv8xpdw_EEq7AiANS0OKaprV4QijpqpNySB-W0KgUQNQ3pHooX0XHKKP0w
+      api-key: sk-ws-H.PLMEYEH.oPjQ.MEYCIQCCdaRzX7ouq3QBMgyJJD99r393HUImT16W_Q4U0FsUjgIhANcFXE8GyVKeVJhdnjXXUAdZEHjWnCZQ-es4mGNeF1Zx
       chat:
         options:
-          model: qwen-turbo
+          model: qwen3.8-max
           temperature: 0.7
       embedding:
         options:
-          model: text-embedding-v3
-          dimensions: 1024
+          model: qwen3.7-text-embedding-flash
       chroma:
         client:
           host: 127.0.0.1
@@ -30,12 +29,18 @@ spring:
     multipart:
       max-file-size: 20MB
       max-request-size: 30MB
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/ww_finance?serverTimezone=GMT%2B8&characterEncoding=utf-8
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
   # 跨域配置已迁移到 com.kzip.app.config.CorsConfig（Java 配置类）
   # 之前的 spring.mvc.cors.mappings 已删除，避免与 Java 配置重复/覆盖
 
 # API模块集成配置（用于回调）
 api:
   module:
+    base-url: ${API_BASE_URL:http://localhost:8990}
     callback-url: ${API_CALLBACK_URL:http://localhost:8990/admin/core/knowledge}
     health-url: ${API_HEALTH_URL:http://localhost:8990/admin/core/knowledge/health}
 
@@ -44,3 +49,10 @@ chromadb:
   host: ${CHROMADB_HOST:127.0.0.1}
   port: ${CHROMADB_PORT:8000}
   auto-start: ${CHROMADB_AUTO_START:false}  # 是否自动启动ChromaDB（需要Python环境）
+
+# MyBatis-Plus配置
+mybatis-plus:
+  mapper-locations: classpath:mapper/**/*.xml
+  type-aliases-package: com.kzip.app.entity
+  configuration:
+    map-underscore-to-camel-case: true

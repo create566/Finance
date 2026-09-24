@@ -27,7 +27,7 @@ const formRules: FormRules = {
 
 function setTokenCookie(token: string) {
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString()
-  document.cookie = `token=${encodeURIComponent(token)}; expires=${expires}; path=/`
+  document.cookie = `user_token=${encodeURIComponent(token)}; expires=${expires}; path=/`
 }
 
 function handleLogin() {

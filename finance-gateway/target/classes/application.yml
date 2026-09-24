@@ -31,3 +31,7 @@ spring:
         uri: lb://service-oss
         predicates:
         - Path=/*/oss/**
+      - id: service-ai
+        uri: lb://app
+        predicates:
+        - Path=/*/ai/**

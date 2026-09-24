@@ -2,9 +2,8 @@ package com.kzip.app.repository;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
@@ -19,15 +18,18 @@ import java.util.Objects;
 import java.util.Properties;
 
 
-@Slf4j
-@RequiredArgsConstructor
 @Component
-public class LocalPdfFileRepository  implements  FileRepository {
+public class LocalPdfFileRepository implements FileRepository {
+
+    private static final Logger log = LoggerFactory.getLogger(LocalPdfFileRepository.class);
 
     private final VectorStore vectorStore;
 
-    // 会话id 与 文件名的对应关系，方便查询会话历史时重新加载文件
     private final Properties chatFiles = new Properties();
+
+    public LocalPdfFileRepository(VectorStore vectorStore) {
+        this.vectorStore = vectorStore;
+    }
 
 
     @Override
@@ -64,11 +66,12 @@ public class LocalPdfFileRepository  implements  FileRepository {
                 throw new RuntimeException(e);
             }
         }
-        FileSystemResource vectorResource = new FileSystemResource("chat-pdf.json");
-        if (vectorResource.exists()) {
-            // SimpleVectorStore 支持持久化，启动时从 JSON 重新加载向量数据
-            SimpleVectorStore simpleVectorStore = (SimpleVectorStore) vectorStore;
-            simpleVectorStore.load(vectorResource);
+        // ChromaVectorStore 由 ChromaDB 持久化，无需从 JSON 加载
+        if (vectorStore instanceof org.springframework.ai.vectorstore.SimpleVectorStore simpleStore) {
+            FileSystemResource vectorResource = new FileSystemResource("chat-pdf.json");
+            if (vectorResource.exists()) {
+                simpleStore.load(vectorResource);
+            }
         }
     }
 
@@ -76,11 +79,16 @@ public class LocalPdfFileRepository  implements  FileRepository {
     private void persistent() {
         try {
             chatFiles.store(new FileWriter("chat-pdf.properties"), LocalDateTime.now().toString());
-            // 进程退出前把 SimpleVectorStore 里的向量数据保存到 JSON，下次启动可恢复
-            SimpleVectorStore simpleVectorStore = (SimpleVectorStore) vectorStore;
-            simpleVectorStore.save(new File("chat-pdf.json"));
         } catch (IOException e) {
             throw new RuntimeException(e);
+        }
+        // ChromaVectorStore 由 ChromaDB 持久化，无需保存到 JSON
+        if (vectorStore instanceof org.springframework.ai.vectorstore.SimpleVectorStore simpleStore) {
+            try {
+                simpleStore.save(new File("chat-pdf.json"));
+            } catch (Exception e) {
+                log.error("Failed to save vector store", e);
+            }
         }
     }
 }

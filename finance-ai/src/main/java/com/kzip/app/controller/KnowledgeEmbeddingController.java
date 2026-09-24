@@ -1,25 +1,23 @@
 package com.kzip.app.controller;
 
 import com.kzip.app.service.KnowledgeEmbeddingService;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
 
-@Api(tags = "知识库向量嵌入")
 @RestController
 @RequestMapping("/ai/knowledge/embedding")
-@Slf4j
 public class KnowledgeEmbeddingController {
+
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeEmbeddingController.class);
 
     @Autowired
     private KnowledgeEmbeddingService knowledgeEmbeddingService;
 
-    @ApiOperation("计算分块数量")
     @PostMapping("/chunkCount")
     public Map<String, Object> calculateChunkCount(@RequestBody Map<String, String> params) {
         String content = params.get("content");
@@ -37,7 +35,6 @@ public class KnowledgeEmbeddingController {
         return result;
     }
 
-    @ApiOperation("触发文档向量化")
     @PostMapping("/process")
     public Map<String, Object> processDocument(@RequestBody Map<String, Object> params) {
         Long docId = Long.valueOf(params.get("docId").toString());

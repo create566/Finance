@@ -13,12 +13,15 @@ import com.example.demo.service.KnowledgeBaseService;
 import com.example.demo.service.KnowledgeDocService;
 import com.example.demo.service.strategy.FileStorageStrategy;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -120,13 +123,15 @@ public class KnowledgeDocServiceImpl extends ServiceImpl<KnowledgeDocMapper, Kno
             String originalFileName = file.getOriginalFilename();
             int fileSizeKB = (int) Math.ceil((double) file.getSize() / 1024);
 
-            String fileUrl = fileStorageStrategy.upload(file, "knowledge");
+            byte[] fileBytes = file.getBytes();
+            String pdfText = extractPdfText(fileBytes, originalFileName);
+            String fileUrl = fileStorageStrategy.upload(fileBytes, originalFileName, "knowledge");
 
             KnowledgeDoc doc = new KnowledgeDoc();
             doc.setKbId(kbId);
             doc.setTitle(title.trim());
             doc.setSource("pdf");
-            doc.setContent("");
+            doc.setContent(pdfText);
             doc.setFileName(originalFileName);
             doc.setFileSize(fileSizeKB);
             doc.setFileUrl(fileUrl);
@@ -139,7 +144,7 @@ public class KnowledgeDocServiceImpl extends ServiceImpl<KnowledgeDocMapper, Kno
             }
 
             knowledgeBaseService.updateStatistics(kbId);
-            triggerEmbeddingFromAI(doc.getId(), "PDF_FILE:" + extractFileNameFromUrl(fileUrl), kbId);
+            triggerEmbeddingFromAI(doc.getId(), pdfText, kbId);
 
             Map<String, Object> result = new HashMap<>();
             result.put("id", doc.getId());
@@ -288,6 +293,23 @@ public class KnowledgeDocServiceImpl extends ServiceImpl<KnowledgeDocMapper, Kno
             }
         } else {
             log.error("AI回调：文档状态更新失败: docId={}", docId);
+        }
+    }
+
+    private String extractPdfText(byte[] fileBytes, String fileName) {
+        try (PDDocument document = PDDocument.load(fileBytes)) {
+            PDFTextStripper stripper = new PDFTextStripper();
+            stripper.setSortByPosition(true);
+            String text = stripper.getText(document);
+            if (text == null || text.trim().isEmpty()) {
+                log.warn("PDF文件中未提取到文本内容，可能为扫描件或图片型PDF: fileName={}", fileName);
+                return "";
+            }
+            log.info("PDF文本提取成功: fileName={}, textLength={}", fileName, text.length());
+            return text;
+        } catch (IOException e) {
+            log.error("PDF文本提取失败: fileName={}, error={}", fileName, e.getMessage());
+            return "";
         }
     }
 }

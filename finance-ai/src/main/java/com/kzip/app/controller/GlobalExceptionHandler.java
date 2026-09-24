@@ -1,7 +1,8 @@
 package com.kzip.app.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -29,9 +30,10 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
  *   MethodArgumentNotValidException           → @Valid 参数校验失败
  *   Exception / RuntimeException              → 兜底，任何未显式处理的异常
  */
-@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     // ================================================================
     //  上传相关：不打印 ERROR，只记录 warn，避免控制台被大量堆栈刷屏

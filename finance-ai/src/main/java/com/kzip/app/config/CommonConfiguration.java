@@ -2,6 +2,7 @@ package com.kzip.app.config;
 
 
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
@@ -10,35 +11,60 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chroma.vectorstore.ChromaApi;
+import org.springframework.ai.chroma.vectorstore.ChromaVectorStore;
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.SimpleVectorStore;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestClient;
 
-import org.springframework.ai.chroma.ChromaVectorStore;
-import org.springframework.ai.chroma.client.ChromaApi;
+import java.lang.reflect.Field;
 
 @Configuration
 public class CommonConfiguration {
 
+    @Value("${spring.ai.chroma.client.host:127.0.0.1}")
+    private String chromaHost;
+
+    @Value("${spring.ai.chroma.client.port:8000}")
+    private int chromaPort;
+
+    @Bean
+    public ChromaApi chromaApi(ObjectMapper objectMapper) {
+        String baseUrl = "http://" + chromaHost + ":" + chromaPort;
+        return new ChromaApi(baseUrl, RestClient.builder(), objectMapper);
+    }
 
     @Bean
     public VectorStore vectorStore(ChromaApi chromaApi, EmbeddingModel embeddingModel) {
-        // 指定chroma集合名称，RAG全部文档存入这个集合
-        return ChromaVectorStore.builder(chromaApi, embeddingModel)
+        try {
+            chromaApi.createCollection("default_tenant", "default_database",
+                    new ChromaApi.CreateCollectionRequest("pdf_rag_collection"));
+        } catch (Exception e) {
+            // 集合已存在则忽略
+        }
+        ChromaVectorStore store = ChromaVectorStore.builder(chromaApi, embeddingModel)
                 .collectionName("pdf_rag_collection")
+                .initializeSchema(false)
                 .build();
+        try {
+            Field field = ChromaVectorStore.class.getDeclaredField("initialized");
+            field.setAccessible(true);
+            field.set(store, true);
+        } catch (Exception ex) {
+            // ignore
+        }
+        return store;
     }
-
-
 
     @Bean
-    public VectorStore vectorStore(EmbeddingModel embeddingModel) {
-        return SimpleVectorStore.builder(embeddingModel).build();
+    public TokenTextSplitter tokenTextSplitter() {
+        return new TokenTextSplitter(500, 50, 1000, 0, false);
     }
-
 
 
     // ======================================================================================

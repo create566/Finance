@@ -8,6 +8,8 @@ public interface FileStorageStrategy {
 
     String upload(MultipartFile file, String category);
 
+    String upload(byte[] fileBytes, String originalFileName, String category);
+
     String uploadWithCustomName(MultipartFile file, String category, String customFileName);
 
     void delete(String fileUrl);

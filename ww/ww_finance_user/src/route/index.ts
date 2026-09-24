@@ -4,7 +4,7 @@ import Layout from '@/layout/index.vue'
 const whiteList = ['/login', '/register']
 
 function getToken(): string | null {
-  const match = document.cookie.match(/(?:^|;\s*)token=([^;]*)/)
+  const match = document.cookie.match(/(?:^|;\s*)user_token=([^;]*)/)
   return match ? decodeURIComponent(match[1]) : null
 }
 

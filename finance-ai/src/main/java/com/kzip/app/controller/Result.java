@@ -1,9 +1,7 @@
 package com.kzip.app.controller;
 
-import lombok.Data;
 import java.io.Serializable;
 
-@Data
 public class Result<T> implements Serializable {
 
     // 状态码，比如 200 成功，500 失败
@@ -16,6 +14,14 @@ public class Result<T> implements Serializable {
 
     // 构造方法私有，不允许外部直接 new，必须通过静态方法调用
     private Result() {}
+
+    // ============ getter/setter ============
+    public Integer getCode() { return code; }
+    public void setCode(Integer code) { this.code = code; }
+    public String getMsg() { return msg; }
+    public void setMsg(String msg) { this.msg = msg; }
+    public T getData() { return data; }
+    public void setData(T data) { this.data = data; }
 
     // ============ 成功的静态方法 ============
     public static <T> Result<T> success(T data) {

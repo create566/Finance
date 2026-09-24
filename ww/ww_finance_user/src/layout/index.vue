@@ -5,6 +5,7 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import type { MenuItem } from '@/config/menu'
 import { menuList } from '@/config/menu'
 import { logout as apiLogout, getUserInfo } from '@/api/user'
+import ChatBubble from '@/components/ChatBubble.vue'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -66,7 +67,7 @@ function doLogout() {
       try {
         await apiLogout()
       } catch {}
-      document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+      document.cookie = 'user_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
       localStorage.removeItem('userType')
       ElMessage.success('已退出登录')
       router.push('/login')
@@ -170,6 +171,8 @@ onMounted(fetchUserInfo)
       </el-main>
     </el-container>
   </el-container>
+
+  <ChatBubble />
 </template>
 
 <style scoped>

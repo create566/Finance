@@ -149,8 +149,11 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
         if (approved) {
             lendService.createLend(borrowInfo);
         }
-        // 借款审批结果通知（通过/拒绝都通知）
-        messageService.sendBorrowApprovalNotice(borrowInfo.getUserId(), approved, borrowInfo.getAmount());
+        try {
+            messageService.sendBorrowApprovalNotice(borrowInfo.getUserId(), approved, borrowInfo.getAmount());
+        } catch (Exception e) {
+            log.error("发送审批通知失败, borrowInfoId=" + borrowInfoId + ", error=" + e.getMessage(), e);
+        }
         return updated;
     }
 

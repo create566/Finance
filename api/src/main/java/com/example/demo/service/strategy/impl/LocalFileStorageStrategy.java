@@ -36,6 +36,35 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
     }
 
     @Override
+    public String upload(byte[] fileBytes, String originalFileName, String category) {
+        String extension = getFileExtension(originalFileName);
+        String newFileName = generateFileName(category, extension);
+
+        try {
+            String categoryPath = basePath + File.separator + category;
+            Path dirPath = Paths.get(categoryPath);
+
+            if (!Files.exists(dirPath)) {
+                Files.createDirectories(dirPath);
+                log.info("创建目录: {}", categoryPath);
+            }
+
+            String filePath = categoryPath + File.separator + newFileName;
+            Path targetPath = Paths.get(filePath);
+
+            Files.write(targetPath, fileBytes);
+
+            String fileUrl = urlPrefix + "/" + category + "/" + newFileName;
+
+            log.info("本地文件上传成功(byte[]): {} -> {}", newFileName, filePath);
+            return fileUrl;
+        } catch (IOException e) {
+            log.error("本地文件上传失败: {}", e.getMessage(), e);
+            throw new RuntimeException("文件上传失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
     public String uploadWithCustomName(MultipartFile file, String category, String customFileName) {
         try {
             String categoryPath = basePath + File.separator + category;

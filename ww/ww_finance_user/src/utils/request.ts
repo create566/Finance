@@ -9,7 +9,7 @@ export interface ApiResult<T = unknown> {
 }
 
 function getToken(): string | null {
-  const match = document.cookie.match(/(?:^|;\s*)token=([^;]*)/)
+  const match = document.cookie.match(/(?:^|;\s*)user_token=([^;]*)/)
   return match ? decodeURIComponent(match[1]) : null
 }
 
@@ -46,7 +46,7 @@ service.interceptors.response.use(
     }
     ElMessage.error(res?.msg || res?.message || '请求失败')
     if (res?.code === 401 || res?.code === 403) {
-      document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+      document.cookie = 'user_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
       if (!window.location.pathname.startsWith('/login')) {
         window.location.href = '/login'
       }

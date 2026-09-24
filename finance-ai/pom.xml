@@ -16,8 +16,13 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-ai-alibaba.version>1.1.2.2-retriever</spring-ai-alibaba.version>
-         <!-- 覆盖父 pom -->
-         <spring-boot.version>3.4.8</spring-boot.version>
+        <!-- 覆盖父 pom 的旧版本，适配 Spring Boot 3.4.8 -->
+        <spring-boot.version>3.4.8</spring-boot.version>
+        <jackson.version>2.18.2</jackson.version>
+        <spring-security.version>6.4.4</spring-security.version>
+        <!-- MyBatis-Plus 版本覆盖：父 pom 的 3.4.1 不兼容 Spring Boot 3.x -->
+        <mybatis-plus.version>3.5.7</mybatis-plus.version>
+        <mysql.version>8.0.33</mysql.version>
     </properties>
  
     <!--  依赖管理 -->
@@ -116,15 +121,37 @@
         <!-- spring‑ai chroma 依赖 -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring‑ai‑chroma‑store‑spring‑boot‑starter</artifactId>
+            <artifactId>spring-ai-chroma-store</artifactId>
         </dependency>
-        <!-- 注意：Spring AI 1.1.x 已废弃 spring-ai-core 模块，ChatMemory / InMemoryChatMemory 等类已搬迁至
-             spring-ai-model（由 spring-ai-alibaba-starter-dashscope 间接引入），无需也无法引用 spring-ai-core，
-             否则 Maven 只能拉到旧版 1.0.0-M6 的 jar，会导致与 1.1.x 其他模块签名冲突，运行期抛 AbstractMethodError。 -->
-        <!-- DashScope 向量模型（EmbeddingModel 自动装配，对应 text-embedding-v3） -->
+
+        <!-- MySQL + MyBatis-Plus（AI模块直接操作数据库） -->
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <version>${mybatis-plus.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.mybatis</groupId>
+            <artifactId>mybatis</artifactId>
+            <version>3.5.19</version>
+            <scope>compile</scope>
+        </dependency>
 
     </dependencies>
+
     <repositories>
+        <repository>
+            <id>spring-milestones</id>
+            <name>Spring Milestones</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
         <repository>
             <id>spring-snapshots</id>
             <name>Spring Snapshots</name>
@@ -158,6 +185,13 @@
                     <target>17</target>
                     <encoding>UTF-8</encoding>
                     <parameters>true</parameters>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.30</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
             <!-- 覆盖父 pom 的 2.3.4 spring-boot-maven-plugin -->

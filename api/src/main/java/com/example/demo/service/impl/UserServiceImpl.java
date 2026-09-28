@@ -153,7 +153,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
             updateById(user);
         }
         String token = TokenUtil.generateMerchantToken(user.getId().toString());
-        stringRedisTemplate.opsForValue().set("login:token:" + user.getId(), token, TOKEN_TTL, TimeUnit.SECONDS);
+        // Redis key 按角色命名空间隔离，避免用户与管理员主键相同导致会话互相顶掉
+        stringRedisTemplate.opsForValue().set("login:token:user:" + user.getId(), token, TOKEN_TTL, TimeUnit.SECONDS);
         saveLoginRecord(user.getId(), mobile, 1, 1);
         return token;
     }
@@ -165,12 +166,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
             saveLoginRecord(null, mobile, 0, 0);
             throw new ResourceNotFoundException(404, "用户不存在");
         }
-        if (!Boolean.TRUE.equals(smsApiSmsClient.checkCode(mobile, code).get("data"))) {
+        if (!checkSmsCode(mobile, code)) {
             saveLoginRecord(user.getId(), mobile, 0, 0);
             throw new BusinessException(400, "验证码错误或已过期");
         }
         String token = TokenUtil.generateMerchantToken(user.getId().toString());
-        stringRedisTemplate.opsForValue().set("login:token:" + user.getId(), token, TOKEN_TTL, TimeUnit.SECONDS);
+        stringRedisTemplate.opsForValue().set("login:token:user:" + user.getId(), token, TOKEN_TTL, TimeUnit.SECONDS);
         saveLoginRecord(user.getId(), mobile, 1, 1);
         return token;
     }
@@ -178,7 +179,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void register(UserDto userDTO) {
-        if (!Boolean.TRUE.equals(smsApiSmsClient.checkCode(userDTO.getMobile(), userDTO.getCode()).get("data"))) {
+        if (!checkSmsCode(userDTO.getMobile(), userDTO.getCode())) {
             throw new BusinessException(400, "验证码错误或已过期");
         }
         User exist = getByMobile(userDTO.getMobile());
@@ -273,15 +274,30 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
     }
 
     /**
-     * 记录登录日志
+     * 记录登录日志（登录结果与登录方式落库，供后台登录日志页筛选）
      */
     private void saveLoginRecord(Long userId, String username, int loginResult, int loginType) {
         try {
             UserLoginRecord record = new UserLoginRecord();
             record.setUserId(userId);
             record.setIp("127.0.0.1");
+            record.setLoginResult(loginResult);
+            record.setLoginType(loginType);
             userLoginRecordService.save(record);
         } catch (Exception e) {
+            log.warn("登录日志记录失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 校验短信验证码（Feign 调用容错：短信服务不可用时返回 false 并给出友好提示）
+     */
+    private boolean checkSmsCode(String mobile, String code) {
+        try {
+            return Boolean.TRUE.equals(smsApiSmsClient.checkCode(mobile, code).get("data"));
+        } catch (Exception e) {
+            log.error("短信验证码服务调用失败，mobile=" + mobile + ", error=" + e.getMessage());
+            throw new BusinessException(500, "短信服务不可用，请稍后再试");
         }
     }
 
@@ -290,9 +306,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
     }
 
     private boolean matchesPassword(String rawPassword, String storedPassword) {
-        if (storedPassword != null && storedPassword.equals(rawPassword)) {
-            return true;
-        }
+        // 仅允许 BCrypt 或历史 MD5 兼容两种方式，不接受明文直比（安全后门）
         if (isMd5Password(storedPassword)) {
             return MD5.encrypt(rawPassword).equals(storedPassword);
         }

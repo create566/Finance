@@ -101,6 +101,16 @@ public class GlobalExceptionHandler {
     }
 
     // ================================================================
+    //  数值转换异常
+    // ================================================================
+
+    @ExceptionHandler(NumberFormatException.class)
+    public Result<String> handleNumberFormat(NumberFormatException e) {
+        log.warn("参数格式错误：{}", e.getMessage());
+        return Result.fail("参数格式错误，期望数字类型：" + e.getMessage());
+    }
+
+    // ================================================================
     //  兜底：所有未显式处理的异常。这里需要打印完整堆栈，方便排查业务 bug
     // ================================================================
 

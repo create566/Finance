@@ -14,6 +14,16 @@ public class DateTimeTools {
     private static final ZoneId ZONE_CN = ZoneId.of("Asia/Shanghai");
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss zzzz");
 
+    private static final ThreadLocal<Boolean> toolCalled = ThreadLocal.withInitial(() -> false);
+
+    public static boolean wasToolCalled() {
+        return toolCalled.get();
+    }
+
+    public static void resetToolCalled() {
+        toolCalled.remove();
+    }
+
     /**
      * 当用户询问"现在几点了"、"当前时间"、"今天几号"、"星期几"等日期时间问题时调用此工具。
      * 返回中华人民共和国标准时间（北京时间，UTC+8 / Asia/Shanghai）。
@@ -27,7 +37,7 @@ public class DateTimeTools {
             格式如"2026-08-20 15:30:45 中国标准时间"。
             """)
     public String getCurrentDateTime() {
-        System.out.println("调用了getCurrentDateTime");
+        toolCalled.set(true);
         return ZonedDateTime.now(ZONE_CN).format(FMT);
     }
 }

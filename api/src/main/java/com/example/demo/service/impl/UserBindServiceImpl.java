@@ -48,6 +48,17 @@ public class UserBindServiceImpl extends ServiceImpl<UserBindMapper, UserBind> i
     }
 
     @Override
+    public UserBind getByBindCode(String bindCode) {
+        if (bindCode == null || bindCode.isEmpty()) {
+            return null;
+        }
+        LambdaQueryWrapper<UserBind> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(UserBind::getBindCode, bindCode);
+        queryWrapper.last("LIMIT 1");
+        return userBindMapper.selectOne(queryWrapper);
+    }
+
+    @Override
     public boolean isBind(String idCard) {
         LambdaQueryWrapper<UserBind> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(UserBind::getIdCard, idCard);
@@ -73,6 +84,12 @@ public class UserBindServiceImpl extends ServiceImpl<UserBindMapper, UserBind> i
         String bankType = (String) params.get("bankType");
         String agentUserId = (String) params.get("agentUserId");
         String status = (String) params.get("status");
+
+        // 必填参数校验：银行回调必须携带 bindCode 和 idCard
+        if (bindCode == null || bindCode.isEmpty() || idCard == null || idCard.isEmpty()) {
+            log.warn("绑卡回调缺少必填参数，bindCode={}, idCard={}", bindCode, idCard);
+            return false;
+        }
 
         User user = userService.getByMobile(agentUserId);
         if (user == null) {
@@ -111,9 +128,16 @@ public class UserBindServiceImpl extends ServiceImpl<UserBindMapper, UserBind> i
         if (!BorrowerAuthStatusEnum.AUTHED.getCode().equals(user.getBorrowAuthStatus())) {
             throw new BusinessException(400, "请先完成实名认证");
         }
-        // 前置校验2：短信验证码
-        if (code == null || !Boolean.TRUE.equals(smsApiSmsClient.checkCode(user.getMobile(), code).get("data"))) {
-            throw new BusinessException(400, "验证码错误或已过期");
+        // 前置校验2：短信验证码（Feign 调用容错）
+        try {
+            if (code == null || !Boolean.TRUE.equals(smsApiSmsClient.checkCode(user.getMobile(), code).get("data"))) {
+                throw new BusinessException(400, "验证码错误或已过期");
+            }
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("短信验证码服务调用失败，mobile=" + user.getMobile() + ", error=" + e.getMessage());
+            throw new BusinessException(500, "短信服务不可用，请稍后再试");
         }
 
         Map<String, Object> paramMap = new HashMap<>();
@@ -136,6 +160,11 @@ public class UserBindServiceImpl extends ServiceImpl<UserBindMapper, UserBind> i
         // 已绑定过：更新字段（防银行重复回调撞唯一键）
         UserBind exist = getByUserId(userBind.getUserId());
         if (exist != null) {
+            // 银行失败回调不应覆盖已成功的绑卡记录
+            if (exist.getStatus() != null && exist.getStatus() == 1 && userBind.getStatus() != 1) {
+                log.warn("已存在成功绑卡记录，忽略失败回调，userId={}", userBind.getUserId());
+                return exist;
+            }
             exist.setBindCode(userBind.getBindCode());
             exist.setIdCard(userBind.getIdCard());
             exist.setBankNo(userBind.getBankNo());

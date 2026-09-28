@@ -1,9 +1,11 @@
 package com.example.demo.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo.entity.BorrowInfo;
+import com.example.demo.entity.Lend;
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserBind;
 import com.example.demo.entity.dto.BorrowInfoDto;
@@ -58,9 +60,9 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
         boolean isDraft = dto.getIsDraft() != null && dto.getIsDraft();
 
         if (!isDraft) {
-            if (!UserTypeEnum.BORROWER.getCode().equals(user.getUserType())) {
-                throw new ResourceNotFoundException(500, "只有借款人才能提交借款申请");
-            }
+            // 身份校验：完成借款人实名认证即可申请借款。
+            // 注意不能要求 user_type == BORROWER：实名认证通过后不再覆盖 user_type
+            // （否则投资人被"降级"成借款人后将无法投标，形成死循环）
             if (!BorrowerAuthStatusEnum.AUTHED.getCode().equals(user.getBorrowAuthStatus())) {
                 throw new ResourceNotFoundException(500, "请先完成借款人实名认证");
             }
@@ -141,13 +143,27 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
             throw new ResourceNotFoundException(500, "只有审核中的申请才能审批");
         }
 
-        borrowInfo.setStatus(approved
-                ? BorrowInfoStatusEnum.APPROVED.getCode()
-                : BorrowInfoStatusEnum.REJECTED.getCode());
-        borrowInfo.setUpdateTime(LocalDateTime.now());
-        boolean updated = this.updateById(borrowInfo);
+        // 带状态条件的原子更新：两个管理员并发点"通过"时只有一个能更新成功
+        boolean updated = this.update(new LambdaUpdateWrapper<BorrowInfo>()
+                .eq(BorrowInfo::getId, borrowInfoId)
+                .eq(BorrowInfo::getStatus, BorrowInfoStatusEnum.AUDITING.getCode())
+                .set(BorrowInfo::getStatus, approved
+                        ? BorrowInfoStatusEnum.APPROVED.getCode()
+                        : BorrowInfoStatusEnum.REJECTED.getCode())
+                .set(BorrowInfo::getUpdateTime, LocalDateTime.now()));
+        if (!updated) {
+            log.warn("借款申请已被其他管理员处理，borrowInfoId=" + borrowInfoId);
+            return false;
+        }
         if (approved) {
-            lendService.createLend(borrowInfo);
+            // 防重复建标：一个借款申请只能生成一个标的
+            long exists = lendService.count(new LambdaQueryWrapper<Lend>()
+                    .eq(Lend::getBorrowInfoId, borrowInfoId));
+            if (exists == 0) {
+                lendService.createLend(borrowInfo);
+            } else {
+                log.warn("借款申请已生成过标的，跳过重复建标，borrowInfoId=" + borrowInfoId);
+            }
         }
         try {
             messageService.sendBorrowApprovalNotice(borrowInfo.getUserId(), approved, borrowInfo.getAmount());

@@ -15,8 +15,8 @@ com\kzip\app\entity\ChatMessage.class
 com\kzip\app\util\VectorDistanceUtils.class
 com\kzip\app\service\impl\ChatSessionServiceImpl.class
 com\kzip\app\config\MyConfig.class
-com\kzip\app\config\AiModuleConfig.class
 com\kzip\app\entity\ChatSession.class
+com\kzip\app\service\ReActService.class
 com\kzip\app\service\impl\KnowledgeDocServiceImpl.class
 com\kzip\app\config\MybatisPlusConfig.class
 com\kzip\app\mapper\PromptConfigMapper.class
@@ -57,9 +57,11 @@ com\kzip\app\config\AsyncConfig.class
 com\kzip\app\service\ModelConfigService.class
 com\kzip\app\service\impl\ModelConfigServiceImpl.class
 com\kzip\app\service\KnowledgeEmbeddingService.class
+com\kzip\app\tool\KnowledgeTools.class
 com\kzip\app\config\MyMetaObjectHandler.class
 com\kzip\app\service\impl\PromptConfigServiceImpl.class
 com\kzip\app\mapper\ModelConfigMapper.class
 com\kzip\app\controller\GlobalResponseAdvice.class
 com\kzip\app\mapper\ChatMessageMapper.class
 com\kzip\app\service\PromptService.class
+com\kzip\app\service\impl\KnowledgeDocServiceImpl$1.class

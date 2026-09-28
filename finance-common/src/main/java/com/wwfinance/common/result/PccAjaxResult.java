@@ -1,10 +1,14 @@
 package com.wwfinance.common.result;
 
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.util.HashMap;
 
-@Data
+// 注意：不能用 @Data——它会给空字段集合生成忽略 super 的 equals/hashCode，
+// 导致内容完全不同的两个结果对象相等/哈希相同；继承 HashMap 只需 getter/setter
+@Getter
+@Setter
 public class PccAjaxResult extends HashMap<String, Object> {
 
     private static final long serialVersionUID = 1L;

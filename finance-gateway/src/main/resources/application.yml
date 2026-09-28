@@ -23,6 +23,11 @@ spring:
         uri: lb://service-core
         predicates:
         - Path=/*/core/**
+      # 用户前台接口（登录/注册/绑卡/账户等都在 /api/user/** 下），此前没有任何路由会 404
+      - id: service-user
+        uri: lb://service-core
+        predicates:
+        - Path=/api/user/**
       - id: service-sms
         uri: lb://service-sms
         predicates:
@@ -31,7 +36,8 @@ spring:
         uri: lb://service-oss
         predicates:
         - Path=/*/oss/**
+      # AI 服务未注册 Nacos，改为直连本机 8081；且 AI 控制器都在 /ai/** 下（不是 /api/ai/**）
       - id: service-ai
-        uri: lb://app
+        uri: http://localhost:8081
         predicates:
-        - Path=/*/ai/**
+        - Path=/ai/**

@@ -64,4 +64,14 @@ public class KnowledgeBaseServiceImpl extends ServiceImpl<KnowledgeBaseMapper, K
             this.updateById(kb);
         }
     }
+
+    @Override
+    public void addChunkCount(Long kbId, int chunkCount) {
+        KnowledgeBase kb = this.getById(kbId);
+        if (kb != null) {
+            kb.setChunkCount((kb.getChunkCount() == null ? 0 : kb.getChunkCount()) + chunkCount);
+            kb.setUpdateTime(LocalDateTime.now());
+            this.updateById(kb);
+        }
+    }
 }

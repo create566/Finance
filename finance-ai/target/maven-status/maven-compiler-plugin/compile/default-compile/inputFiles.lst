@@ -1,3 +1,4 @@
+D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\config\MyMetaObjectHandler.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\entity\KnowledgeBase.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\service\ChatSessionService.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\mapper\KnowledgeChunkMapper.java
@@ -25,7 +26,6 @@ D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\mapper\ChatMessageMapper
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\mapper\ChatModelBindingMapper.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\service\KnowledgeBaseService.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\service\ChatMessageService.java
-D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\config\AiModuleConfig.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\controller\AdminChatSessionController.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\service\LogAspect.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\repository\FileRepository.java
@@ -52,9 +52,11 @@ D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\controller\PdfRagControl
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\tool\DateTimeTools.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\controller\ChatController.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\controller\AdminPromptController.java
+D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\tool\KnowledgeTools.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\util\VectorDistanceUtils.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\AppApplication.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\config\MybatisPlusConfig.java
+D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\service\ReActService.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\controller\KnowledgeEmbeddingController.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\service\impl\ModelConfigServiceImpl.java
 D:\桌面\实训\demo\finance-ai\src\main\java\com\kzip\app\service\SessionService.java

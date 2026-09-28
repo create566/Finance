@@ -48,7 +48,8 @@ public class AdminUserServiceImpl implements AdminUserService {
             sysAdminMapper.updateById(admin);
         }
         String token = TokenUtil.generateAdminToken(admin.getId().toString(), admin.getUsername());
-        stringRedisTemplate.opsForValue().set("login:token:" + admin.getId(), token, TOKEN_TTL, TimeUnit.SECONDS);
+        // Redis key 按角色命名空间隔离，避免与前台用户（user 表）主键冲突导致会话互踢
+        stringRedisTemplate.opsForValue().set("login:token:admin:" + admin.getId(), token, TOKEN_TTL, TimeUnit.SECONDS);
         log.info("管理员 {} 登录成功", admin.getUsername());
         return token;
     }

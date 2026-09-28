@@ -19,7 +19,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public PccAjaxResult handleException(Exception e) {
-        return new PccAjaxResult(500, e.getMessage());
+        // 安全修复：不把异常原文（SQL、文件路径、内部结构）返回给客户端，只记录日志
+        log.error("系统异常", e);
+        return new PccAjaxResult(500, "系统繁忙，请稍后再试");
     }
 
     @ExceptionHandler(value = BadSqlGrammarException.class)

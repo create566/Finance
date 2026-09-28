@@ -12,4 +12,5 @@ public interface KnowledgeBaseService extends IService<KnowledgeBase> {
     boolean removeBase(Long id);
     void incrementDocCount(Long kbId, int deltaChunkCount);
     void decrementDocCount(Long kbId, int deltaChunkCount);
+    void addChunkCount(Long kbId, int chunkCount);
 }

@@ -31,12 +31,12 @@ export interface ChatSession {
 }
 
 export interface KnowledgeBase {
-  id: number
-  name: string
-  description: string
-  docCount: number
-  chunkCount: number
-  status: number
+  id?: number
+  name?: string
+  description?: string
+  docCount?: number
+  chunkCount?: number
+  status?: number
 }
 
 // ========== API模块：会话/消息 CRUD ==========
@@ -64,33 +64,38 @@ export function closeSession(sessionId: number): Promise<null> {
 // ========== AI模块：同步问答 ==========
 
 export function askAI(data: { question: string; sessionId?: number; userId?: number }): Promise<{ answer: string; sessionId: number }> {
-  return aiRequest.post('/chat-sync', data).then(res => res.data)
+  // aiRequest 是裸 axios（无拦截器），后端返回 Result 信封 {code,msg,data}，
+  // 必须多解一层 res.data.data，否则 result.answer 永远是 undefined
+  return aiRequest.post('/chat-sync', data).then(res => res.data.data)
 }
 
-// ========== AI模块：知识库列表 ==========
+// 知识库问答：后端 /chat-sync 的 ReAct 流程内部会检索知识库；
+// knowledgeBaseId 透传给后端（当前后端忽略该参数，保留接口以备扩展）
+export function askKnowledgeAI(data: { question: string; knowledgeBaseId: number; sessionId?: number }): Promise<{ answer: string; sessionId: number }> {
+  return aiRequest.post('/chat-sync', data).then(res => res.data.data)
+}
+
+// ========== AI模块：知识库 ==========
 
 export function getKnowledgeBases(): Promise<KnowledgeBase[]> {
-  return aiRequest.get('/admin/knowledge/base/list', { params: { status: 1 } }).then((res: any) => {
-    return (res.list || res.data || res || [])
+  return aiRequest.get('/admin/knowledge/base/list').then(res => {
+    const d = res.data?.data
+    // 兼容数组与 {list: [...]} 两种返回形态
+    return Array.isArray(d) ? d : (d?.list ?? [])
   })
 }
 
-// ========== AI模块：知识库 RAG 同步问答 ==========
+// ========== AI模块：聊天历史 ==========
 
-export function askKnowledgeAI(data: {
-  question: string
-  knowledgeBaseId: number
-  sessionId?: number
-  userId?: number
-}): Promise<{ answer: string; sessionId: number }> {
-  return aiRequest.post('/knowledge-chat', data).then(res => res.data)
+export function getChatHistory(sessionId: number): Promise<{ sessionId: number; messages: ChatMessage[]; total: number }> {
+  return aiRequest.get(`/chat-history/${sessionId}`).then(res => res.data.data)
 }
 
 // ========== AI模块：SSE 流式问答 ==========
 
 export interface StreamCallbacks {
   onToken: (token: string) => void
-  onDone: () => void
+  onDone: (sessionId?: number) => void
   onError: (err: Error) => void
 }
 
@@ -124,92 +129,46 @@ export function askAIStream(
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`)
       }
+      const sessionId = response.headers.get('X-Session-Id')
       const reader = response.body?.getReader()
       if (!reader) {
         throw new Error('不支持流式读取')
       }
       const decoder = new TextDecoder()
+      // 跨 chunk 缓冲：网络分片可能把一行 "data:xxx\n\n" 切成两半，
+      // 直接 split('\n') 会把残片当成 token 推给 UI，出现乱码
+      let buffer = ''
 
-      function read() {
-        reader.read().then(({ done, value }) => {
-          if (done) {
-            callbacks.onDone()
-            return
-          }
-          const chunk = decoder.decode(value, { stream: true })
-          const lines = chunk.split('\n')
-          for (const line of lines) {
+      function processBuffer() {
+        // 只处理以 \n\n 结尾的完整 SSE 事件，剩余部分留到下一次
+        let sepIdx: number
+        while ((sepIdx = buffer.indexOf('\n\n')) !== -1) {
+          const event = buffer.substring(0, sepIdx)
+          buffer = buffer.substring(sepIdx + 2)
+          for (const line of event.split('\n')) {
             if (line.startsWith('data:')) {
               const data = line.substring(5).trim()
               if (data && data !== '[DONE]') {
                 callbacks.onToken(data)
               }
-            } else if (line.trim() && !line.startsWith(':')) {
-              callbacks.onToken(line)
             }
           }
-          read()
-        }).catch((err) => {
-          if (err.name !== 'AbortError') {
-            callbacks.onError(err)
-          }
-        })
+        }
       }
-      read()
-    })
-    .catch((err) => {
-      if (err.name !== 'AbortError') {
-        callbacks.onError(err)
-      }
-    })
-}
-
-export function askKnowledgeAIStream(
-  params: { prompt: string; knowledgeBaseId: number; chatId?: string },
-  callbacks: StreamCallbacks,
-): void {
-  abortStream()
-  streamAbortController = new AbortController()
-
-  const url = new URL('/ai/knowledge-chat-stream', window.location.origin)
-  url.searchParams.set('prompt', params.prompt)
-  url.searchParams.set('knowledgeBaseId', String(params.knowledgeBaseId))
-  if (params.chatId) {
-    url.searchParams.set('chatId', params.chatId)
-  }
-
-  fetch(url.toString(), {
-    signal: streamAbortController.signal,
-    headers: { Accept: 'text/event-stream' },
-  })
-    .then(async (response) => {
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-      const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error('不支持流式读取')
-      }
-      const decoder = new TextDecoder()
 
       function read() {
-        reader.read().then(({ done, value }) => {
+        reader!.read().then(({ done, value }) => {
           if (done) {
-            callbacks.onDone()
+            // 流结束：处理最后残余的事件（服务端一般以 \n\n 结尾，这里兜底）
+            if (buffer.trim()) {
+              buffer += '\n\n'
+              processBuffer()
+            }
+            callbacks.onDone(sessionId ? Number(sessionId) : undefined)
             return
           }
-          const chunk = decoder.decode(value, { stream: true })
-          const lines = chunk.split('\n')
-          for (const line of lines) {
-            if (line.startsWith('data:')) {
-              const data = line.substring(5).trim()
-              if (data && data !== '[DONE]') {
-                callbacks.onToken(data)
-              }
-            } else if (line.trim() && !line.startsWith(':')) {
-              callbacks.onToken(line)
-            }
-          }
+          buffer += decoder.decode(value, { stream: true })
+          processBuffer()
           read()
         }).catch((err) => {
           if (err.name !== 'AbortError') {

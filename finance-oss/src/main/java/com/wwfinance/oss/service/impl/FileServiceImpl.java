@@ -12,11 +12,20 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 @Slf4j
 @Service
 public class FileServiceImpl implements FileService {
+
+    /** 允许上传的文件扩展名白名单（防存储型 XSS / webshell） */
+    private static final java.util.Set<String> ALLOWED_EXTENSIONS = java.util.Collections.unmodifiableSet(
+            new java.util.HashSet<>(java.util.Arrays.asList(
+                    "jpg", "jpeg", "png", "gif", "bmp", "webp", "pdf")));
+
+    /** 目录名合法字符：字母数字下划线中划线 */
+    private static final String SAFE_NAME_REGEX = "[A-Za-z0-9_-]+";
 
     @Value("${upload.base-path:D:/桌面/实训/demo/uploads/}")
     private String basePath;
@@ -27,13 +36,15 @@ public class FileServiceImpl implements FileService {
     @Override
     public String upload(MultipartFile file, String category) {
         validateFile(file);
+        validateCategory(category);
 
         String originalName = StringUtils.cleanPath(file.getOriginalFilename());
         String ext = getFileExtension(originalName);
         String newFileName = generateFileName(category, ext);
 
-        Path categoryDir = Paths.get(basePath + category + "/");
         try {
+            // 路径穿越防护：normalize 后必须仍在 basePath 之内
+            Path categoryDir = resolveSafePath(category);
             if (!Files.exists(categoryDir)) {
                 Files.createDirectories(categoryDir);
             }
@@ -54,13 +65,16 @@ public class FileServiceImpl implements FileService {
     @Override
     public String uploadWithCustomName(MultipartFile file, String category, String customFileName) {
         validateFile(file);
+        validateCategory(category);
+        // 自定义文件名同样要做路径穿越校验，否则 ../../../evil.jsp 会写到 basePath 之外
+        validateCustomName(customFileName);
 
         String originalName = StringUtils.cleanPath(file.getOriginalFilename());
         String ext = getFileExtension(originalName);
         String safeFileName = customFileName + ext;
 
-        Path categoryDir = Paths.get(basePath + category + "/");
         try {
+            Path categoryDir = resolveSafePath(category);
             if (!Files.exists(categoryDir)) {
                 Files.createDirectories(categoryDir);
             }
@@ -70,7 +84,7 @@ public class FileServiceImpl implements FileService {
 
             String fileUrl = urlPrefix + category + "/" + safeFileName;
 
-            log.info("文件上传成功（自定义名称）: originalName={}, customName={}, url={}", 
+            log.info("文件上传成功（自定义名称）: originalName={}, customName={}, url={}",
                      originalName, safeFileName, fileUrl);
             return fileUrl;
         } catch (IOException e) {
@@ -83,8 +97,8 @@ public class FileServiceImpl implements FileService {
     public void delete(String fileUrl) {
         try {
             String relativePath = extractRelativePath(fileUrl);
-            Path filePath = Paths.get(basePath + relativePath);
-            
+            Path filePath = resolveSafePath(relativePath);
+
             boolean deleted = Files.deleteIfExists(filePath);
             if (deleted) {
                 log.info("文件删除成功: {}", fileUrl);
@@ -101,7 +115,7 @@ public class FileServiceImpl implements FileService {
     public boolean exists(String fileUrl) {
         try {
             String relativePath = extractRelativePath(fileUrl);
-            Path filePath = Paths.get(basePath + relativePath);
+            Path filePath = resolveSafePath(relativePath);
             return Files.exists(filePath);
         } catch (Exception e) {
             log.warn("检查文件存在性失败: {}", e.getMessage());
@@ -114,8 +128,8 @@ public class FileServiceImpl implements FileService {
         Map<String, Object> info = new HashMap<>();
         try {
             String relativePath = extractRelativePath(fileUrl);
-            Path filePath = Paths.get(basePath + relativePath);
-            
+            Path filePath = resolveSafePath(relativePath);
+
             if (Files.exists(filePath)) {
                 info.put("exists", true);
                 info.put("fileName", filePath.getFileName().toString());
@@ -132,14 +146,45 @@ public class FileServiceImpl implements FileService {
         return info;
     }
 
+    /**
+     * 路径穿越防护核心：把相对路径解析为绝对路径并 normalize，
+     * 若结果逃逸出 basePath 则拒绝。所有文件读写必须经过此方法。
+     */
+    private Path resolveSafePath(String relativePath) {
+        Path base = Paths.get(basePath).toAbsolutePath().normalize();
+        Path target = base.resolve(relativePath).normalize();
+        if (!target.startsWith(base)) {
+            throw new IllegalArgumentException("非法路径：" + relativePath);
+        }
+        return target;
+    }
+
+    private void validateCategory(String category) {
+        if (category == null || !category.matches(SAFE_NAME_REGEX)) {
+            throw new IllegalArgumentException("目录名只能包含字母、数字、下划线和中划线");
+        }
+    }
+
+    private void validateCustomName(String customFileName) {
+        if (customFileName == null || customFileName.isEmpty()
+                || customFileName.contains("/") || customFileName.contains("\\")
+                || customFileName.contains("..")) {
+            throw new IllegalArgumentException("自定义文件名非法");
+        }
+    }
+
     private void validateFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("请选择文件");
         }
-        
+
         String originalName = StringUtils.cleanPath(file.getOriginalFilename());
         if (originalName.contains("..")) {
             throw new IllegalArgumentException("文件名包含无效路径序列");
+        }
+        String ext = getFileExtension(originalName).toLowerCase(Locale.ROOT);
+        if (!ext.isEmpty() && !ALLOWED_EXTENSIONS.contains(ext.substring(1))) {
+            throw new IllegalArgumentException("不支持的文件类型：" + ext);
         }
     }
 

@@ -37,9 +37,19 @@ public class KnowledgeEmbeddingController {
 
     @PostMapping("/process")
     public Map<String, Object> processDocument(@RequestBody Map<String, Object> params) {
-        Long docId = Long.valueOf(params.get("docId").toString());
+        Object docIdObj = params.get("docId");
+        Object kbIdObj = params.get("knowledgeBaseId");
         String content = (String) params.get("content");
-        Long knowledgeBaseId = Long.valueOf(params.get("knowledgeBaseId").toString());
+
+        if (docIdObj == null || kbIdObj == null || content == null || content.isEmpty()) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("code", 400);
+            result.put("message", "参数不完整：docId、knowledgeBaseId、content 不能为空");
+            return result;
+        }
+
+        Long docId = Long.valueOf(docIdObj.toString());
+        Long knowledgeBaseId = Long.valueOf(kbIdObj.toString());
 
         knowledgeEmbeddingService.embedDocumentAsync(docId, content, knowledgeBaseId);
 

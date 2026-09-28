@@ -61,6 +61,10 @@ public final class HttpUtils {
 			httpcon.connect(); // 建立连接
 			 // 如果请求方法是POST, 则写入请求数据
 			if (reqmethod.equalsIgnoreCase(POST)) {
+				if (reqData == null) {
+					log.warn("HTTP POST 请求数据为 null，url={}", strUrl);
+					return null;
+				}
 				OutputStream os = httpcon.getOutputStream(); // 获取输入流
 				os.write(reqData); // 写入数据
 				os.flush(); // 刷新输出流
@@ -70,12 +74,13 @@ public final class HttpUtils {
 			BufferedReader in = new BufferedReader(new InputStreamReader(httpcon.getInputStream(),"utf-8"));
 			String inputLine;
 			StringBuilder bankXmlBuffer = new StringBuilder();
-			while ((inputLine = in.readLine()) != null) {  
-			    bankXmlBuffer.append(inputLine);  
-			}  
+			while ((inputLine = in.readLine()) != null) {
+			    bankXmlBuffer.append(inputLine);
+			}
 			in.close();
 			httpcon.disconnect(); // 断开连接
-			return bankXmlBuffer.toString().getBytes(); // 返回响应数据的字节数组
+			// 显式 UTF-8 编码：平台默认字符集（Windows GBK）会把中文响应变成乱码
+			return bankXmlBuffer.toString().getBytes("utf-8"); // 返回响应数据的字节数组
 		} catch (Exception ex) {
 			log.warn("HTTP请求失败: url={}, error={}", strUrl, ex.getMessage());
 			return null;

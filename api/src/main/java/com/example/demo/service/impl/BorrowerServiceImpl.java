@@ -146,7 +146,8 @@ public class BorrowerServiceImpl extends ServiceImpl<BorrowerMapper, Borrower> i
         User user = userService.getById(borrower.getUserId());
         if (approved) {
             user.setBorrowAuthStatus(BorrowerAuthStatusEnum.AUTHED.getCode());
-            user.setUserType(UserTypeEnum.BORROWER.getCode());
+            // 注意：不要覆盖 user_type！user_type 是单一标志位，
+            // 改成 BORROWER 后投资人将无法投标（LendItemServiceImpl 要求 INVESTOR）
         } else {
             user.setBorrowAuthStatus(BorrowerAuthStatusEnum.AUTH_FAIL.getCode());
         }

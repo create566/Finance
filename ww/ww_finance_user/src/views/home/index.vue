@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getUserInfo } from '@/api/user'
 import { getAccount } from '@/api/account'
@@ -21,9 +21,6 @@ async function fetchData() {
     authStatus.value = await getBorrowerAuthStatus()
   } catch {}
 }
-
-const isInvestor = computed(() => userInfo.value?.userType === 1)
-const isBorrower = computed(() => userInfo.value?.userType === 2)
 
 const authStatusMap: Record<number, { text: string; type: string }> = {
   0: { text: '未认证', type: 'info' },

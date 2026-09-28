@@ -1,4 +1,4 @@
-package com.kzip.app.controller;
+   package com.kzip.app.controller;
 
 import com.kzip.app.entity.ModelConfig;
 import com.kzip.app.service.ModelConfigService;

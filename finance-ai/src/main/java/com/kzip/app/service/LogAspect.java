@@ -4,26 +4,23 @@ import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.aspectj.lang.annotation.Pointcut;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-@Aspect        // 1. 标记这是一个切面（督察组）
-@Component     // 2. 交给 Spring 管理
+@Aspect
+@Component
 public class LogAspect {
 
-    // 3. 定义切点：匹配 com.example.service 包下所有类的所有方法
-    @Pointcut("execution(* com.kzip.app.Impl.*.*(..))")
+    private static final Logger log = LoggerFactory.getLogger(LogAspect.class);
+
+    @Pointcut("execution(* com.kzip.app.service.impl.*.*(..))")
     public void serviceMethods() {}
 
-    // 4. 定义通知：在执行目标方法之前，打印日志
     @Before("serviceMethods()")
     public void logBefore(JoinPoint joinPoint) {
-        System.out.println("【AOP 拦截】方法即将被执行，记录日志...");
-        // 获取方法签名
         String methodName = joinPoint.getSignature().getName();
-        // 获取类名
         String className = joinPoint.getTarget().getClass().getSimpleName();
-        // 或者获取全限定名
-        String fullName = joinPoint.getSignature().getDeclaringTypeName() + "." + methodName;
-        System.out.println("【AOP 拦截】" + className + "." + methodName + " 方法即将被执行，记录日志...");
+        log.debug("AOP拦截: {}.{} 方法即将执行", className, methodName);
     }
 }

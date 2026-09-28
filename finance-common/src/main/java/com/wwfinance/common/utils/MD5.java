@@ -1,5 +1,6 @@
 package com.wwfinance.common.utils;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
@@ -10,7 +11,8 @@ public final class MD5 {
         try {
             char hexChars[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8',
                     '9', 'a', 'b', 'c', 'd', 'e', 'f' };
-            byte[] bytes = strSrc.getBytes();
+            // 显式 UTF-8：平台默认字符集（Windows GBK）会使非 ASCII 输入的哈希随环境变化
+            byte[] bytes = strSrc.getBytes(StandardCharsets.UTF_8);
             MessageDigest md = MessageDigest.getInstance("MD5");
             md.update(bytes);
             bytes = md.digest();

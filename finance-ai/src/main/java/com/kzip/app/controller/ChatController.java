@@ -1,25 +1,23 @@
 package com.kzip.app.controller;
 
-import com.kzip.app.repository.ChatHistoryRepository;
-import com.kzip.app.service.PromptService;
+import com.kzip.app.service.ChatMessageService;
+import com.kzip.app.service.ReActService;
 import com.kzip.app.service.SessionService;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
-import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.SignalType;
 
-
-
-@CrossOrigin("*")
+// 跨域统一由 CorsConfig 处理，避免与 @CrossOrigin("*") 重复配置冲突
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/ai")
@@ -27,28 +25,19 @@ public class ChatController {
 
     private static final Logger log = LoggerFactory.getLogger(ChatController.class);
 
-    private final ChatClient chatClient;
-
-    private final ChatClient knowledgeChatClient;
-
-    private final ChatMemory chatMemory;
-
-    private final ChatHistoryRepository chatHistoryRepository;
-
-    private final PromptService promptService;
-
+    private final ReActService reActService;
     private final SessionService sessionService;
+    private final ChatMessageService chatMessageService;
 
-    @RequestMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<String> chat(@RequestParam(defaultValue = "讲个笑话") String prompt, String chatId) {
-        return chatClient
-                .prompt(prompt)
-                .stream()
-                .content();
+    @GetMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<String> chat(@RequestParam(defaultValue = "讲个笑话") String prompt,
+                              @RequestParam(defaultValue = "") String chatId) {
+        return reActService.chatStream(prompt,
+                chatId != null && !chatId.isEmpty() ? chatId : "chat-" + System.currentTimeMillis());
     }
 
     @PostMapping("/chat-sync")
-    public Map<String, Object> chatSync(@RequestBody Map<String, Object> body) {
+    public Result<Map<String, Object>> chatSync(@RequestBody Map<String, Object> body) {
         String question = (body.get("question") != null) ? body.get("question").toString() : "";
         Object sidObj = body.get("sessionId");
         Long sessionId = (sidObj != null && !sidObj.toString().isEmpty())
@@ -57,29 +46,16 @@ public class ChatController {
         Long userId = (uidObj != null && !uidObj.toString().isEmpty())
                 ? Long.valueOf(uidObj.toString()) : 1L;
 
+        // 数字解析失败由 GlobalExceptionHandler 统一转 Result.fail，无需在此 try/catch
         if (question.trim().isEmpty()) {
-            Map<String, Object> err = new HashMap<>();
-            err.put("answer", "问题不能为空");
-            err.put("sessionId", sessionId);
-            return err;
+            return Result.fail("问题不能为空");
         }
 
-        if (sessionId == null) {
-            sessionId = sessionService.createSession(userId, "", "", "");
-        }
-
+        sessionId = ensureSession(sessionId, userId);
         sessionService.saveUserMessage(sessionId, userId, question);
 
-        String systemPrompt = promptService.getSystemPromptByScene("chat");
-        if (systemPrompt == null || systemPrompt.isEmpty()) {
-            systemPrompt = "你是旺旺信贷的智能客服助手，请用专业、友好的的态度回答用户的金融相关问题。";
-        }
-        final String finalPrompt = systemPrompt;
-        String answer = chatClient.prompt()
-                .system(s -> s.text(finalPrompt))
-                .user(question)
-                .call()
-                .content();
+        String chatId = "session-" + sessionId;
+        String answer = reActService.chat(question, chatId);
 
         sessionService.saveAssistantMessage(sessionId, userId, answer, null);
 
@@ -88,130 +64,78 @@ public class ChatController {
         result.put("sessionId", sessionId);
         log.info("AI问答完成: sessionId={}, question={}", sessionId,
                 question.substring(0, Math.min(30, question.length())));
-        return result;
+        return Result.success(result);
     }
 
     @GetMapping(value = "/chat-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> chatStream(@RequestParam String prompt,
                                     @RequestParam(defaultValue = "") String chatId,
-                                    @RequestParam(defaultValue = "1") Long userId) {
-        String effectiveChatId = chatId.isEmpty() ? "chat-" + System.currentTimeMillis() : chatId;
-
-        String systemPrompt = promptService.getSystemPromptByScene("chat");
-        if (systemPrompt == null || systemPrompt.isEmpty()) {
-            systemPrompt = "你是旺旺信贷的智能客服助手，请用专业、友好的态度回答用户的金融相关问题。";
+                                    @RequestParam(defaultValue = "1") Long userId,
+                                    @RequestParam(required = false) Long sessionId,
+                                    HttpServletResponse response) {
+        if (prompt == null || prompt.trim().isEmpty()) {
+            return Flux.just("问题不能为空");
         }
 
-        String finalSystemPrompt = systemPrompt;
-        String finalChatId = effectiveChatId;
+        sessionId = ensureSession(sessionId, userId);
+        final Long finalSessionId = sessionId;
 
-        return chatClient.prompt()
-                .system(s -> s.text(finalSystemPrompt))
-                .user(prompt)
-                .advisors(a -> a.param("chat_memory_conversation_id", finalChatId))
-                .stream()
-                .content()
-                .doOnComplete(() -> {
-                    log.info("SSE流式对话完成: chatId={}", finalChatId);
-                })
-                .doOnError(e -> {
-                    log.error("SSE流式对话异常: chatId={}, error={}", finalChatId, e.getMessage());
+        // 记忆 conversationId 与 sessionId 对齐：即使前端不回传 chatId，
+        // 只要带 sessionId 请求，多轮上下文就能稳定命中同一份记忆
+        String effectiveChatId = (chatId != null && !chatId.isEmpty())
+                ? chatId : "session-" + finalSessionId;
+
+        sessionService.saveUserMessage(finalSessionId, userId, prompt);
+        response.setHeader("X-Session-Id", String.valueOf(finalSessionId));
+        response.setHeader("Access-Control-Expose-Headers", "X-Session-Id");
+
+        StringBuilder fullAnswer = new StringBuilder();
+
+        return reActService.chatStream(prompt, effectiveChatId)
+                .doOnNext(fullAnswer::append)
+                // doFinally 覆盖正常完成/取消/异常所有信号：
+                // 正常完成才落库；客户端中断（cancel）不落半截答案，避免脏数据
+                .doFinally(signal -> {
+                    if (signal == SignalType.ON_COMPLETE && fullAnswer.length() > 0) {
+                        sessionService.saveAssistantMessage(finalSessionId, userId,
+                                fullAnswer.toString(), null);
+                        log.info("SSE流式完成+落库: chatId={}, sessionId={}, length={}",
+                                effectiveChatId, finalSessionId, fullAnswer.length());
+                    } else if (signal == SignalType.ON_ERROR) {
+                        log.error("SSE流式异常: chatId={}, sessionId={}, 已接收长度={}",
+                                effectiveChatId, finalSessionId, fullAnswer.length());
+                    } else if (signal == SignalType.CANCEL) {
+                        log.warn("SSE客户端中断: chatId={}, sessionId={}",
+                                effectiveChatId, finalSessionId);
+                    }
                 });
     }
 
-    // ==================== 知识库 RAG 聊天接口 ====================
-
-    @PostMapping("/knowledge-chat")
-    public Map<String, Object> knowledgeChat(@RequestBody Map<String, Object> body) {
-        String question = (body.get("question") != null) ? body.get("question").toString() : "";
-        Object kbIdObj = body.get("knowledgeBaseId");
-        Long knowledgeBaseId = (kbIdObj != null && !kbIdObj.toString().isEmpty())
-                ? Long.valueOf(kbIdObj.toString()) : null;
-        Object sidObj = body.get("sessionId");
-        Long sessionId = (sidObj != null && !sidObj.toString().isEmpty())
-                ? Long.valueOf(sidObj.toString()) : null;
-        Object uidObj = body.get("userId");
-        Long userId = (uidObj != null && !uidObj.toString().isEmpty())
-                ? Long.valueOf(uidObj.toString()) : 1L;
-
-        if (question.trim().isEmpty()) {
-            Map<String, Object> err = new HashMap<>();
-            err.put("answer", "问题不能为空");
-            err.put("sessionId", sessionId);
-            return err;
+    private Long ensureSession(Long sessionId, Long userId) {
+        if (sessionId != null) {
+            return sessionId;
         }
-
-        if (sessionId == null) {
-            sessionId = sessionService.createSession(userId, "", "", "");
+        Long created = sessionService.createSession(userId, "", "", "");
+        if (created == null) {
+            // 理论上不可达（createSession 失败会抛异常），防御性兜底
+            throw new IllegalStateException("会话创建失败");
         }
+        return created;
+    }
 
-        sessionService.saveUserMessage(sessionId, userId, question);
-
-        String answer;
-        if (knowledgeBaseId != null) {
-            String filter = "knowledgeBaseId == '" + knowledgeBaseId + "'";
-            log.info("知识库RAG问答: sessionId={}, knowledgeBaseId={}, filter={}", sessionId, knowledgeBaseId, filter);
-            answer = knowledgeChatClient.prompt()
-                    .user(question)
-                    .advisors(a -> a.param(QuestionAnswerAdvisor.FILTER_EXPRESSION, filter))
-                    .call()
-                    .content();
-        } else {
-            String systemPrompt = promptService.getSystemPromptByScene("chat");
-            if (systemPrompt == null || systemPrompt.isEmpty()) {
-                systemPrompt = "你是旺旺信贷的智能客服助手，请用专业、友好的态度回答用户的金融相关问题。";
-            }
-            final String finalPrompt = systemPrompt;
-            answer = chatClient.prompt()
-                    .system(s -> s.text(finalPrompt))
-                    .user(question)
-                    .call()
-                    .content();
-        }
-
-        sessionService.saveAssistantMessage(sessionId, userId, answer, null);
-
+    @GetMapping("/chat-history/{sessionId}")
+    public Map<String, Object> chatHistory(@PathVariable Long sessionId) {
         Map<String, Object> result = new HashMap<>();
-        result.put("answer", answer);
-        result.put("sessionId", sessionId);
-        return result;
-    }
-
-    @GetMapping(value = "/knowledge-chat-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<String> knowledgeChatStream(@RequestParam String prompt,
-                                             @RequestParam(required = false) Long knowledgeBaseId,
-                                             @RequestParam(defaultValue = "") String chatId,
-                                             @RequestParam(defaultValue = "1") Long userId) {
-        String effectiveChatId = chatId.isEmpty() ? "chat-" + System.currentTimeMillis() : chatId;
-
-        if (knowledgeBaseId != null) {
-            String filter = "knowledgeBaseId == '" + knowledgeBaseId + "'";
-            log.info("知识库RAG流式问答: chatId={}, knowledgeBaseId={}, filter={}", effectiveChatId, knowledgeBaseId, filter);
-            return knowledgeChatClient.prompt()
-                    .user(prompt)
-                    .advisors(a -> a.param(QuestionAnswerAdvisor.FILTER_EXPRESSION, filter))
-                    .advisors(a -> a.param("chat_memory_conversation_id", effectiveChatId))
-                    .stream()
-                    .content()
-                    .doOnComplete(() -> log.info("知识库RAG流式对话完成: chatId={}", effectiveChatId))
-                    .doOnError(e -> log.error("知识库RAG流式对话异常: chatId={}, error={}", effectiveChatId, e.getMessage()));
+        try {
+            List<?> messages = chatMessageService.listBySessionId(sessionId);
+            result.put("sessionId", sessionId);
+            result.put("messages", messages);
+            result.put("total", messages != null ? messages.size() : 0);
+            return result;
+        } catch (Exception e) {
+            log.error("获取聊天历史失败: sessionId={}, error={}", sessionId, e.getMessage());
+            result.put("error", "获取聊天历史失败");
+            return result;
         }
-
-        String systemPrompt = promptService.getSystemPromptByScene("chat");
-        if (systemPrompt == null || systemPrompt.isEmpty()) {
-            systemPrompt = "你是旺旺信贷的智能客服助手，请用专业、友好的态度回答用户的金融相关问题。";
-        }
-        String finalSystemPrompt = systemPrompt;
-        String finalChatId = effectiveChatId;
-
-        return chatClient.prompt()
-                .system(s -> s.text(finalSystemPrompt))
-                .user(prompt)
-                .advisors(a -> a.param("chat_memory_conversation_id", finalChatId))
-                .stream()
-                .content()
-                .doOnComplete(() -> log.info("SSE流式对话完成: chatId={}", finalChatId))
-                .doOnError(e -> log.error("SSE流式对话异常: chatId={}, error={}", finalChatId, e.getMessage()));
     }
-
 }

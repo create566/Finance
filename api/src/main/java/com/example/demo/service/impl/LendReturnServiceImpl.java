@@ -90,6 +90,26 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
     @Autowired
     private com.example.demo.service.LendSettleRecordService lendSettleRecordService;
 
+    /**
+     * 从银行回调参数中解析用户。
+     * 放款/还款回调只回传 bindCode，不传 agentUserId；按 bindCode 反查绑卡记录再取用户。
+     */
+    private User resolveNotifyUser(Map<String, Object> params) {
+        String agentUserId = (String) params.get("agentUserId");
+        if (agentUserId != null && !agentUserId.isEmpty()) {
+            return userService.getByMobile(agentUserId);
+        }
+        String bindCode = (String) params.get("bindCode");
+        if (bindCode == null || bindCode.isEmpty()) {
+            return null;
+        }
+        UserBind userBind = userBindService.getByBindCode(bindCode);
+        if (userBind == null || userBind.getUserId() == null) {
+            return null;
+        }
+        return userService.getById(userBind.getUserId());
+    }
+
     /** 逾期罚息倍数（在原利率基础上上浮 50%） */
     private static final BigDecimal PENALTY_MULTIPLIER = new BigDecimal("1.5");
     private static final BigDecimal DAYS_OF_YEAR = new BigDecimal("365");
@@ -174,10 +194,11 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
             return false;
         }
 
-        // 4. 查询借款人
-        User borrower = userService.getByMobile(agentUserId);
+        // 4. 查询借款人（银行回调只回传 bindCode，不传 agentUserId）
+        User borrower = resolveNotifyUser(params);
         if (borrower == null) {
-            log.warn("放款回调借款人不存在，agentUserId={}", agentUserId);
+            log.warn("放款回调借款人不存在，agentUserId={}, bindCode={}",
+                    agentUserId, params.get("bindCode"));
             return false;
         }
 
@@ -406,10 +427,11 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
             return false;
         }
 
-        // 4. 查询借款人
-        User borrower = userService.getByMobile(agentUserId);
+        // 4. 查询借款人（银行回调只回传 bindCode，不传 agentUserId）
+        User borrower = resolveNotifyUser(params);
         if (borrower == null) {
-            log.warn("还款回调借款人不存在，agentUserId={}", agentUserId);
+            log.warn("还款回调借款人不存在，agentUserId={}, bindCode={}",
+                    agentUserId, params.get("bindCode"));
             return false;
         }
 
@@ -446,13 +468,14 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
             return true;
         }
 
-        // 8. 金额校验：回调金额应与应还金额一致
+        // 8. 金额校验：回调金额不得低于应还本息。
+        //    注意不能用逾期时的 overdueTotal 做等值断言——定时任务每天会按天数重算罚息，
+        //    跨日重试的回调金额必然与最新值不一致，会导致用户钱已扣但还款计划永远不更新。
+        //    因此只做下限校验，多出部分按罚息入账。
         boolean overdue = Boolean.TRUE.equals(lendReturn.getOverdue());
-        BigDecimal expectedPayable = (overdue && lendReturn.getOverdueTotal() != null)
-                ? lendReturn.getOverdueTotal()
-                : lendReturn.getTotal();
-        if (payable.compareTo(expectedPayable) != 0) {
-            log.warn("还款回调金额与应还金额不一致，回调={}, 应还={}", payable, expectedPayable);
+        BigDecimal expectedTotal = lendReturn.getTotal() != null ? lendReturn.getTotal() : BigDecimal.ZERO;
+        if (payable.compareTo(expectedTotal) < 0) {
+            log.warn("还款回调金额低于应还本息，回调={}, 应还本息={}", payable, expectedTotal);
             return false;
         }
 

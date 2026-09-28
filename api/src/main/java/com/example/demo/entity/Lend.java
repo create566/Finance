@@ -96,7 +96,7 @@ public class Lend {
 
     /** 放款管理员ID */
     @TableField("payment_admin_id")
-    private LocalDateTime paymentAdminId;
+    private Long paymentAdminId;
 
     @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;

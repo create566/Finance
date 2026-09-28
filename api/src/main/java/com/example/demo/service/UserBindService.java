@@ -9,6 +9,14 @@ public interface UserBindService extends IService<UserBind> {
 
     UserBind getByUserId(Long userId);
 
+    /**
+     * 按银行绑卡编码查询绑卡记录（银行回调只回传 bindCode，不传 agentUserId）
+     *
+     * @param bindCode 银行绑卡编码
+     * @return 绑卡记录，不存在返回 null
+     */
+    UserBind getByBindCode(String bindCode);
+
     boolean isBind(String idCard);
 
     UserBind bind(UserBind userBind);

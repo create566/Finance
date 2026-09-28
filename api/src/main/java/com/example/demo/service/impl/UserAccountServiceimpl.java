@@ -124,31 +124,52 @@ public class UserAccountServiceImpl implements UserAccountService {
 
     @Override
     public void updateBalance(Long userId, TransTypeEnum type, BigDecimal amount) {
-        UserAccount account = userAccountMapper.selectOne(
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new BusinessException(400, "余额变动金额非法");
+        }
+        int rows = applyAtomicUpdate(userId, type, amount);
+        if (rows == 0) {
+            // 0 行：账户不存在（或扣款时余额不足）。先尝试建账户再重试一次
+            ensureAccount(userId);
+            rows = applyAtomicUpdate(userId, type, amount);
+        }
+        if (rows == 0) {
+            throw new BusinessException(400, "账户余额不足或账户异常，操作失败");
+        }
+        log.info("账户余额原子更新成功: userId={}, type={}, amount={}",
+                userId, type.getDesc(), amount);
+    }
+
+    /**
+     * 按类型执行原子余额更新（SQL 层 amount = amount ± ?，避免先查后改的并发丢更新）
+     *
+     * @return 影响行数；-1 表示未知类型（不执行任何更新）
+     */
+    private int applyAtomicUpdate(Long userId, TransTypeEnum type, BigDecimal amount) {
+        switch (type) {
+            case RECHARGE:
+            case RETURN:
+            case LOAN:
+                return userAccountMapper.addAmount(userId, amount);
+            case WITHDRAW:
+            case INVEST:
+            case REPAY:
+                return userAccountMapper.deductAmount(userId, amount);
+            default:
+                log.warn("未知的余额变动类型，忽略，type={}", type);
+                return -1;
+        }
+    }
+
+    private void ensureAccount(Long userId) {
+        UserAccount existing = userAccountMapper.selectOne(
                 new LambdaQueryWrapper<UserAccount>().eq(UserAccount::getUserId, userId));
-        if (account == null) {
-            account = new UserAccount();
+        if (existing == null) {
+            UserAccount account = new UserAccount();
             account.setUserId(userId);
             account.setAmount(BigDecimal.ZERO);
             account.setFreezeAmount(BigDecimal.ZERO);
             userAccountMapper.insert(account);
         }
-        switch (type) {
-            case RECHARGE:
-            case RETURN:
-            case LOAN:
-                account.setAmount(account.getAmount().add(amount));
-                break;
-            case WITHDRAW:
-            case INVEST:
-            case REPAY:
-                account.setAmount(account.getAmount().subtract(amount));
-                break;
-            default:
-                break;
-        }
-        userAccountMapper.updateById(account);
-        log.info("账户余额更新: userId={}, type={}, amount={}, newBalance={}",
-                userId, type.getDesc(), amount, account.getAmount());
     }
 }

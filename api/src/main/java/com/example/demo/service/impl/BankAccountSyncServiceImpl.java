@@ -104,7 +104,9 @@ public class BankAccountSyncServiceImpl extends ServiceImpl<UserAccountMapper, U
             BigDecimal bankAmount = new BigDecimal(bankAccount.get("amount").toString());
             BigDecimal bankFreeze = new BigDecimal(bankAccount.get("freezeAmount").toString());
 
-            UserAccount account = userAccountMapper.selectById(userId);
+            // 注意：不能 selectById(userId)——主键是账户自增id，不是用户id
+            UserAccount account = userAccountMapper.selectOne(
+                    new LambdaQueryWrapper<UserAccount>().eq(UserAccount::getUserId, userId));
             if (account == null) {
                 account = new UserAccount();
                 account.setUserId(userId);

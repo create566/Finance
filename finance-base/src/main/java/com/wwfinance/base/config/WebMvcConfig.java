@@ -24,7 +24,9 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-@EnableWebMvc
+// 注意：不能加 @EnableWebMvc——它会关闭 Spring Boot 的 WebMvc 自动配置
+// （静态资源、spring.mvc.* 属性、默认转换器全部失效），而 finance-oss /
+// finance-message 都会通过组件扫描加载本配置类，导致上传下载功能异常
 @Configuration
 @AllArgsConstructor
 public class WebMvcConfig implements WebMvcConfigurer {

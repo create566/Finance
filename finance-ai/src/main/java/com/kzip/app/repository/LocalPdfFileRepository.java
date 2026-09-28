@@ -8,13 +8,11 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.LocalDateTime;
-import java.util.Objects;
 import java.util.Properties;
 
 
@@ -34,26 +32,32 @@ public class LocalPdfFileRepository implements FileRepository {
 
     @Override
     public boolean save(String chatId, Resource resource) {
-
-        // 2.保存到本地磁盘
         String filename = resource.getFilename();
-        File target = new File(Objects.requireNonNull(filename));
-        if (!target.exists()) {
-            try {
-                Files.copy(resource.getInputStream(), target.toPath());
-            } catch (IOException e) {
-              //  log.error("Failed to save PDF resource.", e);
-                return false;
-            }
+        if (filename == null || filename.isEmpty()) {
+            filename = "pdf_" + chatId + ".pdf";
         }
-        // 3.保存映射关系
-        chatFiles.put(chatId, filename);
+        File pdfDir = new File("pdf-storage");
+        if (!pdfDir.exists()) {
+            pdfDir.mkdirs();
+        }
+        File target = new File(pdfDir, filename + "_" + System.currentTimeMillis());
+        try {
+            Files.copy(resource.getInputStream(), target.toPath());
+            log.info("PDF文件已保存: {}", target.getAbsolutePath());
+        } catch (IOException e) {
+            log.error("保存PDF文件失败", e);
+            return false;
+        }
+        chatFiles.put(chatId, target.getPath());
         return true;
     }
 
     @Override
     public Resource getFile(String chatId) {
-        return new FileSystemResource(chatFiles.getProperty(chatId));
+        // 修复：未知 chatId 时返回 null（由控制器转 404），
+        // 而不是 new FileSystemResource(null) 直接抛 IllegalArgumentException → 500
+        String path = chatFiles.getProperty(chatId);
+        return path == null ? null : new FileSystemResource(path);
     }
 
     @PostConstruct

@@ -20,10 +20,10 @@ public class MyWebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        registry.addResourceHandler("doc.html")
-                .addResourceLocations("classpath:/META‑INF/resources/");
+        registry.addResourceHandler("/doc.html")
+                .addResourceLocations("classpath:/META-INF/resources/");
         registry.addResourceHandler("/webjars/**")
-                .addResourceLocations("classpath:/META‑INF/resources/webjars/");
+                .addResourceLocations("classpath:/META-INF/resources/webjars/");
 
         registry.addResourceHandler("/api/oss/file/images/**")
                 .addResourceLocations("file:" + uploadBasePath + "/");
@@ -56,8 +56,8 @@ public class MyWebConfig implements WebMvcConfigurer {
                         "/open/ai/model/**",
                         "/doc.html",
                         "/webjars/**",
-                        "/swagger‑resources/**",
-                        "/v2/api‑docs"
+                        "/swagger-resources/**",
+                        "/v2/api-docs"
                 );
         registry.addInterceptor(rateLimitInterceptor)
                 .addPathPatterns("/api/**")

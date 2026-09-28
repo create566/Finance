@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
 import { getMyMessages, readMessage, getUnreadCount } from '@/api/message'
 
 const tableData = ref<any[]>([])

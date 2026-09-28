@@ -54,7 +54,9 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
                 return writeUnauthorized(response, "token无效");
              }
 
-            String redisKey = "login:token:" + userid;
+            // Redis key 按角色命名空间隔离：user 表与 sys_admin 表主键可能相同
+            String role = info.get("token_role");
+            String redisKey = "login:token:" + ("admin".equals(role) ? "admin:" : "user:") + userid;
             String redisToken = stringRedisTemplate.opsForValue().get(redisKey);
             if (redisToken == null) {
                 return writeUnauthorized(response, "token已过期或已注销");
@@ -66,7 +68,6 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
             stringRedisTemplate.expire(redisKey, TOKEN_TTL, TimeUnit.SECONDS);
 
             LoginUserContext.setUserid(Integer.parseInt(userid));
-            String role = info.get("token_role");
             LoginUserContext.setRole(role);
             LoginUserContext.setUsername(info.get("token_username"));
 

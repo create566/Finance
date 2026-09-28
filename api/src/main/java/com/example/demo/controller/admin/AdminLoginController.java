@@ -41,7 +41,7 @@ public class AdminLoginController {
     public PccAjaxResult logout() {
         Integer adminId = LoginUserContext.getUserid();
         if (adminId != null) {
-            stringRedisTemplate.delete("login:token:" + adminId);
+            stringRedisTemplate.delete("login:token:admin:" + adminId);
         }
         LoginUserContext.clear();
         return new PccAjaxResult(200, "退出成功");

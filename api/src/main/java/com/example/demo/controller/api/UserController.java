@@ -32,8 +32,19 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
-    public UserDto getUser(@PathVariable Long id) {
+    public PccAjaxResult getUser(@PathVariable Long id) {
+        // 越权修复：只允许查询自己，路径参数必须与当前登录用户一致
+        Integer currentUserId = LoginUserContext.getUserid();
+        if (currentUserId == null) {
+            return new PccAjaxResult(401, "未登录");
+        }
+        if (currentUserId.longValue() != id) {
+            return new PccAjaxResult(403, "无权查看他人信息");
+        }
         User user = userService.getById(id);
+        if (user == null) {
+            return new PccAjaxResult(404, "用户不存在");
+        }
         UserDto userDto = new UserDto();
         userDto.setId(user.getId());
         userDto.setMobile(user.getMobile());
@@ -45,7 +56,7 @@ public class UserController {
         userDto.setHeadImg(user.getHeadImg());
         userDto.setBindStatus(user.getBindStatus());
         userDto.setBindCode(user.getBindCode());
-        return userDto;
+        return new PccAjaxResult(200, "查询成功", userDto);
     }
 
     @ApiOperation("获取当前登录用户信息")
@@ -104,7 +115,7 @@ public class UserController {
     public PccAjaxResult logout() {
         Integer userId = LoginUserContext.getUserid();
         if (userId != null) {
-            stringRedisTemplate.delete("login:token:" + userId);
+            stringRedisTemplate.delete("login:token:user:" + userId);
         }
         LoginUserContext.clear();
         return new PccAjaxResult(200, "退出成功");

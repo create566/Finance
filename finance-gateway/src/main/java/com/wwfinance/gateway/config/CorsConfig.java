@@ -13,7 +13,12 @@ public class CorsConfig {
     public CorsWebFilter corsFilter() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true); //是否允许携带cookie
-        config.addAllowedOrigin("*"); //可接受的域，是一个具体域名或者*（代表任意域名）
+        // 安全修复：allowCredentials(true) 时不能用通配符 * 作为允许源，
+        // 浏览器会直接拒绝 "Access-Control-Allow-Origin: *" + credentials 的组合
+        config.addAllowedOrigin("http://localhost:5173");
+        config.addAllowedOrigin("http://localhost:5174");
+        config.addAllowedOrigin("http://127.0.0.1:5173");
+        config.addAllowedOrigin("http://127.0.0.1:5174");
         config.addAllowedHeader("*"); //允许携带的头
         config.addAllowedMethod("*"); //允许访问的方式
 

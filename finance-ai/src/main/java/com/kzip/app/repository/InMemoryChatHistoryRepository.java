@@ -13,17 +13,18 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class InMemoryChatHistoryRepository implements ChatHistoryRepository {
 
+    private static final int MAX_CHAT_IDS_PER_TYPE = 1000;
+
     private final Map<String, List<String>> chatHistory = new ConcurrentHashMap<>();
 
     @Override
     public void save(String type, String chatId) {
-        /*if (!chatHistory.containsKey(type)) {
-            chatHistory.put(type, new ArrayList<>());
-        }
-        List<String> chatIds = chatHistory.get(type);*/
         List<String> chatIds = chatHistory.computeIfAbsent(type, k -> new ArrayList<>());
         if (chatIds.contains(chatId)) {
             return;
+        }
+        if (chatIds.size() >= MAX_CHAT_IDS_PER_TYPE) {
+            chatIds.remove(0);
         }
         chatIds.add(chatId);
     }
@@ -36,15 +37,8 @@ public class InMemoryChatHistoryRepository implements ChatHistoryRepository {
         });
     }
 
-
     @Override
     public List<String> getChatIds(String type) {
-        /*List<String> chatIds = chatHistory.get(type);
-        return chatIds == null ? List.of() : chatIds;*/
         return chatHistory.getOrDefault(type, List.of());
     }
-
-
-
-
 }

@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo.entity.TransFlow;
 import com.example.demo.entity.User;
+import com.example.demo.entity.UserBind;
 import com.example.demo.enums.TransTypeEnum;
 import com.example.demo.exception.BusinessException;
 import com.example.demo.exception.ResourceNotFoundException;
@@ -49,6 +50,9 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private UserBindService userBindService;
 
     @Autowired
     private BankAccountSyncService bankAccountSyncService;
@@ -142,9 +146,10 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
             log.warn("充值回调金额非法，amount={}", amountStr);
             return false;
         }
-        User user = userService.getByMobile(agentUserId);
+        User user = resolveNotifyUser(params);
         if (user == null) {
-            log.warn("充值回调用户不存在，agentUserId={}", agentUserId);
+            log.warn("充值回调用户不存在，agentUserId={}, bindCode={}",
+                    agentUserId, params.get("bindCode"));
             return false;
         }
         // 幂等：同一银行流水号不重复记录
@@ -182,13 +187,14 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
             log.warn("提现回调金额非法，amount={}", amountStr);
             return false;
         }
-        User user = userService.getByMobile(agentUserId);
+        User user = resolveNotifyUser(params);
         if (user == null) {
-            log.warn("提现回调用户不存在，agentUserId={}", agentUserId);
+            log.warn("提现回调用户不存在，agentUserId={}, bindCode={}",
+                    agentUserId, params.get("bindCode"));
             return false;
         }
-        // 幂等
-        if (transNo != null && existsByTransNo(transNo)) {
+        // 幂等：成功流水和冲正流水共用同一银行流水号维度（冲正落库带 _REVERSAL 后缀，需一并查）
+        if (transNo != null && (existsByTransNo(transNo) || existsByTransNo(transNo + "_REVERSAL"))) {
             log.info("提现回调重复通知，直接确认，transNo={}", transNo);
             return true;
         }
@@ -202,6 +208,27 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
         // 银行成功 → 记正常流水
         withdraw(user.getId(), new BigDecimal(amountStr), transNo);
         return true;
+    }
+
+    /**
+     * 从银行回调参数中解析用户。
+     * 绑卡回调会带 agentUserId（手机号）；充值/提现/投标/放款/还款回调只回传 bindCode。
+     * 优先按 agentUserId 查，缺失时按 bindCode 反查绑卡记录再取用户。
+     */
+    private User resolveNotifyUser(Map<String, Object> params) {
+        String agentUserId = (String) params.get("agentUserId");
+        if (agentUserId != null && !agentUserId.isEmpty()) {
+            return userService.getByMobile(agentUserId);
+        }
+        String bindCode = (String) params.get("bindCode");
+        if (bindCode == null || bindCode.isEmpty()) {
+            return null;
+        }
+        UserBind userBind = userBindService.getByBindCode(bindCode);
+        if (userBind == null || userBind.getUserId() == null) {
+            return null;
+        }
+        return userService.getById(userBind.getUserId());
     }
 
     /**

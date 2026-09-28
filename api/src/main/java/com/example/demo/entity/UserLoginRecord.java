@@ -21,6 +21,14 @@ public class UserLoginRecord implements Serializable {
     @TableField("ip")
     private String ip;
 
+    /** 登录结果 0失败 1成功 */
+    @TableField("login_result")
+    private Integer loginResult;
+
+    /** 登录方式 0密码 1验证码 */
+    @TableField("login_type")
+    private Integer loginType;
+
     @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 

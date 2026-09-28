@@ -1,6 +1,7 @@
 package com.example.demo.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo.Bank.FormHelper;
@@ -232,10 +233,11 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
             return false;
         }
 
-        // 4. 查询投资人
-        User user = userService.getByMobile(agentUserId);
+        // 4. 查询投资人（银行回调只回传 bindCode，不传 agentUserId）
+        User user = resolveNotifyUser(params);
         if (user == null) {
-            log.warn("投标回调用户不存在，agentUserId={}", agentUserId);
+            log.warn("投标回调用户不存在，agentUserId={}, bindCode={}",
+                    agentUserId, params.get("bindCode"));
             return false;
         }
 
@@ -305,6 +307,11 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
             updatedLend.setStatus(LendStatusEnum.COMPLETED.getCode());
             updatedLend.setUpdateTime(now);
             lendService.updateById(updatedLend);
+            // 满标后同步把该标的全部投资记录置为满标状态（否则撤标校验的死分支永远进不去）
+            this.update(new LambdaUpdateWrapper<LendItem>()
+                    .eq(LendItem::getLendId, lendId)
+                    .set(LendItem::getStatus, 2)
+                    .set(LendItem::getUpdateTime, now));
             // 满标后缓存置 0，后续投标请求在入口前置拦截被直接拒绝
             redisTemplate.opsForValue().set(LEFT_AMOUNT_KEY + lendId, "0");
             log.info("标的 {} 已满标，状态变更为待放款", lendId);
@@ -336,6 +343,15 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
             throw new ResourceNotFoundException(500, "已撤标");
         }
 
+        // 校验标的状态：放款后（非募资中）不可撤标，否则账目对不上
+        Lend lend = lendService.getById(lendItem.getLendId());
+        if (lend == null) {
+            throw new ResourceNotFoundException(500, "标的不存在");
+        }
+        if (!LendStatusEnum.FUNDING.getCode().equals(lend.getStatus())) {
+            throw new ResourceNotFoundException(500, "标的已放款，无法撤销投资");
+        }
+
         // 撤回：标记状态为已撤标，银行自动解冻冻结资金
         lendItem.setStatus(1);
         lendItem.setUpdateTime(LocalDateTime.now());
@@ -343,7 +359,6 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
 
         // 更新标的已投金额和剩余缓存
         BigDecimal amount = lendItem.getInvestAmount();
-        Lend lend = lendService.getById(lendItem.getLendId());
         lend.setInvestAmount(lend.getInvestAmount().subtract(amount));
         lend.setUpdateTime(LocalDateTime.now());
         lendService.updateById(lend);
@@ -387,6 +402,26 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
     @Override
     public BigDecimal getBalanceForInvest(Long userId) {
         return bankAccountSyncService.getBankBalance(userId);
+    }
+
+    /**
+     * 从银行回调参数中解析用户。
+     * 投标回调只回传 bindCode，不传 agentUserId；按 bindCode 反查绑卡记录再取用户。
+     */
+    private User resolveNotifyUser(Map<String, Object> params) {
+        String agentUserId = (String) params.get("agentUserId");
+        if (agentUserId != null && !agentUserId.isEmpty()) {
+            return userService.getByMobile(agentUserId);
+        }
+        String bindCode = (String) params.get("bindCode");
+        if (bindCode == null || bindCode.isEmpty()) {
+            return null;
+        }
+        UserBind userBind = userBindService.getByBindCode(bindCode);
+        if (userBind == null || userBind.getUserId() == null) {
+            return null;
+        }
+        return userService.getById(userBind.getUserId());
     }
 
     /**

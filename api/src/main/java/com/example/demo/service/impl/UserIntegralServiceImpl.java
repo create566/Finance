@@ -44,13 +44,12 @@ public class UserIntegralServiceImpl extends ServiceImpl<UserIntegralMapper, Use
         record.setUpdateTime(LocalDateTime.now());
         save(record);
 
-        User user = userService.getById(userId);
-        if (user == null) {
-            throw new ResourceNotFoundException(404, "用户不存在");
+        // 原子增加 user.integral（SQL 层 integral = integral + ?，避免并发丢更新）
+        int rows = userMapper.addIntegral(userId, points);
+        if (rows == 0) {
+            throw new ResourceNotFoundException(404, "用户不存在，增加积分失败：userId=" + userId);
         }
-        int current = user.getIntegral() == null ? 0 : user.getIntegral();
-        user.setIntegral(current + points);
-        userService.updateById(user);
+        log.info("增加积分成功，userId={}, points={}, content={}", userId, points, content);
     }
 
     @Override

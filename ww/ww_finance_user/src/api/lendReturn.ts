@@ -24,8 +24,9 @@ export function getMyInvestList(): Promise<any[]> {
   })
 }
 
-export function repay(id: number): Promise<null> {
-  return request<null>({
+// 后端返回的是银行表单 HTML 字符串（前端自动提交跳转），不是 null
+export function repay(id: number): Promise<string> {
+  return request<string>({
     url: `/core/lendReturn/repay/${id}`,
     method: 'put',
   })

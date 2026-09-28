@@ -17,4 +17,12 @@ public interface UserMapper  extends BaseMapper<User> {
             "WHERE id = #{userId} AND is_deleted = 0")
     int deductIntegral(@Param("userId") Long userId, @Param("points") int points);
 
+    /**
+     * 原子增加积分：SQL 层 integral = integral + ?，避免先查后改的并发丢更新
+     * @return 影响行数（0 表示用户不存在）
+     */
+    @Update("UPDATE user SET integral = IFNULL(integral, 0) + #{points} " +
+            "WHERE id = #{userId} AND is_deleted = 0")
+    int addIntegral(@Param("userId") Long userId, @Param("points") int points);
+
 }

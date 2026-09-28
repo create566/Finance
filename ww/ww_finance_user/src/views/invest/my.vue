@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { getMyInvestments, investLend } from '@/api/lend'
+import { getMyInvestments } from '@/api/lend'
 
 const tableData = ref<any[]>([])
 const loading = ref(false)

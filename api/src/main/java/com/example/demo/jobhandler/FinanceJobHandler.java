@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -73,12 +74,15 @@ public class FinanceJobHandler {
     public void failExpiredLends() {
         log.info("【定时任务】流标扫描开始......");
         try {
-            LocalDateTime now = LocalDateTime.now();
-            // 查询所有募资中且截止时间已过的标的（排除 lendEndDate 为 null 的老数据）
+            // lendEndDate 是 LocalDate（日期），必须用 LocalDate.now() 比较。
+            // 之前用 LocalDateTime.now() 会按"当天 00:00"绑定时间戳比较，
+            // 导致当天到期的标的在凌晨 1 点就被提前流标（少募集一整天）
+            LocalDate today = LocalDate.now();
+            // 查询所有募资中且截止日期已过的标的（排除 lendEndDate 为 null 的老数据）
             List<Lend> expiredLends = lendService.list(new LambdaQueryWrapper<Lend>()
                     .eq(Lend::getStatus, LendStatusEnum.FUNDING.getCode())
                     .isNotNull(Lend::getLendEndDate)
-                    .lt(Lend::getLendEndDate, now));
+                    .lt(Lend::getLendEndDate, today));
 
             int count = 0;
             for (Lend lend : expiredLends) {

@@ -89,10 +89,9 @@ CREATE TABLE IF NOT EXISTS `sys_admin` (
     UNIQUE KEY `uk_username` (`username`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '管理员表';
 
--- 初始管理员：admin / 123456（密码 BCrypt 加密）
--- BCrypt 密码生成命令：passwordEncoder.encode("123456")
+-- 初始管理员：admin / 123456（密码 BCrypt 加密，明文 123456）
 INSERT INTO `sys_admin` (`username`, `password`, `name`, `create_time`)
-VALUES ('admin', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '超级管理员', NOW())
+VALUES ('admin', '$2b$10$3945YgHYWC0u.vYHybs.5OZlTydLPIsAgKjICtl771wpdNrUnA0lq', '超级管理员', NOW())
 ON DUPLICATE KEY UPDATE `username` = `username`;
 
 -- ============================================
@@ -140,6 +139,8 @@ CREATE TABLE IF NOT EXISTS `user_login_record` (
     `id`           BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '编号',
     `user_id`      BIGINT(20) DEFAULT NULL COMMENT '用户ID',
     `ip`           VARCHAR(32) DEFAULT NULL COMMENT '登录IP',
+    `login_result` TINYINT(1) DEFAULT NULL COMMENT '登录结果 0失败 1成功',
+    `login_type`   TINYINT(1) DEFAULT NULL COMMENT '登录方式 0密码 1验证码',
     `create_time`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `is_deleted`   TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
@@ -213,3 +214,196 @@ CREATE TABLE IF NOT EXISTS `lend_item` (
   KEY `idx_invest_user_id` (`invest_user_id`),
   KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='投资记录表';
+
+-- ============================================
+-- 借款人档案表（对应 com.example.demo.entity.Borrower）
+-- ============================================
+CREATE TABLE IF NOT EXISTS `borrower` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` BIGINT(20) NOT NULL COMMENT '用户ID',
+  `name` VARCHAR(64) DEFAULT NULL COMMENT '真实姓名',
+  `id_card` VARCHAR(18) DEFAULT NULL COMMENT '身份证号',
+  `mobile` VARCHAR(20) DEFAULT NULL COMMENT '手机号',
+  `sex` TINYINT(4) DEFAULT NULL COMMENT '性别',
+  `age` INT(11) DEFAULT NULL COMMENT '年龄',
+  `education` TINYINT(4) DEFAULT NULL COMMENT '学历',
+  `is_marry` TINYINT(4) DEFAULT NULL COMMENT '婚姻状况',
+  `industry` TINYINT(4) DEFAULT NULL COMMENT '行业',
+  `income` TINYINT(4) DEFAULT NULL COMMENT '收入',
+  `return_source` TINYINT(4) DEFAULT NULL COMMENT '还款来源',
+  `contacts_name` VARCHAR(64) DEFAULT NULL COMMENT '联系人姓名',
+  `contacts_mobile` VARCHAR(20) DEFAULT NULL COMMENT '联系人手机号',
+  `contacts_relation` TINYINT(4) DEFAULT NULL COMMENT '联系人关系',
+  `status` TINYINT(4) DEFAULT 0 COMMENT '状态 0未认证 1认证中 2认证通过 -1认证失败',
+  `create_time` DATETIME NOT NULL COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL COMMENT '更新时间',
+  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='借款人档案表';
+
+-- ============================================
+-- 借款人附件表（对应 com.example.demo.entity.BorrowerAttach）
+-- ============================================
+CREATE TABLE IF NOT EXISTS `borrower_attach` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `borrower_id` BIGINT(20) NOT NULL COMMENT '借款人ID',
+  `image_type` VARCHAR(32) DEFAULT NULL COMMENT '图片类型 idCard1/idCard2/house/car',
+  `image_url` VARCHAR(512) DEFAULT NULL COMMENT '图片地址',
+  `image_name` VARCHAR(128) DEFAULT NULL COMMENT '图片名称',
+  `create_time` DATETIME NOT NULL COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL COMMENT '更新时间',
+  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_borrower_id` (`borrower_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='借款人附件表';
+
+-- ============================================
+-- 数据字典表（对应 com.example.demo.entity.Dict）
+-- ============================================
+CREATE TABLE IF NOT EXISTS `dict` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `parent_id` BIGINT(20) DEFAULT NULL COMMENT '父节点ID（选项节点指向分类节点）',
+  `dict_code` VARCHAR(64) DEFAULT NULL COMMENT '字典分类编码（仅分类节点有值）',
+  `name` VARCHAR(64) DEFAULT NULL COMMENT '显示名称',
+  `value` INT(11) DEFAULT NULL COMMENT '存储值（选项节点）',
+  `create_time` DATETIME NOT NULL COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL COMMENT '更新时间',
+  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_dict_code` (`dict_code`),
+  KEY `idx_parent_id` (`parent_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据字典表';
+
+-- ============================================
+-- 积分等级表（对应 com.example.demo.entity.IntegralGrade）
+-- ============================================
+CREATE TABLE IF NOT EXISTS `integral_grade` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `integral_start` INT(11) DEFAULT NULL COMMENT '积分下限',
+  `integral_end` INT(11) DEFAULT NULL COMMENT '积分上限',
+  `borrow_amount` DECIMAL(16,2) DEFAULT NULL COMMENT '可借额度',
+  `create_time` DATETIME NOT NULL COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL COMMENT '更新时间',
+  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='积分等级表';
+
+-- ============================================
+-- 还款计划表（对应 com.example.demo.entity.LendReturn）
+-- ============================================
+CREATE TABLE IF NOT EXISTS `lend_return` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `lend_id` BIGINT(20) NOT NULL COMMENT '标的ID',
+  `borrow_info_id` BIGINT(20) DEFAULT NULL COMMENT '借款申请ID',
+  `return_no` VARCHAR(64) DEFAULT NULL COMMENT '还款编号',
+  `user_id` BIGINT(20) NOT NULL COMMENT '借款人ID',
+  `amount` DECIMAL(20,2) DEFAULT NULL COMMENT '标的总金额',
+  `base_amount` DECIMAL(20,2) DEFAULT NULL COMMENT '剩余本金',
+  `current_period` INT(11) DEFAULT NULL COMMENT '当前期数',
+  `lend_year_rate` DECIMAL(10,2) DEFAULT NULL COMMENT '年化利率',
+  `return_method` TINYINT(4) DEFAULT NULL COMMENT '还款方式',
+  `principal` DECIMAL(20,2) DEFAULT NULL COMMENT '本期本金',
+  `interest` DECIMAL(20,2) DEFAULT NULL COMMENT '本期利息',
+  `total` DECIMAL(20,2) DEFAULT NULL COMMENT '本期应还总额',
+  `fee` DECIMAL(20,2) DEFAULT NULL COMMENT '手续费',
+  `return_date` DATE DEFAULT NULL COMMENT '应还日期',
+  `real_return_time` DATETIME DEFAULT NULL COMMENT '实际还款时间',
+  `is_overdue` TINYINT(1) DEFAULT 0 COMMENT '是否逾期',
+  `overdue_total` DECIMAL(20,2) DEFAULT NULL COMMENT '逾期金额（含罚息）',
+  `is_last` TINYINT(1) DEFAULT 0 COMMENT '是否最后一期',
+  `status` TINYINT(4) DEFAULT 0 COMMENT '状态 0未还 1已还 2逾期',
+  `create_time` DATETIME NOT NULL COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL COMMENT '更新时间',
+  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_lend_id` (`lend_id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='还款计划表';
+
+-- ============================================
+-- 投资人收益计划表（对应 com.example.demo.entity.LendItemReturn）
+-- ============================================
+CREATE TABLE IF NOT EXISTS `lend_item_return` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `lend_return_id` BIGINT(20) NOT NULL COMMENT '还款计划ID',
+  `lend_item_id` BIGINT(20) NOT NULL COMMENT '投资记录ID',
+  `lend_id` BIGINT(20) NOT NULL COMMENT '标的ID',
+  `invest_user_id` BIGINT(20) NOT NULL COMMENT '投资人ID',
+  `invest_amount` DECIMAL(20,2) DEFAULT NULL COMMENT '投资本金',
+  `current_period` INT(11) DEFAULT NULL COMMENT '当前期数',
+  `lend_year_rate` DECIMAL(10,2) DEFAULT NULL COMMENT '年化利率',
+  `return_method` TINYINT(4) DEFAULT NULL COMMENT '还款方式',
+  `principal` DECIMAL(20,2) DEFAULT NULL COMMENT '本期应得本金',
+  `interest` DECIMAL(20,2) DEFAULT NULL COMMENT '本期应得利息',
+  `total` DECIMAL(20,2) DEFAULT NULL COMMENT '本期应得总额',
+  `fee` DECIMAL(20,2) DEFAULT NULL COMMENT '手续费',
+  `return_date` DATE DEFAULT NULL COMMENT '应还日期',
+  `real_return_time` DATETIME DEFAULT NULL COMMENT '实际回款时间',
+  `is_overdue` TINYINT(1) DEFAULT 0 COMMENT '是否逾期',
+  `overdue_total` DECIMAL(20,2) DEFAULT NULL COMMENT '逾期金额',
+  `status` TINYINT(4) DEFAULT 0 COMMENT '状态 0未还 1已还',
+  `create_time` DATETIME NOT NULL COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL COMMENT '更新时间',
+  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_lend_return_id` (`lend_return_id`),
+  KEY `idx_invest_user_id` (`invest_user_id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='投资人收益计划表';
+
+-- ============================================
+-- 交易流水表（对应 com.example.demo.entity.TransFlow）
+-- ============================================
+CREATE TABLE IF NOT EXISTS `trans_flow` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '编号',
+  `user_id` BIGINT(20) NOT NULL COMMENT '用户id',
+  `user_name` VARCHAR(64) DEFAULT NULL COMMENT '用户名称',
+  `trans_no` VARCHAR(64) NOT NULL COMMENT '交易单号（唯一，防重复提交）',
+  `trans_type` TINYINT(4) DEFAULT NULL COMMENT '交易类型（1充值 2提现 3投标 4回款 5放款 6还款）',
+  `trans_type_name` VARCHAR(32) DEFAULT NULL COMMENT '交易类型名称',
+  `trans_amount` DECIMAL(16,2) DEFAULT NULL COMMENT '交易金额',
+  `memo` VARCHAR(255) DEFAULT NULL COMMENT '备注',
+  `create_time` DATETIME NOT NULL COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL COMMENT '更新时间',
+  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_trans_no` (`trans_no`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_trans_type` (`trans_type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='交易流水表';
+
+-- ============================================
+-- 用户积分明细表（对应 com.example.demo.entity.UserIntegral）
+-- ============================================
+CREATE TABLE IF NOT EXISTS `user_integral` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` BIGINT(20) NOT NULL COMMENT '用户ID',
+  `integral` INT(11) DEFAULT NULL COMMENT '积分变动值（正加负减）',
+  `content` VARCHAR(255) DEFAULT NULL COMMENT '变动说明',
+  `create_time` DATETIME NOT NULL COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL COMMENT '更新时间',
+  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户积分明细表';
+
+-- ============================================
+-- 站内消息表（对应 com.example.demo.entity.Message）
+-- ============================================
+CREATE TABLE IF NOT EXISTS `message` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` BIGINT NOT NULL COMMENT '接收用户ID',
+  `title` VARCHAR(100) DEFAULT NULL COMMENT '消息标题',
+  `content` VARCHAR(500) DEFAULT NULL COMMENT '消息内容',
+  `message_type` TINYINT DEFAULT 1 COMMENT '类型：1逾期催收 2系统通知 3审批通知',
+  `is_read` TINYINT(1) DEFAULT 0 COMMENT '是否已读：0未读 1已读',
+  `create_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_user_read` (`user_id`, `is_read`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站内消息表';

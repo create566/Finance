@@ -67,6 +67,11 @@ public class GlobalResponseAdvice implements ResponseBodyAdvice<Object> {
         if (body instanceof Result) {
             return body;
         }
+        // 已自带 {code,message,data} 结构的 Map（如 KnowledgeEmbeddingController / chatHistory）
+        // → 原样返回，避免二次包装成 {code,msg,data:{code,message,data:{...}}} 导致跨模块解析失败
+        if (body instanceof java.util.Map && ((java.util.Map<?, ?>) body).containsKey("code")) {
+            return body;
+        }
         // 文件/二进制流 → 原样写出（保险，理论上上面 Content-Type 判断已经拦下）
         if (body instanceof Resource) {
             return body;

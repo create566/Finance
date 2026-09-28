@@ -27,13 +27,13 @@ public class VectorDistanceUtils {
     }
 
     /**
-     * 计算余弦距离
+     * 计算余弦相似度
      * @param vectorA 向量A（非空且与B等长）
      * @param vectorB 向量B（非空且与A等长）
-     * @return 余弦距离，范围[0, 2]
+     * @return 余弦相似度，范围[-1, 1]
      * @throws IllegalArgumentException 参数不合法或零向量时抛出
      */
-    public static double cosineDistance(float[] vectorA, float[] vectorB) {
+    public static double cosineSimilarity(float[] vectorA, float[] vectorB) {
         validateVectors(vectorA, vectorB);
 
         double dotProduct = 0.0;

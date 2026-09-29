@@ -138,4 +138,20 @@ public class ChatController {
             return result;
         }
     }
+
+    /**
+     * 当前用户的历史会话列表（按 updateTime 倒序）。
+     * 前端"历史会话"侧边栏调用；点击某会话后用 /chat-history/{id} 拉取消息，
+     * 并以该 sessionId 继续提问，后端即从 chat_memory 恢复上下文记忆。
+     */
+    @GetMapping("/sessions")
+    public Result<Map<String, Object>> mySessions(@RequestParam(defaultValue = "1") Long userId,
+                                                   @RequestParam(defaultValue = "1") Integer pageNum,
+                                                   @RequestParam(defaultValue = "20") Integer pageSize) {
+        var page = sessionService.listSessions(userId, pageNum, pageSize);
+        Map<String, Object> data = new HashMap<>();
+        data.put("list", page.getRecords());
+        data.put("total", page.getTotal());
+        return Result.success(data);
+    }
 }

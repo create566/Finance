@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS `user` (
     `head_img`            VARCHAR(255) DEFAULT NULL COMMENT '头像',
     `bind_status`         INT          DEFAULT 0 COMMENT '绑定状态(0未绑定 1绑定成功 -1失败)',
     `borrow_auth_status`  INT          DEFAULT 0 COMMENT '认证状态(0未认证 1认证中 2通过 -1失败)',
+    `invest_auth_status`  INT          DEFAULT 0 COMMENT '投资人认证状态(0未认证 1认证中 2通过 -1失败)',
     `bind_code`           VARCHAR(64)  DEFAULT NULL COMMENT '绑定账户协议号',
     `integral`            INT          DEFAULT 0 COMMENT '用户积分',
     `create_time`         DATETIME     DEFAULT NULL COMMENT '创建时间',
@@ -258,6 +259,42 @@ CREATE TABLE IF NOT EXISTS `borrower_attach` (
   PRIMARY KEY (`id`),
   KEY `idx_borrower_id` (`borrower_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='借款人附件表';
+
+-- ============================================
+-- 投资人档案表（对应 com.example.demo.entity.Investor）
+-- ============================================
+CREATE TABLE IF NOT EXISTS `investor` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `user_id` BIGINT(20) NOT NULL COMMENT '用户ID',
+  `name` VARCHAR(64) DEFAULT NULL COMMENT '真实姓名',
+  `id_card` VARCHAR(18) DEFAULT NULL COMMENT '身份证号',
+  `mobile` VARCHAR(20) DEFAULT NULL COMMENT '手机号',
+  `sex` TINYINT(4) DEFAULT NULL COMMENT '性别',
+  `age` INT(11) DEFAULT NULL COMMENT '年龄',
+  `status` TINYINT(4) DEFAULT 0 COMMENT '状态 0未认证 1认证中 2认证通过 -1认证失败',
+  `create_time` DATETIME NOT NULL COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL COMMENT '更新时间',
+  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='投资人档案表';
+
+-- ============================================
+-- 投资人附件表（对应 com.example.demo.entity.InvestorAttach）
+-- ============================================
+CREATE TABLE IF NOT EXISTS `investor_attach` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `investor_id` BIGINT(20) NOT NULL COMMENT '投资人ID',
+  `image_type` VARCHAR(32) DEFAULT NULL COMMENT '图片类型 idCard1/idCard2',
+  `image_url` VARCHAR(512) DEFAULT NULL COMMENT '图片地址',
+  `image_name` VARCHAR(128) DEFAULT NULL COMMENT '图片名称',
+  `create_time` DATETIME NOT NULL COMMENT '创建时间',
+  `update_time` DATETIME NOT NULL COMMENT '更新时间',
+  `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_investor_id` (`investor_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='投资人附件表';
 
 -- ============================================
 -- 数据字典表（对应 com.example.demo.entity.Dict）

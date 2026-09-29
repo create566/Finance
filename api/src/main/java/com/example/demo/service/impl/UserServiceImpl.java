@@ -221,6 +221,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
         userDto.setEmail(user.getEmail());
         userDto.setHeadImg(user.getHeadImg());
         userDto.setBorrowAuthStatus(user.getBorrowAuthStatus());
+        userDto.setInvestAuthStatus(user.getInvestAuthStatus());
         userDto.setIntegral(user.getIntegral());
         userDto.setBindStatus(user.getBindStatus());
         userDto.setBindCode(user.getBindCode());

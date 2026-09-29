@@ -34,7 +34,7 @@ function goInvest() {
 }
 
 function goBorrowAuth() {
-  router.push('/borrow/auth')
+  router.push('/auth')
 }
 
 function goBorrowApply() {

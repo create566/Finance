@@ -7,8 +7,8 @@ import com.kzip.app.tool.KnowledgeTools;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
+import com.kzip.app.memory.DbChatMemoryRepository;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chroma.vectorstore.ChromaApi;
@@ -19,7 +19,10 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.web.client.RestClient;
+
+import java.nio.charset.StandardCharsets;
 
 
 
@@ -35,7 +38,13 @@ public class CommonConfiguration {
     @Bean
     public ChromaApi chromaApi(ObjectMapper objectMapper) {
         String baseUrl = "http://" + chromaHost + ":" + chromaPort;
-        return new ChromaApi(baseUrl, RestClient.builder(), objectMapper);
+        // 强制 RestClient 使用 UTF-8 编码，避免中文被默认 ISO-8859-1 编码后写入 ChromaDB 产生乱码
+        RestClient.Builder restClientBuilder = RestClient.builder()
+                .messageConverters(converters -> {
+                    converters.removeIf(c -> c instanceof StringHttpMessageConverter);
+                    converters.add(0, new StringHttpMessageConverter(StandardCharsets.UTF_8));
+                });
+        return new ChromaApi(baseUrl, restClientBuilder, objectMapper);
     }
 
     @Bean
@@ -57,13 +66,15 @@ public class CommonConfiguration {
 
     @Bean
     public TokenTextSplitter tokenTextSplitter() {
-        return new TokenTextSplitter(500, 50, 1000, 0, false);
+        return new TokenTextSplitter(500, 50, 1000, 10000, false);
     }
 
     @Bean
-    public ChatMemory chatMemory() {
+    public ChatMemory chatMemory(DbChatMemoryRepository chatMemoryRepository) {
+        // 使用数据库持久化仓库替代 InMemoryChatMemoryRepository，
+        // 使 MessageChatMemoryAdvisor 的上下文记忆在服务重启后依然可读。
         return MessageWindowChatMemory.builder()
-                .chatMemoryRepository(new InMemoryChatMemoryRepository())
+                .chatMemoryRepository(chatMemoryRepository)
                 .maxMessages(20)
                 .build();
     }

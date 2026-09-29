@@ -69,6 +69,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '回款计划' },
       },
       {
+        path: 'auth',
+        name: 'RealnameAuth',
+        component: () => import('@/views/auth/index.vue'),
+        meta: { title: '实名认证' },
+      },
+      {
+        path: 'invest/auth',
+        name: 'InvestAuth',
+        component: () => import('@/views/invest/auth.vue'),
+        meta: { title: '投资人认证' },
+      },
+      {
         path: 'borrow/auth',
         name: 'BorrowAuth',
         component: () => import('@/views/borrow/auth.vue'),

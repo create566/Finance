@@ -15,11 +15,11 @@
         <processorPath useClasspath="false">
           <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.42/lombok-1.18.42.jar" />
         </processorPath>
-        <module name="finance-common" />
-        <module name="finance-oss" />
         <module name="finance-base" />
+        <module name="finance-common" />
         <module name="api" />
         <module name="finance-gateway" />
+        <module name="finance-oss" />
         <module name="finance-message" />
       </profile>
       <profile name="Annotation profile for finance-ai" enabled="true">
@@ -27,6 +27,7 @@
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
         <processorPath useClasspath="false">
+          <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.30/lombok-1.18.30.jar" />
           <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.30/lombok-1.18.30.jar" />
         </processorPath>
         <module name="finance-ai" />

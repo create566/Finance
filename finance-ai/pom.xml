@@ -201,6 +201,7 @@
                 <version>${spring-boot.version}</version>
                 <configuration>
                     <classifier>exec</classifier>
+                    <jvmArguments>-Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8</jvmArguments>
                 </configuration>
             </plugin>
         </plugins>

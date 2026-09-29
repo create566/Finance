@@ -26,5 +26,6 @@ public class UserDto implements Serializable {
     private Integer bindStatus;
     private String bindCode;
     private Integer borrowAuthStatus;
+    private Integer investAuthStatus;
     private Integer integral;
 }

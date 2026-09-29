@@ -19,6 +19,7 @@ import com.example.demo.enums.UserTypeEnum;
 import com.example.demo.mapper.LendItemMapper;
 import com.example.demo.service.LendItemService;
 import com.example.demo.service.BankAccountSyncService;
+import com.example.demo.service.BankDatabaseSyncService;
 import com.example.demo.service.LendService;
 import com.example.demo.service.TransFlowService;
 import com.example.demo.service.UserAccountService;
@@ -61,6 +62,9 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
     private BankAccountSyncService bankAccountSyncService;
 
     @Autowired
+    private BankDatabaseSyncService bankDatabaseSyncService;
+
+    @Autowired
     private TransFlowService transFlowService;
 
     @Autowired
@@ -89,10 +93,14 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
             throw new ResourceNotFoundException(500, "你不是投资人，请去认证投资人");
         }
 
-        // 2. 校验绑卡
+        // 2. 校验绑卡（本地 + 银行侧都须存在，否则银行页面会因查无此记录而渲染异常）
         UserBind userBind = userBindService.getByUserId(userId);
         if (userBind == null || !BindStatusEnum.BOUND.getCode().equals(userBind.getStatus())) {
             throw new ResourceNotFoundException(500, "请先完成绑卡");
+        }
+        if (!bankDatabaseSyncService.checkBindCodeExists(userBind.getBindCode())) {
+            log.warn("绑卡记录未同步到银行库，userId={}, bindCode={}", userId, userBind.getBindCode());
+            throw new ResourceNotFoundException(500, "绑卡记录未同步到银行，请解绑后重新绑卡");
         }
         userBind.setMobile(user.getMobile());
 
@@ -165,10 +173,14 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         Map<String, Object> paramMap = new HashMap<>();
         paramMap.put("agentId", HfbConst.AGENT_ID);
         paramMap.put("agentUserId", userBind.getMobile());
-        paramMap.put("bindCode", userBind.getBindCode());
+        paramMap.put("voteBindCode", userBind.getBindCode());
+        paramMap.put("agentBillNo", LendNoUtils.getLendItemNo());
         paramMap.put("voteAmt", amount);
+        paramMap.put("votePrizeAmt", "0");
+        paramMap.put("voteFeeAmt", "0");
         paramMap.put("agentProjectCode", lendId);
         paramMap.put("agentProjectName", lend.getTitle());
+        paramMap.put("projectAmt", lend.getAmount().toString());
         paramMap.put("returnUrl", HfbConst.INVEST_RETURN_URL);
         paramMap.put("notifyUrl", HfbConst.INVEST_NOTIFY_URL);
         paramMap.put("timestamp", new Date().getTime());
@@ -413,7 +425,7 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         if (agentUserId != null && !agentUserId.isEmpty()) {
             return userService.getByMobile(agentUserId);
         }
-        String bindCode = (String) params.get("bindCode");
+        String bindCode = (String) params.getOrDefault("voteBindCode", params.get("bindCode"));
         if (bindCode == null || bindCode.isEmpty()) {
             return null;
         }

@@ -60,13 +60,20 @@ public class KnowledgeTools {
                     SearchRequest.builder()
                             .query(query)
                             .topK(6)
-                            .similarityThreshold(0.15)
+                            .similarityThreshold(-1.0)
                             .build()
             );
             if (docs.isEmpty()) {
                 lastSearchContext.remove();
+                log.warn("知识库检索返回空: query={}, ChromaDB中可能无数据或维度不匹配", query);
                 return "知识库中暂无与「" + query + "」直接相关的资料";
             }
+            // 打印每条命中文档的 score，便于观察实际相似度分布、后续调优阈值
+            docs.forEach(d -> log.info("  命中片段: score={}, textLen={}, preview={}",
+                    d.getMetadata().get("distance"),
+                    d.getText().length(),
+                    d.getText().substring(0, Math.min(50, d.getText().length())).replace("\n", " ")
+            ));
             String result = docs.stream()
                     .map(Document::getText)
                     .collect(Collectors.joining("\n---\n"));

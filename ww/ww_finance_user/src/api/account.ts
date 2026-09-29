@@ -49,8 +49,14 @@ export interface TransFlowResult {
 }
 
 export function getTransFlowList(params: { page: number; limit: number }): Promise<TransFlowResult> {
-  return request<TransFlowResult>({
+  return request({
     url: `/core/transFlow/auth/list/${params.page}/${params.limit}`,
     method: 'get',
+  }).then((data: any) => {
+    // 后端返回 IPage：{ records, total, size, current }
+    return {
+      list: data.records || [],
+      total: data.total || 0,
+    }
   })
 }

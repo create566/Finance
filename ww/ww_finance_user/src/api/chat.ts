@@ -91,6 +91,21 @@ export function getChatHistory(sessionId: number): Promise<{ sessionId: number; 
   return aiRequest.get(`/chat-history/${sessionId}`).then(res => res.data.data)
 }
 
+export interface ChatSessionItem {
+  id: number
+  userId?: number
+  title?: string
+  messageCount?: number
+  status?: number
+  createTime?: string
+  updateTime?: string
+}
+
+// 当前用户的历史会话列表（按 updateTime 倒序），供"历史会话"侧边栏使用
+export function getAiSessions(userId = 1): Promise<{ list: ChatSessionItem[]; total: number }> {
+  return aiRequest.get('/sessions', { params: { userId } }).then(res => res.data.data)
+}
+
 // ========== AI模块：SSE 流式问答 ==========
 
 export interface StreamCallbacks {

@@ -16,10 +16,10 @@ async function fetchList() {
 }
 
 const statusMap: Record<number, { text: string; type: string }> = {
-  0: { text: '投资中', type: 'primary' },
-  1: { text: '持有中', type: 'success' },
-  2: { text: '已退出', type: 'info' },
-  3: { text: '已收益', type: 'success' },
+  0: { text: '募资中', type: 'warning' },
+  1: { text: '持有中', type: 'primary' },
+  2: { text: '满标待放款', type: 'success' },
+  3: { text: '已回款', type: 'info' },
 }
 
 onMounted(fetchList)

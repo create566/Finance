@@ -51,9 +51,7 @@ function handleRepay(id: number) {
 
 const statusMap: Record<number, { text: string; type: string }> = {
   0: { text: '待还款', type: 'warning' },
-  1: { text: '还款中', type: 'primary' },
-  2: { text: '已还清', type: 'success' },
-  3: { text: '逾期', type: 'danger' },
+  1: { text: '已还清', type: 'success' },
 }
 
 onMounted(fetchData)
@@ -100,7 +98,7 @@ onMounted(fetchData)
         <el-table-column label="操作" width="100" fixed="right" align="center">
           <template #default="{ row }">
             <el-button
-              v-if="row.status === 0 || row.status === 1"
+              v-if="row.status === 0"
               type="primary"
               link
               @click="handleRepay(row.id)"

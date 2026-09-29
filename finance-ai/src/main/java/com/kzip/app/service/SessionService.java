@@ -1,5 +1,6 @@
 package com.kzip.app.service;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.kzip.app.entity.ChatMessage;
 import com.kzip.app.entity.ChatSession;
 import com.kzip.app.mapper.ChatSessionMapper;
@@ -13,6 +14,8 @@ public class SessionService {
 
     private static final Logger log = LoggerFactory.getLogger(SessionService.class);
 
+    private static final int TITLE_MAX_LEN = 30;
+
     @Autowired
     private ChatSessionService chatSessionService;
 
@@ -21,6 +24,16 @@ public class SessionService {
 
     @Autowired
     private ChatSessionMapper chatSessionMapper;
+
+    /**
+     * 列出某用户的会话（按 updateTime 倒序），供前端"历史会话"侧边栏使用，
+     * 用户可点回任一历史会话继续对话（上下文记忆由 chat_memory 持久化恢复）。
+     */
+    public IPage<ChatSession> listSessions(Long userId, Integer pageNum, Integer pageSize) {
+        return chatSessionService.pageByUserId(userId,
+                pageNum == null ? 1 : pageNum,
+                pageSize == null ? 20 : pageSize);
+    }
 
     public Long createSession(Long userId, String userPhone, String userName, String title) {
         try {
@@ -46,6 +59,18 @@ public class SessionService {
 
     public void saveUserMessage(Long sessionId, Long userId, String content) {
         saveMessage(sessionId, userId, "user", content, null);
+        // 首条用户消息作为会话标题（仅当标题为空时），便于历史会话列表识别
+        if (sessionId != null && content != null && !content.trim().isEmpty()) {
+            String title = content.trim();
+            if (title.length() > TITLE_MAX_LEN) {
+                title = title.substring(0, TITLE_MAX_LEN) + "...";
+            }
+            try {
+                chatSessionMapper.updateTitleIfEmpty(sessionId, title);
+            } catch (Exception e) {
+                log.debug("会话标题更新失败(可忽略): sessionId={}", sessionId);
+            }
+        }
     }
 
     public void saveAssistantMessage(Long sessionId, Long userId, String content, String chunkIds) {

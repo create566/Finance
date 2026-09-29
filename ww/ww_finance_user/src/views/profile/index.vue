@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
+import { computed, reactive, ref, onMounted } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { getUserInfo, updateProfile } from '@/api/user'
 import { getBindStatus, bindDirect } from '@/api/bind'
@@ -93,6 +93,10 @@ const roleMap: Record<number, { text: string; type: string }> = {
   2: { text: '借款人', type: 'warning' },
 }
 
+const isRealNameAuthed = computed(
+  () => userInfo.value?.borrowAuthStatus === 2 || userInfo.value?.investAuthStatus === 2
+)
+
 onMounted(fetchUserInfo)
 </script>
 
@@ -129,6 +133,11 @@ onMounted(fetchUserInfo)
             <el-descriptions-item label="借款人认证">
               <el-tag :type="(authStatusMap[userInfo.borrowAuthStatus]?.type as string) || 'info'">
                 {{ authStatusMap[userInfo.borrowAuthStatus]?.text || '未认证' }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="投资人认证">
+              <el-tag :type="(authStatusMap[userInfo.investAuthStatus]?.type as string) || 'info'">
+                {{ authStatusMap[userInfo.investAuthStatus]?.text || '未认证' }}
               </el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="绑卡状态">
@@ -169,8 +178,8 @@ onMounted(fetchUserInfo)
           </div>
           <div v-else>
             <el-alert
-              v-if="userInfo?.borrowAuthStatus !== 2"
-              title="请先完成借款人实名认证后再绑卡"
+              v-if="!isRealNameAuthed"
+              title="请先完成实名认证后再绑卡"
               type="warning"
               show-icon
               :closable="false"
@@ -189,7 +198,7 @@ onMounted(fetchUserInfo)
                 <el-button
                   type="primary"
                   :loading="bindLoading"
-                  :disabled="userInfo?.borrowAuthStatus !== 2"
+                  :disabled="!isRealNameAuthed"
                   @click="handleBindDirect"
                 >
                   确认绑卡

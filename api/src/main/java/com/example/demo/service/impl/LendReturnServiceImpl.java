@@ -377,21 +377,47 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
 
         Lend lend = lendService.getById(lendReturn.getLendId());
 
-        // 4. 组装旺旺银行还款参数并签名
+        // 4. 查询本期投资人回款明细（银行 returnCommit 需要 data 字段）
+        List<LendItemReturn> itemReturns = lendItemReturnMapper.selectList(
+                new LambdaQueryWrapper<LendItemReturn>()
+                        .eq(LendItemReturn::getLendReturnId, lendReturnId)
+                        .eq(LendItemReturn::getStatus, 0));
+
+        // 5. 构造投资人回款明细列表（银行 data 字段）
+        //    银行 returnCommit 会遍历此列表：给每个投资人转账 transitAmt，
+        //    并校验 voteFeeAmt + sum(transitAmt) == totalAmt
+        List<Map<String, Object>> detailList = new ArrayList<>();
+        for (LendItemReturn ir : itemReturns) {
+            UserBind investorBind = userBindService.getByUserId(ir.getInvestUserId());
+            LendItem investItem = lendItemService.getById(ir.getLendItemId());
+            Map<String, Object> detail = new HashMap<>();
+            detail.put("voteBillNo", investItem != null ? investItem.getLendItemNo() : "");
+            detail.put("toBindCode", investorBind != null ? investorBind.getBindCode() : "");
+            detail.put("transitAmt", ir.getTotal());
+            detail.put("baseAmt", ir.getPrincipal());
+            detail.put("benifitAmt", ir.getInterest());
+            detailList.add(detail);
+        }
+
+        // 6. 组装旺旺银行还款参数并签名
+        //    银行 returnCommit 读取字段（字节码确认）：fromBindCode, totalAmt, voteFeeAmt, data
         Map<String, Object> paramMap = new HashMap<>();
         paramMap.put("agentId", HfbConst.AGENT_ID);
         paramMap.put("agentUserId", userBind.getMobile());
         paramMap.put("fromBindCode", userBind.getBindCode());
         paramMap.put("totalAmt", payable);
+        paramMap.put("voteFeeAmt", lendReturn.getFee() != null ? lendReturn.getFee() : BigDecimal.ZERO);
         paramMap.put("agentProjectCode", lendReturn.getLendId());
         paramMap.put("agentBatchNo", lendReturnId);
         paramMap.put("agentGoodsName", lend.getTitle());
+        paramMap.put("data", com.alibaba.fastjson.JSON.toJSONString(detailList));
         paramMap.put("returnUrl", HfbConst.BORROW_RETURN_RETURN_URL);
         paramMap.put("notifyUrl", HfbConst.BORROW_RETURN_NOTIFY_URL);
         paramMap.put("timestamp", new Date().getTime());
         paramMap.put("sign", BankSignUtil.getSign(paramMap));
 
-        log.info("还款表单生成，lendReturnId={}, userId={}, amount={}", lendReturnId, userId, payable);
+        log.info("还款表单生成，lendReturnId={}, userId={}, amount={}, principal={}, interest={}, investors={}",
+                lendReturnId, userId, payable, lendReturn.getPrincipal(), lendReturn.getInterest(), detailList.size());
         return FormHelper.buildForm(HfbConst.BORROW_RETURN_URL, paramMap);
     }
 
@@ -430,8 +456,22 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         // 4. 查询借款人（银行回调只回传 bindCode，不传 agentUserId）
         User borrower = resolveNotifyUser(params);
         if (borrower == null) {
-            log.warn("还款回调借款人不存在，agentUserId={}, bindCode={}",
-                    agentUserId, params.get("bindCode"));
+            // 银行还款回调可能不回传 agentUserId/bindCode，只有 agentBatchNo(=lendReturnId)
+            // 通过 agentBatchNo 反查 lendReturn → userId → 借款人
+            String batchNo = (String) params.getOrDefault("agentBatchNo", returnIdStr);
+            if (batchNo != null) {
+                try {
+                    LendReturn lr = this.getById(Long.valueOf(batchNo));
+                    if (lr != null && lr.getUserId() != null) {
+                        borrower = userService.getById(lr.getUserId());
+                    }
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        if (borrower == null) {
+            log.warn("还款回调借款人不存在，agentUserId={}, bindCode={}, agentBatchNo={}",
+                    agentUserId, params.get("bindCode"), params.get("agentBatchNo"));
             return false;
         }
 

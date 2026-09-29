@@ -41,9 +41,7 @@ function handleRepay(id: number) {
 
 const statusMap: Record<number, { text: string; type: string }> = {
   0: { text: '待还款', type: 'warning' },
-  1: { text: '还款中', type: 'primary' },
-  2: { text: '已还清', type: 'success' },
-  3: { text: '逾期', type: 'danger' },
+  1: { text: '已还清', type: 'success' },
 }
 
 const applyStatusMap: Record<number, { text: string; type: string }> = {
@@ -97,18 +95,17 @@ onMounted(() => {
       <template #header><span style="font-weight:600">还款计划</span></template>
       <el-table :data="tableData" v-loading="loading" stripe border>
         <el-table-column type="index" label="序号" width="70" align="center" />
-        <el-table-column prop="id" label="借款ID" min-width="80" />
+        <el-table-column prop="currentPeriod" label="期次" width="80" align="center" />
         <el-table-column prop="lendId" label="标的ID" min-width="80" />
-        <el-table-column prop="amount" label="借款金额" min-width="120" align="right">
-          <template #default="{ row }">¥{{ row.amount?.toFixed(2) }}</template>
+        <el-table-column prop="returnDate" label="还款日期" min-width="120" align="center" />
+        <el-table-column prop="total" label="应还总额" min-width="120" align="right">
+          <template #default="{ row }">¥{{ row.total?.toFixed(2) ?? '0.00' }}</template>
         </el-table-column>
-        <el-table-column prop="lendYearRate" label="年化利率" width="100" align="center">
-          <template #default="{ row }">{{ row.lendYearRate }}%</template>
+        <el-table-column prop="principal" label="本金" min-width="110" align="right">
+          <template #default="{ row }">¥{{ row.principal?.toFixed(2) ?? '0.00' }}</template>
         </el-table-column>
-        <el-table-column prop="returnMethod" label="还款方式" min-width="120">
-          <template #default="{ row }">
-            {{ row.returnMethod === 1 ? '等额本息' : row.returnMethod === 0 ? '等额本金' : '-' }}
-          </template>
+        <el-table-column prop="interest" label="利息" min-width="110" align="right">
+          <template #default="{ row }">¥{{ row.interest?.toFixed(2) ?? '0.00' }}</template>
         </el-table-column>
         <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
@@ -117,11 +114,10 @@ onMounted(() => {
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="申请时间" min-width="170" />
         <el-table-column label="操作" width="100" fixed="right" align="center">
           <template #default="{ row }">
             <el-button
-              v-if="row.status === 0 || row.status === 1"
+              v-if="row.status === 0"
               type="primary"
               link
               @click="handleRepay(row.id)"

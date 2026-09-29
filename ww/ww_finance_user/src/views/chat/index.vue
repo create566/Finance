@@ -1,5 +1,23 @@
 <template>
-  <div class="chat-container">
+  <div class="chat-wrap">
+    <aside class="session-sidebar">
+      <div class="sidebar-header">
+        <el-button size="small" type="primary" plain style="width: 100%" @click="handleNewChat">+ 新建对话</el-button>
+      </div>
+      <div class="session-list">
+        <div
+          v-for="s in sessions"
+          :key="s.id"
+          :class="['session-item', { active: s.id === sessionId }]"
+          @click="handleSelectSession(s.id)"
+        >
+          <div class="session-title">{{ s.title || '未命名会话' }}</div>
+          <div class="session-meta">{{ formatTime(s.updateTime || s.createTime) }} · {{ s.messageCount || 0 }}条</div>
+        </div>
+        <div v-if="!sessions.length" class="session-empty">暂无历史会话</div>
+      </div>
+    </aside>
+    <div class="chat-container">
     <div class="chat-header">
       <div class="header-left">
         <h2>智能客服</h2>
@@ -24,7 +42,6 @@
       </div>
       <div class="header-right">
         <el-button v-if="sessionId" type="danger" plain size="small" @click="handleCloseSession">结束会话</el-button>
-        <el-button type="primary" size="small" @click="handleClearChat">清空对话</el-button>
       </div>
     </div>
 
@@ -78,13 +95,18 @@
         发送
       </el-button>
     </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, nextTick, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { askAI, askKnowledgeAI, getKnowledgeBases, closeSession, type ChatMessage, type KnowledgeBase } from '@/api/chat'
+import {
+  askAI, askKnowledgeAI, getKnowledgeBases, closeSession,
+  getAiSessions, getChatHistory,
+  type ChatMessage, type KnowledgeBase, type ChatSessionItem,
+} from '@/api/chat'
 
 const chatBodyRef = ref<HTMLElement>()
 const messages = ref<ChatMessage[]>([])
@@ -93,6 +115,7 @@ const loading = ref(false)
 const sessionId = ref<number | null>(null)
 const selectedKbId = ref<number | null>(null)
 const knowledgeBases = ref<KnowledgeBase[]>([])
+const sessions = ref<ChatSessionItem[]>([])
 
 const quickQuestions = [
   '借款利率是多少？',
@@ -142,6 +165,7 @@ async function handleSend() {
       createTime: new Date().toLocaleString('zh-CN'),
     }
     messages.value.push(assistantMsg)
+    loadSessions()
   } catch (err: any) {
     const errorMsg: ChatMessage = {
       role: 'assistant',
@@ -178,6 +202,57 @@ function handleClearChat() {
   sessionId.value = null
 }
 
+async function handleNewChat() {
+  // 新建对话：清空当前界面并重置 sessionId，下一条消息会创建新会话，
+  // 对应后端新的 chatId("session-新id")，从而加载一份全新的上下文记忆，
+  // 不会继承上一段对话。上一段对话的记忆已落库(chat_message/chat_memory)，不受影响，
+  // 并保留在左侧"历史会话"列表中，可随时点回继续。
+  if (messages.value.length > 0) {
+    try {
+      await ElMessageBox.confirm('确定要新建对话吗？当前对话将被清空（可在左侧历史会话中重新打开）。', '新建对话', { type: 'warning' })
+    } catch {
+      return
+    }
+  }
+  handleClearChat()
+  loadSessions()
+}
+
+// 拉取历史会话列表（左侧侧边栏）
+async function loadSessions() {
+  try {
+    const res = await getAiSessions(1)
+    sessions.value = res?.list ?? []
+  } catch {
+    // 列表加载失败不阻断主流程
+  }
+}
+
+// 点回某个历史会话：拉取其消息展示，并切到该 sessionId，
+// 后端后续提问会以 chatId="session-{id}" 从 chat_memory 恢复上下文记忆
+async function handleSelectSession(id: number) {
+  if (loading.value) return
+  if (sessionId.value === id) return
+  try {
+    const res = await getChatHistory(id)
+    sessionId.value = id
+    messages.value = (res?.messages ?? []).map((m: any) => ({
+      role: m.role,
+      content: m.content,
+      createTime: m.createTime,
+    }))
+    scrollToBottom()
+  } catch {
+    ElMessage.error('加载历史会话失败')
+  }
+}
+
+function formatTime(t?: string): string {
+  if (!t) return ''
+  // 取 MM-DD HH:mm 部分
+  return t.length >= 16 ? t.slice(5, 16) : t
+}
+
 function onKbChange() {
   // 切换知识库时清空当前对话，避免上下文混乱
   if (messages.value.length > 0) {
@@ -208,14 +283,84 @@ onMounted(async () => {
   } catch {
     // 知识库加载失败不影响正常聊天
   }
+  loadSessions()
 })
 </script>
 
 <style scoped>
-.chat-container {
+.chat-wrap {
+  display: flex;
+  gap: 12px;
+  height: calc(100vh - 120px);
+}
+
+.session-sidebar {
+  width: 220px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 120px);
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 10px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.session-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.session-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.session-item:hover {
+  background: #f5f7fa;
+}
+
+.session-item.active {
+  background: #eef2ff;
+}
+
+.session-title {
+  font-size: 13px;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-item.active .session-title {
+  color: #667eea;
+  font-weight: 600;
+}
+
+.session-meta {
+  font-size: 11px;
+  color: #bbb;
+  margin-top: 4px;
+}
+
+.session-empty {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: #ccc;
+}
+
+.chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);

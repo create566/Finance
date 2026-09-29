@@ -26,9 +26,9 @@ public class MyWebConfig implements WebMvcConfigurer {
                 .addResourceLocations("classpath:/META-INF/resources/webjars/");
 
         registry.addResourceHandler("/api/oss/file/images/**")
-                .addResourceLocations("file:" + uploadBasePath + "/");
+                .addResourceLocations("file:" + uploadBasePath + "/images/");
         registry.addResourceHandler("/api/knowledge/files/**")
-                .addResourceLocations("file:" + uploadBasePath + "/knowledge/");
+                .addResourceLocations("file:" + uploadBasePath + "/");
     }
 
     @Override
@@ -48,6 +48,8 @@ public class MyWebConfig implements WebMvcConfigurer {
                         "/api/core/lend/notifyMakeLoan",
                         "/api/core/lendReturn/notifyUrl",
                         "/api/core/user/checkMobile/**",
+                        "/api/oss/file/images/**",
+                        "/api/knowledge/files/**",
                         "/admin/core/login",
                         "/admin/core/knowledge/health",
                         "/admin/core/knowledge/doc/*/embedding-status",

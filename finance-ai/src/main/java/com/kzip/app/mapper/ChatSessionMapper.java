@@ -14,4 +14,7 @@ public interface ChatSessionMapper extends BaseMapper<ChatSession> {
 
     @Update("UPDATE chat_session SET status = 1, update_time = NOW() WHERE id = #{id}")
     int closeSession(@Param("id") Long id);
+
+    @Update("UPDATE chat_session SET title = #{title}, update_time = NOW() WHERE id = #{id} AND (title IS NULL OR title = '')")
+    int updateTitleIfEmpty(@Param("id") Long id, @Param("title") String title);
 }

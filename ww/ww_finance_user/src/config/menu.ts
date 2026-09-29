@@ -12,6 +12,11 @@ export const menuList: MenuItem[] = [
     icon: 'HomeFilled',
   },
   {
+    path: '/auth',
+    title: '实名认证',
+    icon: 'Postcard',
+  },
+  {
     path: '/account',
     title: '我的账户',
     icon: 'Wallet',
@@ -35,7 +40,6 @@ export const menuList: MenuItem[] = [
     title: '借款服务',
     icon: 'Money',
     children: [
-      { path: '/borrow/auth', title: '借款人认证', icon: '' },
       { path: '/borrow/apply', title: '借款申请', icon: '' },
       { path: '/borrow/my', title: '我的借款', icon: '' },
       { path: '/borrow/repay', title: '还款计划', icon: '' },

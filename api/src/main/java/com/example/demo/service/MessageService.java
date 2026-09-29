@@ -60,6 +60,14 @@ public interface MessageService extends IService<Message> {
         return send(userId, MessageTypeEnum.BORROWER_AUTH, "【实名认证结果】", content);
     }
 
+    /** 发送投资人实名认证结果通知 */
+    default Message sendInvestorAuthNotice(Long userId, boolean approved) {
+        String content = approved
+                ? "您的投资人实名认证已通过，现在可以正常投标"
+                : "您的投资人实名认证未通过，请核对资料后重新提交";
+        return send(userId, MessageTypeEnum.BORROWER_AUTH, "【实名认证结果】", content);
+    }
+
     /** 发送标的发布通知（给借款人） */
     default Message sendLendPublishNotice(Long userId, String lendNo, java.math.BigDecimal amount) {
         return send(userId, MessageTypeEnum.LEND_PUBLISH, "【标的已发布】",

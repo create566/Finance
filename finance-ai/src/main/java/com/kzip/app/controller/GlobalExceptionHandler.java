@@ -3,15 +3,18 @@ package com.kzip.app.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 全局异常处理器。
@@ -108,6 +111,18 @@ public class GlobalExceptionHandler {
     public Result<String> handleNumberFormat(NumberFormatException e) {
         log.warn("参数格式错误：{}", e.getMessage());
         return Result.fail("参数格式错误，期望数字类型：" + e.getMessage());
+    }
+
+    // ================================================================
+    //  静态资源 404：纯 API 服务无首页/图标，浏览器直接访问 / 或 /favicon.ico 会触发。
+    //  属正常 404，不按系统异常打印 ERROR 堆栈，避免控制台噪音。
+    // ================================================================
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Result<String> handleNoResource(NoResourceFoundException e, HttpServletRequest request) {
+        log.debug("静态资源不存在 [{} {}]", request.getMethod(), request.getRequestURI());
+        return Result.error(404, "资源不存在");
     }
 
     // ================================================================

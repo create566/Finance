@@ -8,6 +8,7 @@ import com.example.demo.client.SMSApiSmsClient;
 import com.example.demo.entity.UserBind;
 import com.example.demo.entity.User;
 import com.example.demo.enums.BorrowerAuthStatusEnum;
+import com.example.demo.enums.InvestorAuthStatusEnum;
 import com.example.demo.exception.BusinessException;
 import com.example.demo.exception.ResourceNotFoundException;
 import com.example.demo.mapper.UserBindMapper;
@@ -124,8 +125,10 @@ public class UserBindServiceImpl extends ServiceImpl<UserBindMapper, UserBind> i
         if (user == null) {
             throw new ResourceNotFoundException(404, "用户不存在");
         }
-        // 前置校验1：必须先完成实名认证
-        if (!BorrowerAuthStatusEnum.AUTHED.getCode().equals(user.getBorrowAuthStatus())) {
+        // 前置校验1：必须先完成实名认证（借款人或投资人任一通过即可）
+        boolean borrowerAuthed = BorrowerAuthStatusEnum.AUTHED.getCode().equals(user.getBorrowAuthStatus());
+        boolean investorAuthed = InvestorAuthStatusEnum.AUTHED.getCode().equals(user.getInvestAuthStatus());
+        if (!borrowerAuthed && !investorAuthed) {
             throw new BusinessException(400, "请先完成实名认证");
         }
         // 前置校验2：短信验证码（Feign 调用容错）

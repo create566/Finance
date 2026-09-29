@@ -3,9 +3,14 @@ import { request } from '@/utils/request'
 export interface MyBorrowItem {
   id: number
   lendId: number
+  currentPeriod: number
   amount: number
   lendYearRate: number
   returnMethod: number
+  principal: number
+  interest: number
+  total: number
+  returnDate: string
   status: number
   createTime: string
 }

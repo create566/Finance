@@ -84,6 +84,12 @@ public class User  implements Serializable {
     private Integer borrowAuthStatus;
 
     /**
+     * 投资人认证状态（0：未认证 1：认证中 2：认证通过 -1：认证失败）
+     */
+    @TableField("invest_auth_status")
+    private Integer investAuthStatus;
+
+    /**
      * 绑定账户协议号
      */
     @TableField("bind_code")

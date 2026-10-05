@@ -46,9 +46,23 @@ export const menuList: MenuItem[] = [
     ],
   },
   {
+    path: '/contract',
+    title: '我的合同',
+    icon: 'Document',
+    children: [{ path: '/contract/my', title: '合同列表', icon: '' }],
+  },
+  {
     path: '/message',
     title: '消息中心',
     icon: 'Bell',
+  },
+  {
+    path: '/chat',
+    title: '智能客服',
+    icon: 'ChatDotRound',
+    children: [
+      { path: '/chat', title: '在线咨询', icon: '' },
+    ],
   },
   {
     path: '/profile',

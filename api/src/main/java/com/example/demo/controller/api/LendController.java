@@ -3,8 +3,10 @@ package com.example.demo.controller.api;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.demo.entity.Lend;
 import com.example.demo.entity.LendItem;
+import com.example.demo.entity.vo.RecommendLendVO;
 import com.example.demo.service.LendItemService;
 import com.example.demo.service.LendService;
+import com.example.demo.service.RecommendService;
 import com.example.demo.utils.LoginUserContext;
 import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.wwfinance.common.result.PccAjaxResult;
@@ -36,6 +38,9 @@ public class LendController {
     @Autowired
     private LendItemService lendItemService;
 
+    @Autowired
+    private RecommendService recommendService;
+
     @ApiOperation("获取募资中的标的列表（投资人浏览）")
     @GetMapping("/list")
     public PccAjaxResult list(
@@ -49,13 +54,38 @@ public class LendController {
     }
 
     @ApiOperation("获取标的详情")
-    @GetMapping("/{id}")
+    @GetMapping("/{id:\\d+}")
     public PccAjaxResult detail(@PathVariable Long id) {
         Lend lend = lendService.getById(id);
         if (lend == null) {
             return new PccAjaxResult(500, "标的不存在");
         }
         return new PccAjaxResult(200, "获取标的详情成功", lend);
+    }
+
+    @ApiOperation("为你推荐（需登录）：规则打分 + Item-CF 融合，推荐位永不白屏")
+    @GetMapping("/auth/recommend")
+    public PccAjaxResult recommend(
+            @ApiParam("返回条数，默认5，上限20") @RequestParam(defaultValue = "5") Integer topN) {
+        Integer userIdInt = LoginUserContext.getUserid();
+        List<RecommendLendVO> list = recommendService.recommendForUser(
+                userIdInt == null ? null : userIdInt.longValue(), topN);
+        Map<String, Object> data = new HashMap<>();
+        data.put("list", list);
+        data.put("total", list.size());
+        return new PccAjaxResult(200, "获取推荐标的成功", data);
+    }
+
+    @ApiOperation("相似标的（详情页）：Item-CF 物品相似度 + 内容相似度混合")
+    @GetMapping("/{id:\\d+}/similar")
+    public PccAjaxResult similar(
+            @ApiParam("标的ID") @PathVariable Long id,
+            @ApiParam("返回条数，默认5，上限20") @RequestParam(defaultValue = "5") Integer topN) {
+        List<RecommendLendVO> list = recommendService.similarTo(id, topN);
+        Map<String, Object> data = new HashMap<>();
+        data.put("list", list);
+        data.put("total", list.size());
+        return new PccAjaxResult(200, "获取相似标的成功", data);
     }
 
     @ApiOperation("投资人投标（跳转旺旺银行）")
@@ -147,7 +177,7 @@ public class LendController {
     }
 
     @ApiOperation("获取标的的投资记录列表")
-    @GetMapping("/{lendId}/investments")
+    @GetMapping("/{lendId:\\d+}/investments")
     public PccAjaxResult investments(@PathVariable Long lendId) {
         List<LendItem> list = lendItemService.listByLendId(lendId);
         return new PccAjaxResult(200, "获取投资记录成功", list);

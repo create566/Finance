@@ -3,6 +3,8 @@ import { request } from '@/utils/request'
 export interface MyBorrowItem {
   id: number
   lendId: number
+  borrowInfoId?: number
+  returnNo?: string
   currentPeriod: number
   amount: number
   lendYearRate: number
@@ -11,7 +13,13 @@ export interface MyBorrowItem {
   interest: number
   total: number
   returnDate: string
+  /** 0待还款 1已还清 2已逾期 */
   status: number
+  /** 是否逾期 */
+  overdue?: boolean
+  /** 逾期后应还总额（含罚息）；未逾期为空 */
+  overdueTotal?: number | null
+  realReturnTime?: string | null
   createTime: string
 }
 

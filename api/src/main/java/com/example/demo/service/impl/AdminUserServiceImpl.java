@@ -3,7 +3,7 @@ package com.example.demo.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.demo.entity.SysAdmin;
 import com.example.demo.exception.BusinessException;
-import com.example.demo.exception.ResourceNotFoundException;
+import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.example.demo.mapper.SysAdminMapper;
 import com.example.demo.service.AdminUserService;
 import com.example.demo.utils.TokenUtil;

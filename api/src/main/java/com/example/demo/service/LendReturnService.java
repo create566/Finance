@@ -22,7 +22,7 @@ public interface LendReturnService extends IService<LendReturn> {
      * @param lendId 标的ID
      * @return 跳转到银行页面的 HTML 表单串
      */
-    String buildMakeLoanForm(Long lendId);
+    String buildMakeLoanForm(Long lendId, Long adminId);
 
     /**
      * 处理银行放款异步回调：验签 → 状态/金额校验 → 幂等 → 生成还款计划 → 借款人入账 → 标的状态改还款中
@@ -72,9 +72,12 @@ public interface LendReturnService extends IService<LendReturn> {
     List<LendReturn> listByLendId(Long lendId);
 
     /**
-     * 查询某一期所有投资人的收益明细
+     * 查询某一期某投资人的收益明细（带归属校验）。
+     *
+     * <p>借款人可查看该期全部投资人明细（还款时需知道钱还给谁）；
+     * 投资人只能查看自己那一条；与本期无关的用户查到空列表。</p>
      */
-    List<LendItemReturn> listItemReturns(Long lendReturnId);
+    List<LendItemReturn> listItemReturns(Long lendReturnId, Long userId);
 
     /**
      * 投资人查询自己的回款计划

@@ -91,6 +91,13 @@ public class KnowledgeDocServiceImpl extends ServiceImpl<KnowledgeDocMapper, Kno
         if (doc == null) {
             return false;
         }
+        // 同步删除向量库中该文档的全部向量，避免"库里没了、向量库里还残留"。
+        // 覆盖单文档删除与整个知识库删除(baseDelete 逐 doc 调 removeDoc)两条路径。
+        try {
+            knowledgeEmbeddingService.deleteDocumentVectors(id);
+        } catch (Exception e) {
+            log.warn("删除文档向量失败(继续删库记录): docId={}, error={}", id, e.getMessage());
+        }
         boolean ok = this.removeById(id);
         if (ok) {
             knowledgeBaseService.decrementDocCount(doc.getKbId(), doc.getChunkCount() == null ? 0 : doc.getChunkCount());

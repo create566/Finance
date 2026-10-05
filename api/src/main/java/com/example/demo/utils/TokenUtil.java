@@ -14,9 +14,24 @@ import java.util.Map;
  */
 public class TokenUtil {
 
-    private final static String secret = "vsofo-5grcs-secret";// 加解密密匙
+    /**
+     * 加解密密匙。
+     *
+     * <p>不再硬编码：值由 {@code config.JwtSecretConfig} 在启动时从
+     * {@code security.jwt.secret} 注入。默认值刻意与历史硬编码保持一致 ——
+     * 若改错会导致所有已签发 token 验签失败、全体在线用户掉线。</p>
+     */
+    private static String secret = "vsofo-5grcs-secret";
+
     private final static long expiration = 604800; // 过期时间/秒
     private final static String tokenHead = "5grcs "; // #JWT负载中拿到开头
+
+    /** 供 Spring 启动时注入配置值（本类是静态工具类，无法直接 @Value 注入） */
+    public static void setSecret(String value) {
+        if (value != null && !value.trim().isEmpty()) {
+            secret = value.trim();
+        }
+    }
 
     private static String localGenerateToken(Map<String, Object> claims) {
         Date expirationTime = new Date(System.currentTimeMillis() + expiration * 1000);

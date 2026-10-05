@@ -43,7 +43,9 @@ service-sms:
 # 安全配置
 security:
   jwt:
-    secret: ${JWT_SECRET:vsofo-5grcs-secret-change-me}
+    # 生产务必用环境变量 JWT_SECRET 覆盖。
+    # 默认值必须与 TokenUtil 的历史硬编码值一致，改错会让所有已登录用户掉线（验签失败）。
+    secret: ${JWT_SECRET:vsofo-5grcs-secret}
     expiration: 604800
   bank:
     sign-key: ${BANK_SIGN_KEY:change-bank-sign-key-in-prod}
@@ -72,11 +74,15 @@ ai:
   embedding:
     service-url: ${AI_EMBEDDING_URL:http://localhost:8081/ai/knowledge/embedding}
 
+# 银行库（旺旺银行）。生产环境必须用环境变量注入，禁止把真实凭据提交到仓库。
+# 默认值仅为保证本地开发开箱即跑；⚠ 若本文件曾推送到远端，请立即在阿里云侧轮换该密码。
 bank-datasource:
-  url: jdbc:mysql://rm-uf6ry261ghx3995253o.mysql.rds.aliyuncs.com:3306/ww_bank?serverTimezone=GMT%2B8&characterEncoding=utf-8
-  username: shangqiuedu
-  password: shangqiuedu_kakdadajeLo90
+  url: ${BANK_DB_URL:jdbc:mysql://rm-uf6ry261ghx3995253o.mysql.rds.aliyuncs.com:3306/ww_bank?serverTimezone=GMT%2B8&characterEncoding=utf-8}
+  username: ${BANK_DB_USERNAME:shangqiuedu}
+  password: ${BANK_DB_PASSWORD:shangqiuedu_kakdadajeLo90}
   driver-class-name: com.mysql.cj.jdbc.Driver
+  # 银行库取不到时降级到平台 user_account，详见 BankDataSourceConfig
+  connect-timeout-ms: ${BANK_DB_CONNECT_TIMEOUT:8000}
 
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml

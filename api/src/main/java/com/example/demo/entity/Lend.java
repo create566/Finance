@@ -1,6 +1,7 @@
 package com.example.demo.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -82,21 +83,54 @@ public class Lend {
     @TableField("status")
     private Integer status;
 
-    /** 审核时间 */
+    /**
+     * 上架审核时间（发布募资时写入）。
+     * <p>内部审计字段，{@code @JsonIgnore} 不对前台暴露；后台列表在 AdminLendController 里显式回填。
+     */
     @TableField("check_time")
+    @JsonIgnore
     private LocalDateTime checkTime;
 
-    /** 审核管理员ID */
+    /**
+     * 上架审核管理员ID（发布募资时写入）。
+     * <p>内部审计字段，不对前台暴露（避免前台可枚举后台管理员主键）。
+     */
     @TableField("check_admin_id")
+    @JsonIgnore
     private Long checkAdminId;
 
-    /** 放款时间 */
+    /** 放款时间（银行回调确认入账时写入，非管理员操作时间） */
     @TableField("payment_time")
     private LocalDateTime paymentTime;
 
-    /** 放款管理员ID */
+    /**
+     * 放款发起管理员ID（管理员点击"放款"生成银行表单时写入）。
+     * <p>与 {@link #paymentTime} 语义不同：本字段=谁发起的，paymentTime=银行何时入账完成。
+     * 两者可组合判断状态：本字段非空且 paymentTime 为空 → 已发起放款、待银行回调。
+     */
     @TableField("payment_admin_id")
+    @JsonIgnore
     private Long paymentAdminId;
+
+    /**
+     * 下架处置时间（管理端下架时写入）。
+     * <p>每次下架都会覆盖写，语义是"最后一次处置的时间"，而非历史流水。
+     */
+    @TableField("offline_time")
+    @JsonIgnore
+    private LocalDateTime offlineTime;
+
+    /**
+     * 下架操作管理员ID（管理端下架时写入）。
+     * <p>与 {@link #checkAdminId}（谁批准上架）、{@link #paymentAdminId}（谁发起放款）三者语义互斥，
+     * 分别对应"进 → 放 → 退"三个高风险动作。<b>NULL 表示系统自动处置</b>（定时任务流标），
+     * 非空才是人工操作。
+     * <p>此处必填校验在 {@code LendServiceImpl#offline}：识别不到操作人时拒绝下架 ——
+     * 匿名处置投资人冻结资金本身就是风险动作，宁可失败也不能留白。
+     */
+    @TableField("offline_admin_id")
+    @JsonIgnore
+    private Long offlineAdminId;
 
     @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;

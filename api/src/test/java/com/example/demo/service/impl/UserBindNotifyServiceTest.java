@@ -81,12 +81,32 @@ class UserBindNotifyServiceTest {
         Map<String, Object> params = new HashMap<>();
         params.put("agentUserId", "13800138000");
         params.put("bindCode", "BIND123");
+        // idCard 是必填参数门禁的一部分，缺了会在「查用户」之前就返回 false，
+        // 那样下面的 getByMobile stub 永远用不到（strict stubs 会直接报 UnnecessaryStubbing）
+        params.put("idCard", "110101199001011234");
         params.put("status", "1");
         sign(params);
         when(userService.getByMobile("13800138000")).thenReturn(null);
 
         assertFalse(userBindService.handleBindNotify(params));
 
+        verify(userBindMapper, never()).insert(any(UserBind.class));
+    }
+
+    @Test
+    @DisplayName("绑卡：缺少必填 idCard → false，不落库（防脏数据）")
+    void bindNotify_missingIdCard_returnFalse() {
+        Map<String, Object> params = new HashMap<>();
+        params.put("agentUserId", "13800138000");
+        params.put("bindCode", "BIND123");
+        params.put("status", "1");
+        // 故意不传 idCard
+        sign(params);
+
+        assertFalse(userBindService.handleBindNotify(params));
+
+        // 关键：必填校验在查用户之前，绝不能先落库再发现缺字段
+        verify(userService, never()).getByMobile(any());
         verify(userBindMapper, never()).insert(any(UserBind.class));
     }
 
@@ -130,6 +150,7 @@ class UserBindNotifyServiceTest {
         Map<String, Object> params = new HashMap<>();
         params.put("agentUserId", "13800138000");
         params.put("bindCode", "BIND123");
+        params.put("idCard", "110101199001011234"); // 必填参数门禁
         params.put("status", "0");
         sign(params);
         when(userService.getByMobile("13800138000")).thenReturn(mockUser);
@@ -144,5 +165,7 @@ class UserBindNotifyServiceTest {
         ArgumentCaptor<UserBind> captor = ArgumentCaptor.forClass(UserBind.class);
         verify(userBindMapper).insert(captor.capture());
         assertEquals(Integer.valueOf(0), captor.getValue().getStatus());
+        // 银行侧未成功时不应发「绑卡成功」通知
+        verify(messageService, never()).sendBindNotice(any(), any());
     }
 }

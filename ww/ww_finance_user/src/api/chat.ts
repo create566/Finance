@@ -1,10 +1,41 @@
 import request from '../utils/request'
-import axios, { type AxiosInstance } from 'axios'
+import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios'
+
+// 从 cookie 读取用户登录 token（与 src/utils/request.ts 同一份数据）
+function getUserToken(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)user_token=([^;]*)/)
+  return match ? decodeURIComponent(match[1]) : null
+}
 
 const aiRequest: AxiosInstance = axios.create({
   baseURL: '/ai',
   timeout: 60000,
 })
+
+// AI 服务已启用真实登录校验：必须携带 user_token，
+// 后端从 token 解出 userId，不再信任请求体里自报的 userId
+aiRequest.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  const token = getUserToken()
+  if (token) {
+    config.headers.set('token', token)
+  }
+  return config
+})
+
+aiRequest.interceptors.response.use(
+  (response) => {
+    const res = response.data
+    if (res && res.code === 401) {
+      // 未登录/登录过期：清 token 回登录页（与 utils/request.ts 行为一致）
+      document.cookie = 'user_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login'
+      }
+    }
+    return response
+  },
+  (error) => Promise.reject(error),
+)
 
 export interface ChatMessage {
   id?: number
@@ -78,7 +109,8 @@ export function askKnowledgeAI(data: { question: string; knowledgeBaseId: number
 // ========== AI模块：知识库 ==========
 
 export function getKnowledgeBases(): Promise<KnowledgeBase[]> {
-  return aiRequest.get('/admin/knowledge/base/list').then(res => {
+  // 走公共只读接口 /ai/knowledge/base/list（用户端无管理端token，不能调 /ai/admin/ 鉴权接口）
+  return aiRequest.get('/knowledge/base/list').then(res => {
     const d = res.data?.data
     // 兼容数组与 {list: [...]} 两种返回形态
     return Array.isArray(d) ? d : (d?.list ?? [])
@@ -101,9 +133,15 @@ export interface ChatSessionItem {
   updateTime?: string
 }
 
-// 当前用户的历史会话列表（按 updateTime 倒序），供"历史会话"侧边栏使用
-export function getAiSessions(userId = 1): Promise<{ list: ChatSessionItem[]; total: number }> {
-  return aiRequest.get('/sessions', { params: { userId } }).then(res => res.data.data)
+// 当前用户的历史会话列表（按 updateTime 倒序），供"历史会话"侧边栏使用。
+// userId 由后端从登录 token 解出，前端不再传（此前写死 1 导致所有用户共享历史）
+export function getAiSessions(): Promise<{ list: ChatSessionItem[]; total: number }> {
+  return aiRequest.get('/sessions').then(res => res.data.data)
+}
+
+// 删除当前用户的一个历史会话（连同消息一起删除）
+export function deleteAiSession(sessionId: number): Promise<null> {
+  return aiRequest.delete(`/sessions/${sessionId}`).then(res => res.data.data)
 }
 
 // ========== AI模块：SSE 流式问答 ==========
@@ -124,7 +162,7 @@ export function abortStream() {
 }
 
 export function askAIStream(
-  params: { prompt: string; chatId?: string },
+  params: { prompt: string; chatId?: string; sessionId?: number; knowledgeBaseId?: number },
   callbacks: StreamCallbacks,
 ): void {
   abortStream()
@@ -135,10 +173,24 @@ export function askAIStream(
   if (params.chatId) {
     url.searchParams.set('chatId', params.chatId)
   }
+  // 优先带 sessionId：后端据此复用既有会话（Mongo）与同名上下文记忆("session-{id}")，
+  // 避免像之前那样每条消息都新建一个会话、记忆与历史列表对不上
+  if (params.sessionId) {
+    url.searchParams.set('sessionId', String(params.sessionId))
+  }
+  // 选中的知识库 id（可选）：后端检索时按 metadata knowledgeBaseId 过滤
+  if (params.knowledgeBaseId) {
+    url.searchParams.set('knowledgeBaseId', String(params.knowledgeBaseId))
+  }
 
+  const token = getUserToken()
   fetch(url.toString(), {
     signal: streamAbortController.signal,
-    headers: { Accept: 'text/event-stream' },
+    headers: {
+      Accept: 'text/event-stream',
+      // AI 服务校验登录态，SSE 走 fetch 不经过 axios 拦截器，需手动带上
+      ...(token ? { token } : {}),
+    },
   })
     .then(async (response) => {
       if (!response.ok) {
@@ -162,8 +214,10 @@ export function askAIStream(
           buffer = buffer.substring(sepIdx + 2)
           for (const line of event.split('\n')) {
             if (line.startsWith('data:')) {
-              const data = line.substring(5).trim()
-              if (data && data !== '[DONE]') {
+              // 不能 trim：token 内的首尾空格/空行是有意义的内容
+              // （markdown 缩进 "  - xx"、段落间空行），trim 会把排版打碎
+              const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5)
+              if (data !== '[DONE]') {
                 callbacks.onToken(data)
               }
             }

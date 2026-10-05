@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import com.example.demo.utils.PageUtils;
 
 @Slf4j
 @Service
@@ -29,7 +30,7 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
             wrapper.eq(ChatSession::getStatus, status);
         }
         wrapper.orderByDesc(ChatSession::getUpdateTime);
-        return this.page(new Page<>(pageNum, pageSize), wrapper);
+        return this.page(PageUtils.of(pageNum, pageSize), wrapper);
     }
 
     @Override
@@ -37,7 +38,7 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
         LambdaQueryWrapper<ChatSession> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ChatSession::getUserId, userId)
                 .orderByDesc(ChatSession::getUpdateTime);
-        return this.page(new Page<>(pageNum, pageSize), wrapper);
+        return this.page(PageUtils.of(pageNum, pageSize), wrapper);
     }
 
     @Override

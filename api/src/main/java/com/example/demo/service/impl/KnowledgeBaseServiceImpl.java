@@ -7,7 +7,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo.entity.KnowledgeBase;
 import com.example.demo.entity.KnowledgeDoc;
 import com.example.demo.exception.BusinessException;
-import com.example.demo.exception.ResourceNotFoundException;
+import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.example.demo.mapper.KnowledgeBaseMapper;
 import com.example.demo.service.KnowledgeBaseService;
 import com.example.demo.service.KnowledgeDocService;
@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.example.demo.utils.PageUtils;
 
 @Slf4j
 @Service
@@ -33,7 +34,7 @@ public class KnowledgeBaseServiceImpl extends ServiceImpl<KnowledgeBaseMapper, K
             wrapper.eq(KnowledgeBase::getStatus, status);
         }
         wrapper.orderByDesc(KnowledgeBase::getUpdateTime);
-        return this.page(new Page<>(pageNum, pageSize), wrapper);
+        return this.page(PageUtils.of(pageNum, pageSize), wrapper);
     }
 
     @Override

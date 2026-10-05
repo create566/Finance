@@ -30,13 +30,19 @@ public class UserMessageController {
     @ApiOperation("分页查询我的消息")
     @GetMapping("/myList")
     public PccAjaxResult myList(
-            @ApiParam("当前页码") @RequestParam(defaultValue = "1") Integer pageNum,
-            @ApiParam("每页记录数") @RequestParam(defaultValue = "10") Integer pageSize) {
+            @ApiParam("当前页码") @RequestParam(required = false) Integer pageNum,
+            @ApiParam("每页记录数") @RequestParam(required = false) Integer pageSize,
+            @ApiParam("兼容参数：当前页码") @RequestParam(required = false) Integer page,
+            @ApiParam("兼容参数：每页记录数") @RequestParam(required = false) Integer limit) {
         Integer userIdInt = LoginUserContext.getUserid();
         if (userIdInt == null) {
             return new PccAjaxResult(401, "请先登录");
         }
-        Page<Message> result = messageService.pageByUser(userIdInt.longValue(), pageNum, pageSize);
+        // 前端历史调用传的是 page/limit，两套参数都收 ——
+        // 只认一套会让分页静默失效（永远返回第 1 页），很难被发现
+        int pn = pageNum != null ? pageNum : (page != null ? page : 1);
+        int ps = pageSize != null ? pageSize : (limit != null ? limit : 10);
+        Page<Message> result = messageService.pageByUser(userIdInt.longValue(), pn, ps);
         Map<String, Object> data = new HashMap<>();
         data.put("list", result.getRecords());
         data.put("total", result.getTotal());

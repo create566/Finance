@@ -2,20 +2,25 @@ package com.example.demo.service.impl;
 
 import com.example.demo.Bank.FormHelper;
 import com.example.demo.Bank.HfbConst;
+import com.example.demo.entity.TransFlow;
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserAccount;
 import com.example.demo.entity.UserBind;
 import com.example.demo.entity.dto.AccountInfoDto;
 import com.example.demo.enums.BindStatusEnum;
+import com.example.demo.enums.TransStatusEnum;
 import com.example.demo.enums.TransTypeEnum;
 import com.example.demo.exception.BusinessException;
-import com.example.demo.exception.ResourceNotFoundException;
+import com.wwfinance.common.exception.ResourceNotFoundException;
+import com.example.demo.mapper.TransFlowMapper;
 import com.example.demo.mapper.UserAccountMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.demo.service.BankAccountSyncService;
 import com.example.demo.service.UserAccountService;
 import com.example.demo.service.UserBindService;
 import com.example.demo.service.UserService;
+import com.example.demo.utils.BalanceGuard;
+import com.example.demo.utils.LendNoUtils;
 import com.wwfinance.common.utils.BankSignUtil;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +46,13 @@ public class UserAccountServiceImpl implements UserAccountService {
 
     @Autowired
     private UserAccountMapper userAccountMapper;
+
+    /**
+     * 直接注入 Mapper 而不是 TransFlowService：
+     * TransFlowServiceImpl 反过来依赖本类，走 Service 会形成循环依赖。
+     */
+    @Autowired
+    private TransFlowMapper transFlowMapper;
 
     /**
      * 平台不持有余额，全部从银行查询
@@ -79,20 +91,105 @@ public class UserAccountServiceImpl implements UserAccountService {
         return dto;
     }
 
+    /**
+     * 充值：先生成业务单号并落一条「处理中」流水，再把付款表单交给用户去银行完成。
+     *
+     * 为什么要先落流水：银行回调没到之前（甚至永远不会到）用户是看不到任何记录的，
+     * 【我的资金 → 资金流水】会显得"点了充值没反应"。市场通行做法是发起即落一笔
+     * 处理中流水，回调再置成功/失败 —— 用户随时能看到"我这笔在途"。
+     * agentBillNo 会被银行在回调里原样回带，平台据此定位这条流水（见
+     * {@code TransFlowServiceImpl.handleRechargeNotify}）。
+     */
     @Override
     public String buildRechargeForm(Long userId, BigDecimal amount) {
         UserBind userBind = getBoundUser(userId);
-        Map<String, Object> paramMap = buildBankParams(userBind, amount, "chargeAmt",
+        BalanceGuard.requirePositive(amount, "充值");
+
+        String transNo = LendNoUtils.getChargeNo();
+        savePendingFlow(userId, TransTypeEnum.RECHARGE, amount, "用户充值（待银行处理）", transNo);
+
+        Map<String, Object> paramMap = buildBankParams(userBind, amount, "chargeAmt", transNo,
                 HfbConst.RECHARGE_RETURN_URL, HfbConst.RECHARGE_NOTIFY_URL);
         return FormHelper.buildForm(HfbConst.RECHARGE_URL, paramMap);
     }
 
+    /**
+     * 提现：相对于充值多一道闸门 —— 提现要动用户可用余额，余额不够就不允许提交。
+     *
+     * <p><b>可用余额必须扣掉「在途」提现</b>。银行余额只有在银行回调（
+     * {@code handleWithdrawNotify}）之后才会真正减少，而用户在银行页面完成付款之前
+     * 那条「处理中」流水一直是 PROCESSING。若只拿银行余额做闸门：
+     * <pre>
+     *   余额 1000 → 提 1000（受理，银行余额仍 1000）→ 再提 1000（又受理）
+     * </pre>
+     * 同一笔钱被重复提交两次，平台侧却"看起来完全合规"。这是典型的
+     * check-then-act 非原子缺口，且不需要并发就能触发（间隔几秒连点两次即可）。
+     * 因此可用余额 = 银行余额 − Σ(处理中提现)。提现失败回调会把流水置为 FAILED，
+     * 占用随之释放；成功回调置为 SUCCESS 时银行余额也已同步减少，不会重复扣减。
+     */
     @Override
     public String buildWithdrawForm(Long userId, BigDecimal amount) {
         UserBind userBind = getBoundUser(userId);
-        Map<String, Object> paramMap = buildBankParams(userBind, amount, "fetchAmt",
+        BalanceGuard.requirePositive(amount, "提现");
+
+        BigDecimal balance = bankAccountSyncService.getBankBalance(userId);
+        BigDecimal pendingWithdraw = sumPendingWithdraw(userId);
+        BigDecimal available = balance.subtract(pendingWithdraw);
+
+        // 余额本身够、但被在途提现占满了 —— 直接套用 BalanceGuard 的话用户会看到
+        // "当前可用 ¥0" 而自己的余额明明是 1000，务必给出可解释的原因。
+        if (pendingWithdraw.compareTo(BigDecimal.ZERO) > 0
+                && available.compareTo(amount) < 0
+                && balance.compareTo(amount) >= 0) {
+            throw new BusinessException(400, String.format(
+                    "提现失败：您有 ¥%s 提现在途（待银行处理），扣除后可用 ¥%s，本次需 ¥%s。请等待在途提现处理完成后再试。",
+                    pendingWithdraw.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString(),
+                    available.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString(),
+                    amount.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()));
+        }
+        BalanceGuard.require("提现", available, amount);
+
+        String transNo = LendNoUtils.getWithdrawNo();
+        savePendingFlow(userId, TransTypeEnum.WITHDRAW, amount, "用户提现（待银行处理）", transNo);
+
+        Map<String, Object> paramMap = buildBankParams(userBind, amount, "fetchAmt", transNo,
                 HfbConst.WITHDRAW_RETURN_URL, HfbConst.WITHDRAW_NOTIFY_URL);
         return FormHelper.buildForm(HfbConst.WITHDRAW_URL, paramMap);
+    }
+
+    /**
+     * 汇总该用户「处理中」状态的提现总额（已占用可用余额、但银行余额尚未扣减）。
+     *
+     * <p>只统计 {@code trans_type=提现(2)} 且 {@code status=处理中(0)} 的流水；
+     * 逻辑删除在 {@link TransFlowMapper#sumAmount} 的 SQL 里显式过滤。
+     */
+    private BigDecimal sumPendingWithdraw(Long userId) {
+        BigDecimal sum = transFlowMapper.sumAmount(
+                userId, TransTypeEnum.WITHDRAW.getCode(), TransStatusEnum.PROCESSING.getCode());
+        return sum != null ? sum : BigDecimal.ZERO;
+    }
+
+    /**
+     * 落一条「处理中」流水。
+     * 银行回调到达时按 trans_no 更新为成功/失败，不会重复插入。
+     */
+    private void savePendingFlow(Long userId, TransTypeEnum type, BigDecimal amount,
+                                 String memo, String transNo) {
+        User user = userService.getById(userId);
+        TransFlow flow = new TransFlow()
+                .setUserId(userId)
+                .setUserName(user != null ? user.getName() : null)
+                .setTransNo(transNo)
+                .setTransType(type.getCode())
+                .setTransTypeName(type.getDesc())
+                .setTransAmount(amount)
+                .setStatus(TransStatusEnum.PROCESSING.getCode())
+                .setMemo(memo)
+                .setCreateTime(java.time.LocalDateTime.now())
+                .setUpdateTime(java.time.LocalDateTime.now());
+        transFlowMapper.insert(flow);
+        log.info("已落处理中流水：userId={}, type={}, amount={}, transNo={}",
+                userId, type.getDesc(), amount, transNo);
     }
 
     private UserBind getBoundUser(Long userId) {
@@ -109,12 +206,14 @@ public class UserAccountServiceImpl implements UserAccountService {
     }
 
     private Map<String, Object> buildBankParams(UserBind userBind, BigDecimal amount, String amountKey,
-                                                 String returnUrl, String notifyUrl) {
+                                                 String transNo, String returnUrl, String notifyUrl) {
         Map<String, Object> paramMap = new HashMap<>();
         paramMap.put("agentId", HfbConst.AGENT_ID);
         paramMap.put("agentUserId", userBind.getMobile());
         paramMap.put("bindCode", userBind.getBindCode());
         paramMap.put(amountKey, amount);
+        // 业务单号：银行回调会原样回带，用于把「处理中」流水更新成成功/失败
+        paramMap.put("agentBillNo", transNo);
         paramMap.put("returnUrl", returnUrl);
         paramMap.put("notifyUrl", notifyUrl);
         paramMap.put("timestamp", new Date().getTime());
@@ -134,7 +233,9 @@ public class UserAccountServiceImpl implements UserAccountService {
             rows = applyAtomicUpdate(userId, type, amount);
         }
         if (rows == 0) {
-            throw new BusinessException(400, "账户余额不足或账户异常，操作失败");
+            throw new BusinessException(400, String.format(
+                    "账户余额不足：本次需扣 ¥%s，扣款未执行。请先充值后重试。",
+                    amount.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()));
         }
         log.info("账户余额原子更新成功: userId={}, type={}, amount={}",
                 userId, type.getDesc(), amount);

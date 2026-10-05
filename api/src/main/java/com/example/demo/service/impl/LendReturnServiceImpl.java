@@ -13,6 +13,8 @@ import com.example.demo.entity.User;
 import com.example.demo.entity.UserBind;
 import com.example.demo.enums.BankNotifyStatusEnum;
 import com.example.demo.enums.BindStatusEnum;
+import com.example.demo.enums.ContractBizTypeEnum;
+import com.example.demo.enums.ContractTypeEnum;
 import com.example.demo.enums.LendStatusEnum;
 import com.example.demo.enums.TransTypeEnum;
 import com.example.demo.mapper.LendItemReturnMapper;
@@ -26,6 +28,7 @@ import com.example.demo.service.TransFlowService;
 import com.example.demo.service.UserAccountService;
 import com.example.demo.service.UserBindService;
 import com.example.demo.service.UserService;
+import com.example.demo.utils.BalanceGuard;
 import com.example.demo.utils.LendNoUtils;
 import com.example.demo.utils.ReturnPlanCalculator;
 import com.example.demo.utils.ReturnPlanCalculator.PeriodPlan;
@@ -90,6 +93,9 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
     @Autowired
     private com.example.demo.service.LendSettleRecordService lendSettleRecordService;
 
+    @Autowired
+    private com.example.demo.service.ContractService contractService;
+
     /**
      * 从银行回调参数中解析用户。
      * 放款/还款回调只回传 bindCode，不传 agentUserId；按 bindCode 反查绑卡记录再取用户。
@@ -118,7 +124,7 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
     private static final BigDecimal PENALTY_CAP_RATIO = new BigDecimal("1.0");
 
     @Override
-    public String buildMakeLoanForm(Long lendId) {
+    public String buildMakeLoanForm(Long lendId, Long adminId) {
         // 1. 校验标的
         Lend lend = lendService.getById(lendId);
         if (lend == null) {
@@ -134,6 +140,11 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         if (exists > 0) {
             throw new ResourceNotFoundException(500, "标的已放款，请勿重复操作");
         }
+
+        // 2.5 签署关口三：借款人未签《放款确认书》不予放款。
+        //     合同在标的发布（publish）时就已按同一标的一并生成，此处只做校验。
+        contractService.assertSigned(ContractBizTypeEnum.LEND, lendId,
+                ContractTypeEnum.PAYMENT, lend.getUserId(), null);
 
         // 3. 校验借款人绑卡
         User borrower = userService.getById(lend.getUserId());
@@ -159,7 +170,18 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         paramMap.put("timestamp", new Date().getTime());
         paramMap.put("sign", BankSignUtil.getSign(paramMap));
 
-        log.info("放款表单生成，lendId={}, borrowerId={}, amount={}", lendId, lend.getUserId(), lend.getAmount());
+        log.info("放款表单生成，lendId={}, borrowerId={}, amount={}, adminId={}",
+                lendId, lend.getUserId(), lend.getAmount(), adminId);
+
+        // 放款发起留痕：记录是谁发起的放款。
+        // 注意 payment_time 是"银行回调确认入账"的时间（handleMakeLoanNotify 里写），
+        // 与这里的操作时间语义不同，刻意不在此处写，便于区分"已发起/已入账"。
+        Lend audit = new Lend();
+        audit.setId(lendId);
+        audit.setPaymentAdminId(adminId);
+        audit.setUpdateTime(LocalDateTime.now());
+        lendService.updateById(audit);
+
         return FormHelper.buildForm(HfbConst.MAKE_LOAD_URL, paramMap);
     }
 
@@ -375,6 +397,11 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
                 ? lendReturn.getOverdueTotal()
                 : lendReturn.getTotal();
 
+        // 3.5 余额闸门：余额不够就不许把单子递到银行去。
+        //     原先缺这道校验，余额为 0 也能提交，银行扣不动、回调失败，
+        //     用户端还会因为拿不到表单而静默显示"还款请求已提交"。
+        BalanceGuard.require("本期还款", bankAccountSyncService.getBankBalance(userId), payable);
+
         Lend lend = lendService.getById(lendReturn.getLendId());
 
         // 4. 查询本期投资人回款明细（银行 returnCommit 需要 data 字段）
@@ -533,6 +560,7 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         log.info("还款流水已记录，银行将扣减借款人余额 {}", borrower.getId());
 
         // 10. 查询本期所有投资人收益明细并逐个回款
+        Lend lend = lendService.getById(lendReturn.getLendId());
         List<LendItemReturn> itemReturns = lendItemReturnMapper.selectList(
                 new LambdaQueryWrapper<LendItemReturn>()
                         .eq(LendItemReturn::getLendReturnId, lendReturnId)
@@ -545,6 +573,11 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
             lendItemReturnMapper.updateById(ir);
             recordFlow(ir.getInvestUserId(), TransTypeEnum.RETURN, ir.getTotal(),
                     "投资回款第" + ir.getCurrentPeriod() + "期", now, transNo + "_R" + ir.getId());
+            // 回款到账通知（给投资人）。
+            // 此前这里只给借款人发了还款通知，投资人账户进了钱却一条消息都没有 ——
+            // 信息模块缺的正是这条"我该收到钱了"的提醒。
+            messageService.sendInvestReturnNotice(ir.getInvestUserId(), ir.getCurrentPeriod(),
+                    ir.getTotal(), lend != null ? lend.getTitle() : "您的投资标的");
         }
 
         // 11. 更新借款人还款计划
@@ -557,7 +590,6 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         long unpaid = this.count(new LambdaQueryWrapper<LendReturn>()
                 .eq(LendReturn::getLendId, lendReturn.getLendId())
                 .ne(LendReturn::getStatus, 1));
-        Lend lend = lendService.getById(lendReturn.getLendId());
         if (unpaid == 0) {
             lend.setStatus(LendStatusEnum.SETTLED.getCode());
         } else if (LendStatusEnum.OVERDUE.getCode().equals(lend.getStatus())) {
@@ -573,52 +605,54 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         messageService.sendRepayNotice(borrower.getId(), lendReturn.getCurrentPeriod(), payable);
 
         // 标的全部结清：聚合本息罚息合计 + 写结清凭证 + 发结清通知 + 加守信积分
+        //
+        // 这里刻意**不包 try-catch**：此前整段被 catch(Exception) 吞掉，而 lend.status=SETTLED
+        // 已在本方法前面于同一事务写入，于是产生"标的已结清、却没有结清凭证、积分也没加"
+        // 的账目缺口；又因 lendReturn 已置已还 + transNo 已记账，回调重试会直接走幂等分支，
+        // 该缺口永远无法自愈。
+        // 凭证/通知/积分都是"结清"的组成部分，任一失败即整体回滚，交由银行重试重新处理，
+        // 与上方 sendRepayNotice 的处理方式保持一致。
         if (unpaid == 0) {
-            try {
-                List<LendReturn> allReturns = this.list(new LambdaQueryWrapper<LendReturn>()
-                        .eq(LendReturn::getLendId, lend.getId()));
-                BigDecimal totalPrincipal = allReturns.stream()
-                        .map(LendReturn::getPrincipal)
-                        .filter(java.util.Objects::nonNull)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add)
-                        .setScale(2, RoundingMode.HALF_UP);
-                BigDecimal totalInterest = allReturns.stream()
-                        .map(LendReturn::getInterest)
-                        .filter(java.util.Objects::nonNull)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add)
-                        .setScale(2, RoundingMode.HALF_UP);
-                BigDecimal totalPenalty = allReturns.stream()
-                        .map(lrx -> (lrx.getOverdueTotal() == null ? BigDecimal.ZERO
-                                : lrx.getOverdueTotal().subtract(
-                                        (lrx.getTotal() == null ? BigDecimal.ZERO : lrx.getTotal()))))
-                        .filter(java.util.Objects::nonNull)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add)
-                        .setScale(2, RoundingMode.HALF_UP);
+            List<LendReturn> allReturns = this.list(new LambdaQueryWrapper<LendReturn>()
+                    .eq(LendReturn::getLendId, lend.getId()));
+            BigDecimal totalPrincipal = allReturns.stream()
+                    .map(LendReturn::getPrincipal)
+                    .filter(java.util.Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .setScale(2, RoundingMode.HALF_UP);
+            BigDecimal totalInterest = allReturns.stream()
+                    .map(LendReturn::getInterest)
+                    .filter(java.util.Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .setScale(2, RoundingMode.HALF_UP);
+            BigDecimal totalPenalty = allReturns.stream()
+                    .map(lrx -> (lrx.getOverdueTotal() == null ? BigDecimal.ZERO
+                            : lrx.getOverdueTotal().subtract(
+                                    (lrx.getTotal() == null ? BigDecimal.ZERO : lrx.getTotal()))))
+                    .filter(java.util.Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .setScale(2, RoundingMode.HALF_UP);
 
-                LocalDateTime settleTime = LocalDateTime.now();
+            LocalDateTime settleTime = LocalDateTime.now();
 
-                // --------只调用封装好的方法，不再new LendSettleRecord实体！！--------
-                lendSettleRecordService.createSettleRecord(
-                        lend.getId(),
-                        lend.getLendNo(),
-                        borrower.getId(),
-                        totalPrincipal,
-                        totalInterest,
-                        totalPenalty,
-                        settleTime
-                );
+            // --------只调用封装好的方法，不再new LendSettleRecord实体！！--------
+            lendSettleRecordService.createSettleRecord(
+                    lend.getId(),
+                    lend.getLendNo(),
+                    borrower.getId(),
+                    totalPrincipal,
+                    totalInterest,
+                    totalPenalty,
+                    settleTime
+            );
 
-                // 下面通知、加积分保留不变
-                messageService.sendLendSettleNotice(borrower.getId(), lend.getLendNo(),
-                        totalPrincipal, totalInterest);
-                userIntegralService.addIntegral(borrower.getId(), 10, "标的结清守信加分");
+            // 下面通知、加积分保留不变
+            messageService.sendLendSettleNotice(borrower.getId(), lend.getLendNo(),
+                    totalPrincipal, totalInterest);
+            userIntegralService.addIntegral(borrower.getId(), 10, "标的结清守信加分");
 
-                log.info("标的 {} 全部结清，调用createSettleRecord生成结清凭证，发结清通知 + 加 10 守信积分，借款人={}",
-                        lend.getLendNo(), borrower.getId());
-            } catch (Exception ex) {
-                log.error("标的结清处理失败，lendId={}, borrowerId={}",
-                        lend.getId(), borrower.getId(), ex);
-            }
+            log.info("标的 {} 全部结清，调用createSettleRecord生成结清凭证，发结清通知 + 加 10 守信积分，借款人={}",
+                    lend.getLendNo(), borrower.getId());
         }
         return true;
     }
@@ -713,10 +747,22 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
     }
 
     @Override
-    public List<LendItemReturn> listItemReturns(Long lendReturnId) {
-        return lendItemReturnMapper.selectList(new LambdaQueryWrapper<LendItemReturn>()
+    public List<LendItemReturn> listItemReturns(Long lendReturnId, Long userId) {
+        LendReturn lendReturn = this.getById(lendReturnId);
+        if (lendReturn == null) {
+            throw new ResourceNotFoundException(404, "还款计划不存在");
+        }
+        LambdaQueryWrapper<LendItemReturn> wrapper = new LambdaQueryWrapper<LendItemReturn>()
                 .eq(LendItemReturn::getLendReturnId, lendReturnId)
-                .orderByAsc(LendItemReturn::getInvestUserId));
+                .orderByAsc(LendItemReturn::getInvestUserId);
+        // 归属校验（过滤下推 SQL，不把全量捞回内存再筛）：
+        // 借款人是本期还款义务人，可看该期全部投资人明细；投资人只能看自己那条；
+        // 与本期无关的用户条件恒不成立 → 返回空列表，不泄露任何数据。
+        boolean isBorrower = userId != null && userId.equals(lendReturn.getUserId());
+        if (!isBorrower) {
+            wrapper.eq(LendItemReturn::getInvestUserId, userId);
+        }
+        return lendItemReturnMapper.selectList(wrapper);
     }
 
     @Override

@@ -26,6 +26,9 @@ public class BankDataSourceConfig {
     @Value("${bank-datasource.driver-class-name}")
     private String driverClassName;
 
+    @Value("${bank-datasource.connect-timeout-ms:8000}")
+    private long connectTimeoutMs;
+
     @Bean("bankJdbcTemplate")
     public JdbcTemplate bankJdbcTemplate() {
         HikariConfig config = new HikariConfig();
@@ -36,8 +39,14 @@ public class BankDataSourceConfig {
         config.setPoolName("BankHikariPool");
         config.setMaximumPoolSize(5);
         config.setMinimumIdle(2);
+        config.setConnectionTimeout(connectTimeoutMs);
+        config.setValidationTimeout(3000);
+        // 银行库是只读旁路镜像，网络抖动时不应阻断平台自身启动：
+        // <0 表示启动时不预建连接(checkFailFast 直接返回)，失败由首次业务调用承担，
+        // BankAccountSyncServiceImpl 已兜底降级到平台 user_account。
+        config.setInitializationFailTimeout(-1);
         DataSource ds = new HikariDataSource(config);
-        log.info("银行JdbcTemplate初始化完成: {}", url);
+        log.info("银行JdbcTemplate初始化完成（延迟建连）: {}", url);
         return new JdbcTemplate(ds);
     }
 }

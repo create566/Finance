@@ -10,7 +10,7 @@ import com.example.demo.entity.User;
 import com.example.demo.enums.BorrowerAuthStatusEnum;
 import com.example.demo.enums.InvestorAuthStatusEnum;
 import com.example.demo.exception.BusinessException;
-import com.example.demo.exception.ResourceNotFoundException;
+import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.example.demo.mapper.UserBindMapper;
 import com.example.demo.service.UserBindService;
 import com.example.demo.service.UserService;

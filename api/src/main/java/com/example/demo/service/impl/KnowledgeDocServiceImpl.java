@@ -7,7 +7,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo.entity.KnowledgeBase;
 import com.example.demo.entity.KnowledgeDoc;
 import com.example.demo.exception.BusinessException;
-import com.example.demo.exception.ResourceNotFoundException;
+import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.example.demo.mapper.KnowledgeDocMapper;
 import com.example.demo.service.KnowledgeBaseService;
 import com.example.demo.service.KnowledgeDocService;
@@ -24,6 +24,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import com.example.demo.utils.PageUtils;
 
 @Slf4j
 @Service
@@ -55,7 +56,7 @@ public class KnowledgeDocServiceImpl extends ServiceImpl<KnowledgeDocMapper, Kno
             wrapper.eq(KnowledgeDoc::getStatus, status);
         }
         wrapper.orderByDesc(KnowledgeDoc::getCreateTime);
-        return this.page(new Page<>(pageNum, pageSize), wrapper);
+        return this.page(PageUtils.of(pageNum, pageSize), wrapper);
     }
 
     @Override

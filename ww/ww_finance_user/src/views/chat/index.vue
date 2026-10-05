@@ -11,8 +11,15 @@
           :class="['session-item', { active: s.id === sessionId }]"
           @click="handleSelectSession(s.id)"
         >
-          <div class="session-title">{{ s.title || '未命名会话' }}</div>
-          <div class="session-meta">{{ formatTime(s.updateTime || s.createTime) }} · {{ s.messageCount || 0 }}条</div>
+          <div class="session-item-main">
+            <div class="session-title">{{ s.title || '未命名会话' }}</div>
+            <div class="session-meta">{{ formatTime(s.updateTime || s.createTime) }} · {{ s.messageCount || 0 }}条</div>
+          </div>
+          <button
+            class="session-delete"
+            title="删除该会话"
+            @click.stop="handleDeleteSession(s.id)"
+          >×</button>
         </div>
         <div v-if="!sessions.length" class="session-empty">暂无历史会话</div>
       </div>
@@ -23,10 +30,12 @@
         <h2>智能客服</h2>
         <span class="header-desc">AI助手为您解答金融问题</span>
       </div>
-      <div class="header-center">
+      <!-- 只有一个知识库时选择器没有意义（选不选检索范围都一样），自动隐藏；
+           管理端建了多个知识库后此处自动出现，选中即限定检索范围 -->
+      <div v-if="knowledgeBases.length > 1" class="header-center">
         <el-select
           v-model="selectedKbId"
-          placeholder="选择知识库（可选）"
+          :placeholder="'选择知识库（当前' + knowledgeBases.length + '个）'"
           size="small"
           clearable
           style="width: 180px"
@@ -72,7 +81,7 @@
         </div>
       </div>
 
-      <div v-if="loading" class="message-item assistant">
+      <div v-if="loading && !(messages[messages.length - 1]?.role === 'assistant' && messages[messages.length - 1]?.content)" class="message-item assistant">
         <div class="message-avatar"><span>🤖</span></div>
         <div class="message-content">
           <div class="typing-indicator">
@@ -100,19 +109,35 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, watch, nextTick, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  askAI, askKnowledgeAI, getKnowledgeBases, closeSession,
-  getAiSessions, getChatHistory,
+  askAIStream, getKnowledgeBases, closeSession,
+  getAiSessions, getChatHistory, deleteAiSession,
   type ChatMessage, type KnowledgeBase, type ChatSessionItem,
 } from '@/api/chat'
+
+/**
+ * 当前会话 id 的持久化 key。
+ * 之前 sessionId / messages 只存在于内存，浏览器一刷新对话区就全空（"一刷新就没了"）。
+ * 这里把 sessionId 落到 localStorage，刷新后自动重新拉取该会话的消息，恢复上下文。
+ */
+const SESSION_KEY = 'ai_current_session_id'
 
 const chatBodyRef = ref<HTMLElement>()
 const messages = ref<ChatMessage[]>([])
 const inputText = ref('')
 const loading = ref(false)
 const sessionId = ref<number | null>(null)
+
+// sessionId 变化时同步持久化；清空/删除会话后置 null 会移除该记录
+watch(sessionId, (v) => {
+  if (v) {
+    localStorage.setItem(SESSION_KEY, String(v))
+  } else {
+    localStorage.removeItem(SESSION_KEY)
+  }
+})
 const selectedKbId = ref<number | null>(null)
 const knowledgeBases = ref<KnowledgeBase[]>([])
 const sessions = ref<ChatSessionItem[]>([])
@@ -139,44 +164,48 @@ async function handleSend() {
 
   loading.value = true
 
-  try {
-    let result: { answer: string; sessionId: number }
-
-    if (selectedKbId.value) {
-      result = await askKnowledgeAI({
-        question: text,
-        knowledgeBaseId: selectedKbId.value,
-        sessionId: sessionId.value || undefined,
-      })
-    } else {
-      result = await askAI({
-        question: text,
-        sessionId: sessionId.value || undefined,
-      })
-    }
-
-    if (result.sessionId) {
-      sessionId.value = result.sessionId
-    }
-
-    const assistantMsg: ChatMessage = {
-      role: 'assistant',
-      content: result.answer,
-      createTime: new Date().toLocaleString('zh-CN'),
-    }
-    messages.value.push(assistantMsg)
-    loadSessions()
-  } catch (err: any) {
-    const errorMsg: ChatMessage = {
-      role: 'assistant',
-      content: '抱歉，AI服务暂时不可用，请稍后再试。',
-      createTime: new Date().toLocaleString('zh-CN'),
-    }
-    messages.value.push(errorMsg)
-  } finally {
-    loading.value = false
-    scrollToBottom()
+  // 改用 SSE 流式：告别"转圈半分钟一口气出全文"，
+  // token 边到边显示；userId 由后端从登录 token 解出，前端不再自报
+  const streamingMsg: ChatMessage = {
+    role: 'assistant',
+    content: '',
+    createTime: '',
   }
+  messages.value.push(streamingMsg)
+
+  askAIStream(
+    {
+      prompt: text,
+      sessionId: sessionId.value || undefined,
+      knowledgeBaseId: selectedKbId.value || undefined,
+    },
+    {
+      onToken(token: string) {
+        streamingMsg.content += token
+        scrollToBottom()
+      },
+      onDone(sessionId2) {
+        if (sessionId2) {
+          sessionId.value = sessionId2
+        }
+        streamingMsg.createTime = new Date().toLocaleString('zh-CN')
+        loading.value = false
+        scrollToBottom()
+        loadSessions()
+      },
+      onError(err: Error) {
+        console.error('[智能客服] 发送失败', err)
+        if (!streamingMsg.content) {
+          streamingMsg.content = '抱歉，AI服务暂时不可用，请稍后再试。'
+        } else {
+          streamingMsg.content += '\n\n（回答因网络中断而不完整）'
+        }
+        streamingMsg.createTime = new Date().toLocaleString('zh-CN')
+        loading.value = false
+        scrollToBottom()
+      },
+    },
+  )
 }
 
 function handleQuickQuestion(q: string) {
@@ -218,10 +247,10 @@ async function handleNewChat() {
   loadSessions()
 }
 
-// 拉取历史会话列表（左侧侧边栏）
+// 拉取历史会话列表（左侧侧边栏）；userId 由后端从登录 token 解出
 async function loadSessions() {
   try {
-    const res = await getAiSessions(1)
+    const res = await getAiSessions()
     sessions.value = res?.list ?? []
   } catch {
     // 列表加载失败不阻断主流程
@@ -244,6 +273,29 @@ async function handleSelectSession(id: number) {
     scrollToBottom()
   } catch {
     ElMessage.error('加载历史会话失败')
+  }
+}
+
+// 删除历史会话（含其消息），若删除的是当前会话则清空界面
+async function handleDeleteSession(id: number) {
+  // 先确认：取消时 ElMessageBox 会 reject，这里静默返回
+  try {
+    await ElMessageBox.confirm('确定删除该历史会话吗？删除后无法恢复。', '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  // 再删除：失败必须显式提示，不能像之前那样把错误吞掉导致"点了没反应"
+  try {
+    await deleteAiSession(id)
+    if (sessionId.value === id) {
+      handleClearChat()
+    }
+    sessions.value = sessions.value.filter(s => s.id !== id)
+    ElMessage.success('会话已删除')
+    await loadSessions()
+  } catch (err: any) {
+    console.error('[智能客服] 删除会话失败', err)
+    ElMessage.error('删除失败：' + (err?.response?.data?.msg || err?.message || '未知错误'))
   }
 }
 
@@ -283,7 +335,19 @@ onMounted(async () => {
   } catch {
     // 知识库加载失败不影响正常聊天
   }
-  loadSessions()
+  await loadSessions()
+
+  // 刷新后恢复上次会话：仅当该会话仍然存在时才恢复，
+  // 若已被删除（后端或管理端删掉）则清掉本地记录，下次发送自动新建会话
+  const saved = localStorage.getItem(SESSION_KEY)
+  if (saved) {
+    const id = Number(saved)
+    if (id && sessions.value.some(s => s.id === id)) {
+      await handleSelectSession(id)
+    } else {
+      localStorage.removeItem(SESSION_KEY)
+    }
+  }
 })
 </script>
 
@@ -317,10 +381,47 @@ onMounted(async () => {
 }
 
 .session-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.15s;
+}
+
+.session-item-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 删除按钮常驻可见（原来要 hover 才出现，用户根本发现不了），
+   默认淡灰、悬停变红，既醒目又不喧宾夺主 */
+.session-delete {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  line-height: 18px;
+  text-align: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #b6bcc8;
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: all 0.15s;
+}
+
+.session-item:hover .session-delete {
+  opacity: 1;
+  color: #f56c6c;
+}
+
+.session-delete:hover {
+  background: #fce4e4;
+  color: #e24b4a;
+  opacity: 1;
 }
 
 .session-item:hover {

@@ -2,6 +2,7 @@ package com.example.demo.service.impl;
 
 import com.example.demo.entity.TransFlow;
 import com.example.demo.entity.User;
+import com.example.demo.enums.TransStatusEnum;
 import com.example.demo.mapper.TransFlowMapper;
 import com.example.demo.mapper.UserMapper;
 import com.example.demo.service.MessageService;
@@ -13,14 +14,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -99,14 +103,26 @@ class TransFlowNotifyServiceTest {
     }
 
     @Test
-    @DisplayName("充值：status!=1（银行处理失败）→ true 但不记流水（无需重试）")
+    @DisplayName("充值：status!=1（银行侧失败）→ true，落 FAILED 流水并通知用户，不重试")
     void recharge_statusNotOne_ackWithoutEntry() {
         Map<String, Object> params = baseParams("100.00", "0", "NO1");
+        // 口径与下方的提现同分支一致：状态判断在「解析用户」之后（失败要发给用户，
+        // 必须先知道是谁），所以这里必须 stub 用户查询，不能再断言 never()。
+        when(userService.getByMobile("13800138000")).thenReturn(mockUser);
+        when(baseMapper.selectCount(any())).thenReturn(0);                        // 幂等检查：该单未入账
+        when(baseMapper.selectList(any())).thenReturn(Collections.emptyList());   // 找不到「处理中」流水 → 补插
+        when(baseMapper.insert(any(TransFlow.class))).thenReturn(1);
 
         assertTrue(transFlowService.handleRechargeNotify(params));
 
-        verify(userService, never()).getByMobile(any());
-        verify(baseMapper, never()).insert(any(TransFlow.class));
+        // 银行侧失败也必须落一条终态(FAILED)流水并告知用户，
+        // 否则发起时那条「处理中」流水会一直挂着，用户以为钱卡住了。
+        ArgumentCaptor<TransFlow> captor = ArgumentCaptor.forClass(TransFlow.class);
+        verify(baseMapper).insert(captor.capture());
+        assertEquals(TransStatusEnum.FAILED.getCode(), captor.getValue().getStatus(),
+                "银行未成功时流水必须落成失败态");
+        assertEquals("NO1", captor.getValue().getTransNo(), "必须用银行回传的业务单号，才能与发起时的记录对上");
+        verify(messageService).sendRechargeFailNotice(eq(1L), eq(new BigDecimal("100.00")));
     }
 
     @Test

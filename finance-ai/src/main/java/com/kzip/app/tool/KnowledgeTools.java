@@ -6,7 +6,9 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -27,6 +29,19 @@ public class KnowledgeTools {
      */
     private static final ThreadLocal<String> lastSearchContext = new ThreadLocal<>();
 
+    /**
+     * 当前请求选中的知识库 id（前端知识库下拉选择，经 ChatController 传入）。
+     * 此前检索从不按库过滤，所有知识库数据混在一个 collection 里互相污染，
+     * 前端的选择器形同虚设；现在检索时按 metadata knowledgeBaseId 过滤。
+     */
+    private static final ThreadLocal<String> currentKbId = new ThreadLocal<>();
+
+    /** 相似度阈值（similarity = 1 - distance）。实测数据：相关查询 distance 0.51~0.61，
+     *  无关查询 0.67~0.76，故默认 0.35（即 distance 上限 0.65）可干净切分；
+     *  可通过 rag.search.similarity-threshold 配置调整（设为 0 关闭过滤）。 */
+    @Value("${rag.search.similarity-threshold:0.35}")
+    private double similarityThreshold;
+
     @Autowired
     private VectorStore vectorStore;
 
@@ -38,9 +53,42 @@ public class KnowledgeTools {
         return lastSearchContext.get();
     }
 
+    public static void setCurrentKbId(Long kbId) {
+        if (kbId != null && kbId > 0) {
+            currentKbId.set(String.valueOf(kbId));
+        } else {
+            currentKbId.remove();
+        }
+    }
+
+    /** 当前请求已选定的知识库 id（未选定时为 null），供"绑定兜底"判断是否需要用配置的默认库 */
+    public static Long getCurrentKbId() {
+        String id = currentKbId.get();
+        if (id == null || id.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(id);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 清理"工具是否被调用"与检索上下文。
+     * 注意：不清 currentKbId —— 它是"本轮请求"的入参上下文，
+     * 而 ReActService 在每个阶段开始都会调用本方法，若在此清 kbId
+     * 会把 Controller 刚设置的检索范围清掉，导致知识库过滤失效。
+     * kbId 由 Controller 在请求结束时调用 clearKbId() 清理。
+     */
     public static void resetToolCalled() {
         toolCalled.remove();
         lastSearchContext.remove();
+    }
+
+    /** 请求结束时清理知识库检索范围（ThreadLocal 防串号） */
+    public static void clearKbId() {
+        currentKbId.remove();
     }
 
     @Tool(name = "searchKnowledgeBase", description = """
@@ -54,15 +102,26 @@ public class KnowledgeTools {
             """)
     public String searchKnowledgeBase(String query) {
         toolCalled.set(true);
+        log.info("vectorStore 实现类={}, 集合名=pdf_rag_collection", vectorStore.getClass().getName());
         log.info("知识库检索工具被调用: query={}", query);
         try {
-            List<Document> docs = vectorStore.similaritySearch(
-                    SearchRequest.builder()
-                            .query(query)
-                            .topK(6)
-                            .similarityThreshold(-1.0)
-                            .build()
-            );
+            // 注意：Spring AI 1.1.2 的 similarityThreshold 要求阈值落在 [0,1] 区间，
+            // 传 -1.0 会抛 IllegalArgumentException。阈值取配置项（默认 0.35），
+            // 设为 0 可关闭过滤。
+            SearchRequest.Builder builder = SearchRequest.builder()
+                    .query(query)
+                    .topK(6);
+            if (similarityThreshold > 0) {
+                builder.similarityThreshold(similarityThreshold);
+            }
+            String kbId = currentKbId.get();
+            if (kbId != null) {
+                // 按当前会话选中的知识库过滤，避免多库数据互相污染
+                builder.filterExpression(new FilterExpressionBuilder()
+                        .eq("knowledgeBaseId", kbId).build());
+                log.info("知识库检索限定 kbId={}", kbId);
+            }
+            List<Document> docs = vectorStore.similaritySearch(builder.build());
             if (docs.isEmpty()) {
                 lastSearchContext.remove();
                 log.warn("知识库检索返回空: query={}, ChromaDB中可能无数据或维度不匹配", query);
@@ -81,7 +140,7 @@ public class KnowledgeTools {
             log.info("知识库检索完成: 返回 {} 条文档片段", docs.size());
             return result;
         } catch (Exception e) {
-            log.error("知识库检索失败: {}", e.getMessage());
+            log.error("知识库检索失败", e);
             lastSearchContext.remove();
             return "知识库检索暂时不可用，请稍后再试";
         }

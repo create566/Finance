@@ -27,11 +27,15 @@ public class Message {
     @TableField("content")
     private String content;
 
-    /** 类型：1逾期催收 2系统通知 3审批通知 */
+    /** 类型，取值见 {@link com.example.demo.enums.MessageTypeEnum} */
     @TableField("message_type")
     private Integer messageType;
 
-    /** 是否已读：0未读 1已读（属性名避开 MySQL 保留字 read） */
+    /**
+     * 是否已读：0未读 1已读
+     * 属性名避开 MySQL 保留字 read，但 JSON 字段名就是属性名 readFlag ——
+     * 前端必须按 readFlag 读，写成 isRead 会永远取不到值（消息列表全是"已读"、且点不掉未读）。
+     */
     @TableField("`is_read`")
     private Integer readFlag;
 

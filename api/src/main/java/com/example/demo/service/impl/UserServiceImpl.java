@@ -13,7 +13,7 @@ import com.example.demo.entity.UserLoginRecord;
 import com.example.demo.entity.dto.AdminUserQuery;
 import com.example.demo.entity.dto.UserDto;
 import com.example.demo.exception.BusinessException;
-import com.example.demo.exception.ResourceNotFoundException;
+import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.example.demo.mapper.UserAccountMapper;
 import com.example.demo.mapper.UserBindMapper;
 import com.example.demo.mapper.UserMapper;

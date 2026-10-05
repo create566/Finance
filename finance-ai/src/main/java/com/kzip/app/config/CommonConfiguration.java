@@ -60,7 +60,11 @@ public class CommonConfiguration {
         }
         return ChromaVectorStore.builder(chromaApi, embeddingModel)
                 .collectionName("pdf_rag_collection")
-                .initializeSchema(true)
+                // 关键：不启用急切 Schema 校验。否则 ChromaVectorStore.afterPropertiesSet()
+                // 会在应用启动时阻塞调用 getCollection()，ChromaDB 未启动即抛异常，
+                // 导致整个 finance-ai 无法启动。集合已在上面 try/catch 内尝试创建，
+                // 这里关闭后，ChromaDB 仅在实际增删查向量时被访问，可安全降级。
+                .initializeSchema(false)
                 .build();
     }
 

@@ -1,8 +1,8 @@
 package com.example.demo.common;
 
 import com.example.demo.exception.BusinessException;
-import com.example.demo.exception.ResourceNotFoundException;
 import com.example.demo.exception.UnauthorizedException;
+import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.wwfinance.common.result.PccAjaxResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -26,8 +26,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public PccAjaxResult handleResourceNotFound(ResourceNotFoundException e) {
-        log.warn("资源未找到: {}", e.getMessage());
-        return new PccAjaxResult(404, e.getMessage(), null);
+        // 透传业务侧传入的 code（400/403/404/500），不再一律 404
+        int code = e.getCode() != null ? e.getCode() : 500;
+        log.warn("业务异常: [{}] {}", code, e.getMessage());
+        return new PccAjaxResult(code, e.getMessage(), null);
     }
 
     @ExceptionHandler(UnauthorizedException.class)

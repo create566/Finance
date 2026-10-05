@@ -28,14 +28,17 @@ export default defineConfig({
   },
   server: {
     port: 5174,
-    open: true,
+    // 默认自动开浏览器；VITE_OPEN=false 可关闭（无人值守/自测时用）
+    open: process.env.VITE_OPEN !== 'false',
     proxy: {
+      // 默认打本地 8990；自测时可用 VITE_API_TARGET 指向别的实例（如 8991），
+      // 避免为了自测去改这个文件、又忘了改回来。
       '/api': {
-        target: 'http://localhost:8990',
+        target: process.env.VITE_API_TARGET || 'http://localhost:8990',
         changeOrigin: true,
       },
       '/ai': {
-        target: 'http://localhost:8081',
+        target: process.env.VITE_AI_TARGET || 'http://localhost:8081',
         changeOrigin: true,
       },
     },

@@ -38,7 +38,9 @@ public class TransFlowController {
             @ApiParam(value = "页码", required = true, example = "1")
             @PathVariable Long page,
             @ApiParam(value = "每页条数", required = true, example = "10")
-            @PathVariable Long limit) {
+            @PathVariable Long limit,
+            @ApiParam(value = "交易类型（可选，1充值2提现3投标4回款5放款6还款）")
+            @RequestParam(required = false) Integer transType) {
 
         // 1. 取当前登录用户
         Integer userId = LoginUserContext.getUserid();
@@ -47,7 +49,7 @@ public class TransFlowController {
         }
 
         // 2. 分页查询流水
-        IPage<TransFlow> result = transFlowService.listByUser(userId.longValue(), page, limit);
+        IPage<TransFlow> result = transFlowService.listByUser(userId.longValue(), page, limit, transType);
 
         // 3. 返回结果（records 是当前页数据，total 是总条数）
         return new PccAjaxResult(200, "查询成功", result);

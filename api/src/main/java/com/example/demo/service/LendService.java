@@ -19,14 +19,22 @@ public interface LendService extends IService<Lend> {
     Page<Lend> pageList(Integer pageNum, Integer pageSize, String keyword, Integer status);
 
     /**
-     * 发布标的（待发布→募资中）
+     * 发布标的（待发布→募资中）。
+     * <p>发布即"上架审核通过"，会把操作管理员与时间写入 lend.check_admin_id / check_time 留痕。
+     *
+     * @param lendId  标的ID
+     * @param adminId 操作管理员ID（后台登录态），仅用于留痕，不参与业务校验
      */
-    boolean publish(Long lendId);
+    boolean publish(Long lendId, Long adminId);
 
     /**
-     * 下架标的
+     * 下架标的：退出募集、退还投资人冻结资金、作废待签合同、通知双方。
+     *
+     * @param lendId  标的ID
+     * @param adminId 操作管理员ID（后台登录态）。<b>处置投资人资金必须留痕，不可为 null</b>；
+     *                传入 null 会被拒绝（抛 ResourceNotFoundException），而不是静默写成匿名操作。
      */
-    boolean offline(Long lendId);
+    boolean offline(Long lendId, Long adminId);
 
     /**
      * 前台投资人分页查询募资中的标的（按发布时间倒序）

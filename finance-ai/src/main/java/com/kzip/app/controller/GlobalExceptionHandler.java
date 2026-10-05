@@ -1,6 +1,8 @@
 package com.kzip.app.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.apache.catalina.connector.ClientAbortException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -12,9 +14,12 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+import java.io.IOException;
 
 /**
  * 全局异常处理器。
@@ -114,6 +119,17 @@ public class GlobalExceptionHandler {
     }
 
     // ================================================================
+    //  业务参数异常：由服务层抛 IllegalArgumentException 表示"请求本身不合法"（如资源不存在），
+    //  这类 message 是可公开的业务提示，直接返回 400；不会走兜底"系统内部异常"。
+    // ================================================================
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public Result<String> handleIllegalArgument(IllegalArgumentException e) {
+        log.warn("业务参数异常：{}", e.getMessage());
+        return Result.error(400, e.getMessage() != null ? e.getMessage() : "请求参数不合法");
+    }
+
+    // ================================================================
     //  静态资源 404：纯 API 服务无首页/图标，浏览器直接访问 / 或 /favicon.ico 会触发。
     //  属正常 404，不按系统异常打印 ERROR 堆栈，避免控制台噪音。
     // ================================================================
@@ -126,12 +142,29 @@ public class GlobalExceptionHandler {
     }
 
     // ================================================================
+    //  SSE 流式 / 异步：客户端主动断开连接（关页面、刷新、中止请求）时，
+    //  Spring MVC 会抛 AsyncRequestNotUsableException 或 ClientAbortException。
+    //  这是"客户端已走、无人在听"的正常场景，不能走兜底去往已断开的流写 Result（会二次报错）。
+    //  这里只记 warn 日志并返回 null（不渲染响应体）。
+    // ================================================================
+
+    @ExceptionHandler(value = {AsyncRequestNotUsableException.class, ClientAbortException.class})
+    public void handleClientAbort(IOException e, HttpServletResponse response,
+                                  HttpServletRequest request) {
+        log.warn("SSE/异步响应客户端中断 [{} {}]: {}",
+                request.getMethod(), request.getRequestURI(), e.getMessage());
+        // 空方法体：客户端已断开，任何响应写入都无意义且可能二次抛异常
+    }
+
+    // ================================================================
     //  兜底：所有未显式处理的异常。这里需要打印完整堆栈，方便排查业务 bug
     // ================================================================
 
     @ExceptionHandler(Exception.class)
     public Result<String> handleOther(Exception e, HttpServletRequest request) {
+        // 完整堆栈只写服务端日志，便于排查业务 bug
         log.error("系统异常 [{} {}]", request.getMethod(), request.getRequestURI(), e);
-        return Result.error("系统内部异常：" + e.getMessage());
+        // 安全加固：不把内部异常原文（可能含 SQL/路径/堆栈）回给客户端，避免信息泄露
+        return Result.error("系统内部异常，请稍后重试");
     }
 }

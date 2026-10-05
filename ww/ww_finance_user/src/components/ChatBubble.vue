@@ -16,6 +16,7 @@
         <div class="popup-header" @mousedown="startPopupDrag">
           <span>🤖 智能客服</span>
           <div class="popup-actions">
+            <span class="action-btn action-btn-text" title="进入完整对话页面（可查看/删除历史会话）" @click.stop="openFullPage">☰ 历史</span>
             <span class="action-btn" title="清空对话" @click.stop="clearChat">🗑</span>
             <span class="action-btn" title="关闭窗口" @click.stop="visible = false">✕</span>
           </div>
@@ -75,7 +76,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted, onUnmounted } from 'vue'
-import { askAIStream, abortStream } from '@/api/chat'
+import { useRouter } from 'vue-router'
+import { askAIStream, abortStream, deleteAiSession } from '@/api/chat'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -83,7 +85,18 @@ interface Message {
   streaming?: boolean
 }
 
-const CHAT_ID_KEY = 'ai_chat_id'
+/**
+ * 气泡会话的 sessionId（Mongo 会话 id，数字）。
+ * 之前气泡用自造的 chatId('chat-时间戳') 且不传 sessionId，导致：
+ * 1. 每条消息后端都新建一个会话，历史列表被碎片会话刷屏；
+ * 2. 记忆命名空间('chat-xxx')与 /chat 页('session-N')不一致，两边上下文互不相通。
+ * 现在统一传 sessionId，气泡对话与完整对话页共享同一份历史与记忆。
+ */
+const SESSION_KEY = 'ai_bubble_session_id'
+/** 气泡消息的持久化 key（刷新后恢复界面显示，记忆本体在服务端） */
+const MESSAGES_KEY = 'ai_chat_messages'
+
+const router = useRouter()
 
 const visible = ref(false)
 const bodyRef = ref<HTMLElement>()
@@ -99,13 +112,10 @@ const quickQuestions = [
   '提前还款有手续费吗？',
 ]
 
-function getChatId(): string {
-  let id = localStorage.getItem(CHAT_ID_KEY)
-  if (!id) {
-    id = 'chat-' + Date.now()
-    localStorage.setItem(CHAT_ID_KEY, id)
-  }
-  return id
+function getSavedSessionId(): number | null {
+  const raw = localStorage.getItem(SESSION_KEY)
+  const id = raw ? Number(raw) : 0
+  return id > 0 ? id : null
 }
 
 // ========== 悬浮球拖拽 ==========
@@ -214,17 +224,18 @@ async function handleSend() {
   if (!text || loading.value) return
 
   messages.value.push({ role: 'user', content: text })
+  saveMessages()
   inputText.value = ''
   scrollToBottom()
   loading.value = true
 
-  const chatId = getChatId()
+  const chatId = getSavedSessionId()
   let fullAnswer = ''
 
   streamingMsg.value = { role: 'assistant', content: '', streaming: true }
 
   askAIStream(
-    { prompt: text, chatId },
+    { prompt: text, sessionId: chatId ?? undefined },
     {
       onToken(token: string) {
         fullAnswer += token
@@ -233,34 +244,94 @@ async function handleSend() {
         }
         scrollToBottom()
       },
-      onDone() {
+      onDone(sessionId) {
+        // 后端通过 X-Session-Id 头返回会话 id，落 localStorage 供后续消息复用
+        if (sessionId) {
+          localStorage.setItem(SESSION_KEY, String(sessionId))
+        }
         if (streamingMsg.value) {
           streamingMsg.value.streaming = false
           messages.value.push({ ...streamingMsg.value })
           streamingMsg.value = null
         }
         loading.value = false
+        saveMessages()
         scrollToBottom()
       },
       onError(err: Error) {
         console.error('SSE error:', err)
+        const fallback = err.message?.includes('401')
+          ? '请先登录后再使用智能客服'
+          : '抱歉，AI服务暂时不可用，请稍后再试。'
         if (streamingMsg.value) {
           streamingMsg.value.streaming = false
-          streamingMsg.value.content = fullAnswer || '抱歉，AI服务暂时不可用，请稍后再试。'
+          streamingMsg.value.content = fullAnswer || fallback
           messages.value.push({ ...streamingMsg.value })
           streamingMsg.value = null
         }
         loading.value = false
+        saveMessages()
         scrollToBottom()
       },
     },
   )
 }
 
-function clearChat() {
+async function clearChat() {
   messages.value = []
   streamingMsg.value = null
-  localStorage.removeItem(CHAT_ID_KEY)
+  // 之前只清了界面和 localStorage，服务端的会话与持久化记忆原封不动，
+  // 用户感知就是"删除没生效"。这里同步删除服务端会话(含消息与上下文记忆)。
+  const sid = getSavedSessionId()
+  localStorage.removeItem(SESSION_KEY)
+  saveMessages()
+  if (sid) {
+    try {
+      await deleteAiSession(sid)
+    } catch {
+      // 服务端删除失败不阻断清屏，下次可再删
+    }
+  }
+}
+
+// 气泡消息持久化：写入/恢复/清理，避免刷新后对话丢失
+function saveMessages() {
+  try {
+    if (messages.value.length) {
+      localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages.value))
+    } else {
+      localStorage.removeItem(MESSAGES_KEY)
+    }
+  } catch {
+    // localStorage 不可用或超容量时忽略，不影响聊天
+  }
+}
+
+function restoreMessages() {
+  try {
+    const raw = localStorage.getItem(MESSAGES_KEY)
+    if (!raw) return
+    const list = JSON.parse(raw)
+    if (Array.isArray(list)) {
+      // 过滤掉仍处于 streaming 的半截消息（上次会话中途断流残留）
+      messages.value = list.filter((m: Message) => m && !m.streaming)
+    }
+  } catch {
+    localStorage.removeItem(MESSAGES_KEY)
+  }
+}
+
+restoreMessages()
+
+// 跳转到完整对话页面（带历史会话侧边栏 + 删除）
+function openFullPage() {
+  visible.value = false
+  // 把气泡当前会话同步给 /chat 页，保证两边接着同一个会话继续聊
+  const sid = getSavedSessionId()
+  if (sid) {
+    localStorage.setItem('ai_current_session_id', String(sid))
+  }
+  router.push('/chat')
 }
 
 function renderContent(msg: Message): string {
@@ -395,6 +466,15 @@ onUnmounted(() => {
 }
 .action-btn:hover {
   background: rgba(255, 255, 255, 0.25);
+}
+
+/* 带文字的入口按钮（"历史"），比纯图标更容易被用户发现 */
+.action-btn-text {
+  width: auto;
+  padding: 0 8px;
+  font-size: 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.16);
 }
 
 /* body */

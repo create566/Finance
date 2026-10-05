@@ -4,11 +4,16 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.demo.entity.Lend;
 import com.example.demo.entity.LendItem;
 import com.example.demo.entity.LendReturn;
+import com.example.demo.entity.SysAdmin;
 import com.example.demo.enums.LendStatusEnum;
+import com.example.demo.mapper.SysAdminMapper;
 import com.example.demo.service.LendItemService;
 import com.example.demo.service.LendReturnService;
 import com.example.demo.service.LendService;
 import com.example.demo.utils.LendNoUtils;
+import com.example.demo.utils.LoginUserContext;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
@@ -16,6 +21,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -24,9 +30,14 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -55,9 +66,24 @@ public class AdminLendController {
     @Autowired
     private LendReturnService lendReturnService;
 
+    @Autowired
+    private com.example.demo.service.ContractService contractService;
+
+    @Autowired
+    private SysAdminMapper sysAdminMapper;
+
+    /**
+     * 用 Spring 容器里的 ObjectMapper（而非 new ObjectMapper()），
+     * 它带 JavaTimeModule，LocalDateTime 的序列化格式与控制器直接返回实体时一致，
+     * 前端既有的时间展示不会因为"改成手工转 Map"而变形。
+     */
+    @Autowired
+    private ObjectMapper objectMapper;
+
     /**
      * 获取标的分页列表
      * 支持关键词搜索（标的名称/编号）和状态筛选
+     * <p>同时返回上架审核留痕（审核人姓名 + 审核时间）与放款发起人，供后台运营追溯。
      */
     @ApiOperation("获取标的分页列表")
     @GetMapping("/page")
@@ -68,8 +94,43 @@ public class AdminLendController {
             @ApiParam("状态:0待发布 1募资中 2已完成 3逾期 4下架") @RequestParam(required = false) Integer status) {
         try {
             Page<Lend> result = lendService.pageList(pageNum, pageSize, keyword, status);
+            List<Lend> records = result.getRecords();
+
+            // 批量反查管理员姓名（一次查询，避免 N+1）
+            Set<Long> adminIds = new HashSet<>();
+            for (Lend l : records) {
+                if (l.getCheckAdminId() != null) {
+                    adminIds.add(l.getCheckAdminId());
+                }
+                if (l.getPaymentAdminId() != null) {
+                    adminIds.add(l.getPaymentAdminId());
+                }
+                if (l.getOfflineAdminId() != null) {
+                    adminIds.add(l.getOfflineAdminId());
+                }
+            }
+            Map<Long, String> adminNames = resolveAdminNames(adminIds);
+
+            // Lend 的 check_admin_id / check_time / payment_admin_id 带 @JsonIgnore（不对前台暴露），
+            // 这里转 Map 后显式回填，保持响应结构与前端既有字段路径完全一致（扁平，不嵌套）
+            List<Map<String, Object>> list = new ArrayList<>(records.size());
+            for (Lend l : records) {
+                Map<String, Object> m = objectMapper.convertValue(
+                        l, new TypeReference<LinkedHashMap<String, Object>>() {
+                        });
+                m.put("checkAdminId", l.getCheckAdminId());
+                m.put("checkTime", l.getCheckTime());
+                m.put("checkAdminName", displayName(l.getCheckAdminId(), adminNames));
+                m.put("paymentAdminId", l.getPaymentAdminId());
+                m.put("paymentAdminName", displayName(l.getPaymentAdminId(), adminNames));
+                m.put("offlineAdminId", l.getOfflineAdminId());
+                m.put("offlineTime", l.getOfflineTime());
+                m.put("offlineAdminName", displayName(l.getOfflineAdminId(), adminNames));
+                list.add(m);
+            }
+
             Map<String, Object> data = new HashMap<>();
-            data.put("list", result.getRecords());
+            data.put("list", list);
             data.put("total", result.getTotal());
             return new PccAjaxResult(200, "获取标的列表成功", data);
         } catch (Exception e) {
@@ -127,6 +188,10 @@ public class AdminLendController {
             lend.setInvestNum(0);
             lend.setStatus(LendStatusEnum.FUNDING.getCode());
             lend.setPublishDate(LocalDateTime.now());
+            // 该接口直接置为"募资中"、绕过 publish()，等同于一次上架审核通过，
+            // 因此审核留痕也要一并写入，否则这条标的在台账里会显示"无审核记录"
+            lend.setCheckTime(LocalDateTime.now());
+            lend.setCheckAdminId(currentAdminId());
             lend.setLendStartDate(LocalDate.now().plusDays(1));
             lend.setLendEndDate(LocalDate.now().plusDays(term));
             lend.setLendInfo(purpose != null ? purpose.trim() : "");
@@ -136,6 +201,16 @@ public class AdminLendController {
             boolean ok = lendService.save(lend);
 
             if (ok) {
+                // 该接口直接置为"募资中"、绕过 publish()，所以在这里补上借款人侧合同的预生成，
+                // 保证合同台账与标的一致（否则放款时会因缺《放款确认书》被卡）
+                try {
+                    contractService.getOrCreate(com.example.demo.enums.ContractBizTypeEnum.LEND,
+                            lend.getId(), com.example.demo.enums.ContractTypeEnum.LOAN, lend.getUserId());
+                    contractService.getOrCreate(com.example.demo.enums.ContractBizTypeEnum.LEND,
+                            lend.getId(), com.example.demo.enums.ContractTypeEnum.PAYMENT, lend.getUserId());
+                } catch (Exception e) {
+                    log.error("预生成标的合同失败: lendId={}, error={}", lend.getId(), e.getMessage(), e);
+                }
                 Map<String, Object> resultData = new HashMap<>();
                 resultData.put("id", lend.getId());
                 resultData.put("message", "创建成功");
@@ -164,7 +239,7 @@ public class AdminLendController {
             return new PccAjaxResult(400, "标的ID无效", null);
         }
         try {
-            boolean ok = lendService.offline(id);
+            boolean ok = lendService.offline(id, currentAdminId());
             if (ok) {
                 log.info("标的下架成功: id={}", id);
                 return new PccAjaxResult(200, "下架成功", ok);
@@ -188,7 +263,7 @@ public class AdminLendController {
             return new PccAjaxResult(400, "标的ID无效", null);
         }
         try {
-            boolean ok = lendService.publish(id);
+            boolean ok = lendService.publish(id, currentAdminId());
             if (ok) {
                 log.info("标的发布成功: id={}", id);
                 return new PccAjaxResult(200, "发布成功", ok);
@@ -272,7 +347,7 @@ public class AdminLendController {
             return new PccAjaxResult(400, "标的ID无效", null);
         }
         try {
-            String formHtml = lendReturnService.buildMakeLoanForm(id);
+            String formHtml = lendReturnService.buildMakeLoanForm(id, currentAdminId());
             Map<String, Object> data = new HashMap<>();
             data.put("formHtml", formHtml);
             log.info("生成放款表单成功: projectId={}", id);
@@ -327,5 +402,36 @@ public class AdminLendController {
             if (msg != null) return msg;
         }
         return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+    }
+
+    /** 当前登录管理员ID（仅用于审计留痕，取不到就留空，绝不影响业务） */
+    private Long currentAdminId() {
+        Integer adminId = LoginUserContext.getUserid();
+        return adminId == null ? null : adminId.longValue();
+    }
+
+    /** 批量查管理员姓名；name 为空时回退 username */
+    private Map<Long, String> resolveAdminNames(Set<Long> adminIds) {
+        if (adminIds == null || adminIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        try {
+            return sysAdminMapper.selectBatchIds(adminIds).stream()
+                    .collect(Collectors.toMap(
+                            SysAdmin::getId,
+                            a -> StringUtils.hasText(a.getName()) ? a.getName() : a.getUsername(),
+                            (a, b) -> a));
+        } catch (Exception e) {
+            log.warn("反查管理员姓名失败，降级为只显示ID: {}", e.getMessage());
+            return Collections.emptyMap();
+        }
+    }
+
+    private String displayName(Long adminId, Map<Long, String> adminNames) {
+        if (adminId == null) {
+            return null;
+        }
+        String name = adminNames.get(adminId);
+        return StringUtils.hasText(name) ? name : ("管理员#" + adminId);
     }
 }

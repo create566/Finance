@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
+import com.example.demo.utils.PageUtils;
 
 /**
  * 后台会员管理（对齐前端 /admin/core/member/** 约定）
@@ -40,7 +41,7 @@ public class AdminUserController {
             @ApiParam(value = "每页记录数") @RequestParam(defaultValue = "10") Integer pageSize,
             @ApiParam(value = "手机号/姓名模糊搜索") @RequestParam(required = false) String keyword,
             @ApiParam(value = "状态: 1正常 0禁用") @RequestParam(required = false) Integer status) {
-        Page<User> pageParam = new Page<>(pageNum, pageSize);
+        Page<User> pageParam = PageUtils.of(pageNum, pageSize);
         AdminUserQuery query = new AdminUserQuery();
         query.setMobile(keyword);
         query.setStatus(status);

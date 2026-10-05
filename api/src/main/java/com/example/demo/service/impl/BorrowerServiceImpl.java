@@ -9,7 +9,7 @@ import com.example.demo.entity.dto.BorrowerAuthDto;
 import com.example.demo.enums.BorrowerAuthStatusEnum;
 import com.example.demo.enums.UserTypeEnum;
 import com.example.demo.exception.BusinessException;
-import com.example.demo.exception.ResourceNotFoundException;
+import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.example.demo.mapper.BorrowerAttachMapper;
 import com.example.demo.mapper.BorrowerMapper;
 import com.example.demo.service.BorrowerService;

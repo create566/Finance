@@ -1,0 +1,39 @@
+# 实训项目本地基础服务：ChromaDB（向量库） + Redis（缓存）
+# 用法：在本文件所在目录执行
+#   docker compose up -d     启动（后台）
+#   docker compose ps        查看状态
+#   docker compose logs -f chroma   跟日志
+#   docker compose stop/start/down  停止/启动/删除
+
+services:
+  chroma:
+    # 版本说明（重要）：Spring AI 1.1.2 的 ChromaApi 走的是 /api/v2/*，
+    # 必须用 Chroma 1.x；0.6.x 只提供 v1，会导致检索失败。
+    # 镜像源用 GHCR：Docker Hub 的 chromadb/chroma 部分 tag 拉取会报
+    # "descriptor is neither a manifest or index"。
+    image: ghcr.io/chroma-core/chroma:1.0.0
+    container_name: ww_chroma
+    ports:
+      - "8000:8000"
+    volumes:
+      # Chroma 1.0.0 实际持久化目录是 /data（容器日志输出 "Saving data to: /data"，
+      # 数据库文件为 /data/chroma.sqlite3）。旧配置挂载到 /chroma/chroma 是错误路径，
+      # 导致向量数据落在容器可写层，容器重建即丢失。
+      - chroma_data:/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ww_redis
+    # 注意：本机 6379 目前空闲（无进程监听），改回默认 6379 以匹配主项目
+    #（Spring Boot 端口 8990，com.example.demo）JWT 拦截器的 localhost:6379 Redis 连接。
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  chroma_data:
+  redis_data:

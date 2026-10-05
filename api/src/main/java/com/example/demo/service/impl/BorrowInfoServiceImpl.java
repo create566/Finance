@@ -23,6 +23,7 @@ import com.example.demo.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -30,6 +31,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.example.demo.utils.PageUtils;
 
 @Service
 public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowInfo> implements BorrowInfoService {
@@ -134,7 +136,7 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean approveBorrowInfo(Long borrowInfoId, boolean approved) {
+    public boolean approveBorrowInfo(Long borrowInfoId, boolean approved, Long adminId) {
         BorrowInfo borrowInfo = this.getById(borrowInfoId);
         if (borrowInfo == null) {
             throw new ResourceNotFoundException(500, "借款申请不存在");
@@ -150,6 +152,9 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
                 .set(BorrowInfo::getStatus, approved
                         ? BorrowInfoStatusEnum.APPROVED.getCode()
                         : BorrowInfoStatusEnum.REJECTED.getCode())
+                // 审核留痕：谁批的、什么时候批的（此前 borrow_info 连这两个字段都没有）
+                .set(BorrowInfo::getCheckAdminId, adminId)
+                .set(BorrowInfo::getCheckTime, LocalDateTime.now())
                 .set(BorrowInfo::getUpdateTime, LocalDateTime.now()));
         if (!updated) {
             log.warn("借款申请已被其他管理员处理，borrowInfoId=" + borrowInfoId);
@@ -203,18 +208,31 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
     }
 
     @Override
-    public Page<BorrowInfo> adminPageList(Integer pageNum, Integer pageSize, Integer status) {
-        Page<BorrowInfo> pageParam = new Page<>(pageNum, pageSize);
+    public Page<BorrowInfo> adminPageList(Integer pageNum, Integer pageSize, String keyword, Integer status) {
+        Page<BorrowInfo> pageParam = PageUtils.of(pageNum, pageSize);
         LambdaQueryWrapper<BorrowInfo> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(status != null, BorrowInfo::getStatus, status);
+        if (StringUtils.hasText(keyword)) {
+            String kw = keyword.trim();
+            // 只做能精确下推到 SQL 的条件：用户ID 数字匹配 + 金额字符串匹配。
+            // 借款申请表没有姓名字段（姓名在 borrower/user 表），此处不跨表，避免误导性空结果。
+            wrapper.and(w -> {
+                w.like(BorrowInfo::getAmount, kw);
+                try {
+                    w.or().eq(BorrowInfo::getUserId, Long.valueOf(kw));
+                } catch (NumberFormatException ignored) {
+                    // 非数字关键词就只按金额模糊匹配
+                }
+            });
+        }
         wrapper.orderByDesc(BorrowInfo::getCreateTime);
         return this.page(pageParam, wrapper);
     }
 
     @Override
-    public boolean auditBorrowInfo(Long id, Integer status) {
+    public boolean auditBorrowInfo(Long id, Integer status, Long adminId) {
         boolean approved = BorrowInfoStatusEnum.APPROVED.getCode().equals(status);
-        return this.approveBorrowInfo(id, approved);
+        return this.approveBorrowInfo(id, approved, adminId);
     }
 
 }

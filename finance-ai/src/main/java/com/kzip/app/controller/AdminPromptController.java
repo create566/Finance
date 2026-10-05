@@ -15,8 +15,9 @@ public class AdminPromptController {
     private PromptConfigService promptConfigService;
 
     @GetMapping("/list")
-    public Result<List<PromptConfig>> list(PromptConfig query) {
-        List<PromptConfig> list = promptConfigService.listAll(query);
+    public Result<List<PromptConfig>> list(PromptConfig query,
+                                          @RequestParam(required = false) String keyword) {
+        List<PromptConfig> list = promptConfigService.listAll(query, keyword);
         return Result.success("查询成功", list);
     }
 

@@ -16,8 +16,9 @@ public class AdminModelConfigController {
     private ModelConfigService modelConfigService;
 
     @GetMapping("/list")
-    public Result<List<ModelConfig>> list(ModelConfig query) {
-        List<ModelConfig> list = modelConfigService.listAll(query);
+    public Result<List<ModelConfig>> list(ModelConfig query,
+                                          @RequestParam(required = false) String keyword) {
+        List<ModelConfig> list = modelConfigService.listAll(query, keyword);
         return Result.success("查询成功", list);
     }
 

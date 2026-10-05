@@ -1,0 +1,2 @@
+﻿NAMES STATUS PORTS
+ww_redis Up 43 seconds 0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp

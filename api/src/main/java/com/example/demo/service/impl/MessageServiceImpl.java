@@ -4,37 +4,33 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.example.demo.client.SMSApiSmsClient;
+import com.example.demo.client.SmsNotifyDispatcher;
 import com.example.demo.entity.Message;
-import com.example.demo.entity.User;
 import com.example.demo.enums.MessageTypeEnum;
 import com.example.demo.mapper.MessageMapper;
 import com.example.demo.service.MessageService;
-import com.example.demo.service.UserService;
 import com.wwfinance.common.exception.ResourceNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import com.example.demo.utils.PageUtils;
 
 /**
  * 消息 Service 实现
- * 双通道：站内信落库（必达） + 短信微服务（与验证码同通道，失败容错）
+ * 双通道：站内信落库（同事务必达） + 短信微服务（异步派发、有界重试、失败降级）
  */
 @Slf4j
 @Service
 public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> implements MessageService {
 
     @Autowired
-    private SMSApiSmsClient smsApiSmsClient;
-
-    @Autowired
-    private UserService userService;
+    private SmsNotifyDispatcher smsNotifyDispatcher;
 
     @Override
     public Message send(Long userId, MessageTypeEnum type, String title, String content) {
-        // 1. 站内信落库（消息必达，不依赖外部服务）
+        // 1. 站内信落库（消息必达，与主业务同一事务）
         Message message = new Message();
         message.setUserId(userId);
         message.setTitle(title);
@@ -45,15 +41,8 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> impl
         message.setUpdateTime(LocalDateTime.now());
         this.save(message);
 
-        // 2. 走短信通道（与发送验证码同一 Feign 客户端，失败由 fallback 兜底，不抛异常）
-        try {
-            User user = userService.getById(userId);
-            if (user != null && user.getMobile() != null) {
-                smsApiSmsClient.sendNotify(user.getMobile(), content);
-            }
-        } catch (Exception e) {
-            log.warn("短信通知发送异常，站内信已落库 userId={}, msg={}", userId, e.getMessage());
-        }
+        // 2. 短信通道异步派发：不阻塞主业务事务；重试与失败降级在派发器内部完成
+        smsNotifyDispatcher.dispatch(userId, content);
         return message;
     }
 
@@ -64,7 +53,7 @@ public class MessageServiceImpl extends ServiceImpl<MessageMapper, Message> impl
 
     @Override
     public Page<Message> pageByUser(Long userId, Integer pageNum, Integer pageSize) {
-        return this.page(new Page<>(pageNum, pageSize),
+        return this.page(PageUtils.of(pageNum, pageSize),
                 new LambdaQueryWrapper<Message>()
                         .eq(Message::getUserId, userId)
                         .orderByDesc(Message::getCreateTime));

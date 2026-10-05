@@ -13,6 +13,8 @@ import com.example.demo.entity.User;
 import com.example.demo.entity.UserBind;
 import com.example.demo.enums.BankNotifyStatusEnum;
 import com.example.demo.enums.BindStatusEnum;
+import com.example.demo.enums.ContractBizTypeEnum;
+import com.example.demo.enums.ContractTypeEnum;
 import com.example.demo.enums.LendStatusEnum;
 import com.example.demo.enums.TransTypeEnum;
 import com.example.demo.enums.UserTypeEnum;
@@ -21,10 +23,12 @@ import com.example.demo.service.LendItemService;
 import com.example.demo.service.BankAccountSyncService;
 import com.example.demo.service.BankDatabaseSyncService;
 import com.example.demo.service.LendService;
+import com.example.demo.service.RecommendService;
 import com.example.demo.service.TransFlowService;
 import com.example.demo.service.UserAccountService;
 import com.example.demo.service.UserBindService;
 import com.example.demo.service.UserService;
+import com.example.demo.utils.BalanceGuard;
 import com.example.demo.utils.LendNoUtils;
 import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.wwfinance.common.utils.BankSignUtil;
@@ -41,6 +45,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.example.demo.utils.PageUtils;
 
 @Slf4j
 @Service
@@ -75,6 +80,12 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
 
     @Autowired
     private com.example.demo.service.MessageService messageService;
+
+    @Autowired
+    private com.example.demo.service.ContractService contractService;
+
+    @Autowired
+    private RecommendService recommendService;
 
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
@@ -120,54 +131,63 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ResourceNotFoundException(500, "投资金额必须大于0");
         }
+        // 精度必须在这里拦住：回调侧 handleInvestNotify 用 AMOUNT_REGEX（\\d+(\\.\\d{1,2})?）
+        // 校验银行回传金额，三位小数会被判非法并 return false —— 此时用户的钱在银行侧
+        // 已经冻结，平台却不入账、也不生成投资记录，形成"钱挂账"。前端输入框不是安全边界。
+        if (amount.scale() > 2) {
+            throw new ResourceNotFoundException(500, "投资金额最多保留两位小数");
+        }
         BigDecimal lowestAmount = lend.getLowestAmount() != null ? lend.getLowestAmount() : new BigDecimal("100");
         if (amount.compareTo(lowestAmount) < 0) {
             throw new ResourceNotFoundException(500, "投资金额不能低于最低起投金额：" + lowestAmount);
         }
 
-        // 5. 校验余额（从 Redis 缓存读取剩余额度，防止并发超投）
+        // 4.5 签署关口：《出借协议》未签不得下单。
+        //     前端拿到该提示后会调用 /api/core/contract/auth/prepare 生成合同并引导签名，
+        //     签完按相同金额重新提交即可放行（金额不同会被要求重新签署）。
+        contractService.assertSigned(ContractBizTypeEnum.LEND, lendId, ContractTypeEnum.INVEST, userId, amount);
+
+        // 5. 校验剩余可投额度
+        //
+        // 注意：这里只是"下单前的友好提示"，**不是**防超募的真正闸门。
+        // 真正生效的原子闸门在银行回调里：baseMapper.atomicInvest 走条件 UPDATE
+        // （SET invest_amount = invest_amount + ? WHERE amount - invest_amount >= ?），
+        // 由数据库行锁保证同一标的不会投超。本路径（buildInvestForm）不写任何库，
+        // 因此也不需要任何互斥。
+        //
+        // 历史实现的两处缺陷，本次一并修正：
+        //  ① 原先这里加了一把 Redis 锁 "lend:leftAmount:<lendId>:lock"，但锁内只做了一次
+        //     "重新查银行余额"的只读操作 —— 既保护不了任何写入，又因为 key 是按【标的】加锁，
+        //     会让同一标的上并发投标的【不同用户】互相顶掉、误报"请勿重复提交"
+        //     （热门标的必现）；且 unlock 不校验持有者，A 能直接删掉 B 持有的锁。故整体移除。
+        //  ② 原先 "if (lend.getUserId() != null)" 恒为 true（借款人不可能为空），
+        //     导致上面的 Redis 缓存判断必然被下一段的 DB 值覆盖，缓存形同虚设。
+        //     改为两条独立判断，命中哪条报哪条。
         String leftKey = LEFT_AMOUNT_KEY + lendId;
-        String lockKey = LEFT_AMOUNT_KEY + lendId + ":lock";
-        BigDecimal leftAmount = null;
         Object cached = redisTemplate.opsForValue().get(leftKey);
         if (cached != null) {
-            leftAmount = new BigDecimal(cached.toString());
-            if (leftAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            BigDecimal cachedLeft = new BigDecimal(cached.toString());
+            if (cachedLeft.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new ResourceNotFoundException(500, "标的已满标");
             }
-            if (leftAmount.compareTo(amount) < 0) {
-                throw new ResourceNotFoundException(500, "剩余可投金额不足，剩余：" + leftAmount);
+            if (cachedLeft.compareTo(amount) < 0) {
+                throw new ResourceNotFoundException(500, "剩余可投金额不足，剩余：" + cachedLeft);
             }
         }
-        if (lend.getUserId() != null) {
-            leftAmount = lend.getAmount().subtract(lend.getInvestAmount());
-            if (leftAmount.compareTo(amount) < 0) {
-                throw new ResourceNotFoundException(500, "剩余可投金额不足");
-            }
+        BigDecimal totalAmount = lend.getAmount() != null ? lend.getAmount() : BigDecimal.ZERO;
+        BigDecimal investedAmount = lend.getInvestAmount() != null ? lend.getInvestAmount() : BigDecimal.ZERO;
+        if (totalAmount.subtract(investedAmount).compareTo(amount) < 0) {
+            throw new ResourceNotFoundException(500, "剩余可投金额不足");
         }
 
         // 6. 校验投资人余额（从银行查询，平台不持有余额）
+        //    这里的 actionName 传空串：LendController 已经统一加了"投标失败："前缀，
+        //    再传一遍会得到"投标失败：投标失败：可用余额不足…"
         BigDecimal balance = bankAccountSyncService.getBankBalance(userId);
-        if (balance.compareTo(amount) < 0) {
-            throw new ResourceNotFoundException(500, "余额不足，当前余额：" + balance);
-        }
+        BalanceGuard.require("", balance, amount);
 
-        // 7. 【防并发】Redis 分布式锁（银行负责资金安全，平台只做并发控制）
-        boolean locked = tryLock(lockKey, userId.toString(), 30);
-        if (!locked) {
-            throw new ResourceNotFoundException(500, "请勿重复提交");
-        }
-        try {
-            // 双重校验：在锁内再次检查额度和余额
-            balance = bankAccountSyncService.getBankBalance(userId);
-            if (balance.compareTo(amount) < 0) {
-                throw new ResourceNotFoundException(500, "余额不足，请刷新后重试");
-            }
-            // 注意：冻结由银行执行，平台不操作真实资金
-            // 银行回调时冻结投资人资金，平台仅记录投标记录
-        } finally {
-            unlock(lockKey);
-        }
+        // 7. 冻结由银行执行，平台不操作真实资金：
+        //    银行回调时冻结投资人资金，平台仅记录投标记录（见 handleInvestNotify）。
 
         // 8. 组装旺旺银行投标参数并签名
         Map<String, Object> paramMap = new HashMap<>();
@@ -188,30 +208,6 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
 
         log.info("投标表单生成，userId={}, lendId={}, amount={}", userId, lendId, amount);
         return FormHelper.buildForm(HfbConst.INVEST_URL, paramMap);
-    }
-
-    /**
-     * 获取 Redis 分布式锁
-     */
-    private boolean tryLock(String key, String value, int seconds) {
-        try {
-            Boolean success = redisTemplate.opsForValue().setIfAbsent(key, value, seconds, java.util.concurrent.TimeUnit.SECONDS);
-            return Boolean.TRUE.equals(success);
-        } catch (Exception e) {
-            log.warn("获取锁失败：{}", key, e);
-            return false;
-        }
-    }
-
-    /**
-     * 释放 Redis 分布式锁
-     */
-    private void unlock(String key) {
-        try {
-            redisTemplate.delete(key);
-        } catch (Exception e) {
-            log.warn("释放锁失败：{}", key, e);
-        }
     }
 
     @Override
@@ -326,11 +322,19 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
                     .set(LendItem::getUpdateTime, now));
             // 满标后缓存置 0，后续投标请求在入口前置拦截被直接拒绝
             redisTemplate.opsForValue().set(LEFT_AMOUNT_KEY + lendId, "0");
+            // 该标的退出募资池 → 所有用户的推荐结果都要变
+            recommendService.evictAll();
             log.info("标的 {} 已满标，状态变更为待放款", lendId);
+            // 资金安全：投资人资金已冻结，此时若借款人不签《放款确认书》，
+            // 放款会被卡住且无任何退资出口 → 资金无限期悬停。主动催签，把"可发现"前置。
+            messageService.sendMakeLoanPendingNotice(
+                    updatedLend.getUserId(), updatedLend.getLendNo(), updatedLend.getAmount());
         } else {
             // 未满标，缓存剩余可投额度，供投标入口前置拦截使用
             BigDecimal leftAmount = updatedLend.getAmount().subtract(updatedLend.getInvestAmount());
             redisTemplate.opsForValue().set(LEFT_AMOUNT_KEY + lendId, leftAmount.toString());
+            // 该用户已投过此标 → 只失效他本人的推荐缓存（其他用户不受影响）
+            recommendService.evict(user.getId());
         }
 
         log.info("投标回调处理成功，userId={}, lendId={}, amount={}, transNo={}",
@@ -379,8 +383,14 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         BigDecimal leftAmount = lend.getAmount().subtract(lend.getInvestAmount());
         redisTemplate.opsForValue().set(leftKey, leftAmount.toString());
 
+        // 撤标后剩余额度增多，该标的对所有人的推荐价值变化 → 统一失效
+        recommendService.evictAll();
+
         log.info("投资撤回成功，lendItemId={}, userId={}, amount={}。银行将自动解冻冻结资金",
                 lendItemId, userId, amount);
+
+        // 撤标通知（给投资人）：告诉他钱已解冻，否则用户只能靠刷新余额自己猜
+        messageService.sendInvestCancelNotice(userId, amount, lend.getTitle());
         return true;
     }
 
@@ -393,7 +403,7 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
 
     @Override
     public Page<LendItem> pageList(Integer pageNum, Integer pageSize, Long lendId, Long investUserId) {
-        Page<LendItem> pageParam = new Page<>(pageNum, pageSize);
+        Page<LendItem> pageParam = PageUtils.of(pageNum, pageSize);
         LambdaQueryWrapper<LendItem> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(lendId != null, LendItem::getLendId, lendId);
         wrapper.eq(investUserId != null, LendItem::getInvestUserId, investUserId);

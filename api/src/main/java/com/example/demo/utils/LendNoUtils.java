@@ -36,7 +36,7 @@ public class LendNoUtils {
     }
 
 
-    public static Object getWithdrawNo() {
+    public static String getWithdrawNo() {
         return "WITHDRAW" + getNo();
     }
 

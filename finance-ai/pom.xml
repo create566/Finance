@@ -124,6 +124,12 @@
             <artifactId>spring-ai-chroma-store</artifactId>
         </dependency>
 
+        <!-- MongoDB 会话历史存储（Spring Data MongoDB） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-mongodb</artifactId>
+        </dependency>
+
         <!-- MySQL + MyBatis-Plus（AI模块直接操作数据库） -->
         <dependency>
             <groupId>mysql</groupId>
@@ -139,6 +145,12 @@
             <artifactId>mybatis</artifactId>
             <version>3.5.19</version>
             <scope>compile</scope>
+        </dependency>
+
+        <!-- Redis：复用 api 模块的登录态（login:token:user:{id}），实现登出即时失效 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
     </dependencies>

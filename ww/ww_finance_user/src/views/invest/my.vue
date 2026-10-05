@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { getMyInvestments } from '@/api/lend'
+import { LEND_ITEM_STATUS_MAP, enumTag } from '@/utils/enumText'
 
 const tableData = ref<any[]>([])
 const loading = ref(false)
@@ -15,12 +16,11 @@ async function fetchList() {
   }
 }
 
-const statusMap: Record<number, { text: string; type: string }> = {
-  0: { text: '募资中', type: 'warning' },
-  1: { text: '持有中', type: 'primary' },
-  2: { text: '满标待放款', type: 'success' },
-  3: { text: '已回款', type: 'info' },
-}
+// 注意这里是 lend_item.status（「我的投资记录」状态），与 lend.status 是**两套编码**：
+//   lend_item: 0=募资中 1=已撤标 2=满标待放款（真源 LendItemServiceImpl / LendServiceImpl）
+// 原先这张表把 1 写成「持有中」（实际是「已撤标」）—— 已撤标、资金已退回的记录会被
+// 显示成还在持有，属误导；3=已回款 后端从未写过，是死映射，一并删除。
+const statusTag = (status: number) => enumTag(LEND_ITEM_STATUS_MAP, status)
 
 onMounted(fetchList)
 </script>
@@ -43,8 +43,8 @@ onMounted(fetchList)
         </el-table-column>
         <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
-            <el-tag :type="(statusMap[row.status]?.type as string) || 'info'">
-              {{ statusMap[row.status]?.text || '未知' }}
+            <el-tag :type="statusTag(row.status).type">
+              {{ statusTag(row.status).text }}
             </el-tag>
           </template>
         </el-table-column>

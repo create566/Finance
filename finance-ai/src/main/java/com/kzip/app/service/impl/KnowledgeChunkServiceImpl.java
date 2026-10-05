@@ -38,7 +38,7 @@ public class KnowledgeChunkServiceImpl extends ServiceImpl<KnowledgeChunkMapper,
     public boolean toggleStatus(Long id) {
         KnowledgeChunk chunk = this.getById(id);
         if (chunk == null) {
-            throw new RuntimeException("切片不存在");
+            throw new IllegalArgumentException("切片不存在");
         }
         chunk.setStatus(chunk.getStatus() == 1 ? 0 : 1);
         return this.updateById(chunk);

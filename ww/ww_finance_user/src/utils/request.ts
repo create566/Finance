@@ -13,6 +13,45 @@ function getToken(): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
+/** 登录态失效：清 cookie 并跳登录页 */
+function redirectToLogin() {
+  document.cookie = 'user_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+  if (!window.location.pathname.startsWith('/login')) {
+    window.location.href = '/login'
+  }
+}
+
+/**
+ * 从响应体里识别后端的「业务失败信封」。
+ *
+ * 背景：充值 / 提现 / 还款 / 投标 这几个接口用的是 responseType: 'text'，
+ * 因为成功时后端返回的是要自动提交到银行的 HTML 表单。
+ * 但业务校验失败时（例如余额不足），后端走 @RestControllerAdvice 返回的是
+ * `{"code":400,"msg":"可用余额不足…"}` —— **HTTP 状态码依然是 200**。
+ * 如果不在这里识别出来，调用方只会得到一个普通字符串，
+ * 判断「不含 <form>」后就会走到"提交成功"的分支：余额不足被静默吞成成功提示，
+ * 这是"金额不够也能支付/还款"能骗过测试的根因。
+ */
+function parseErrorEnvelope(payload: unknown): ApiResult | null {
+  let obj: any = payload
+  if (typeof payload === 'string') {
+    const text = payload.trim()
+    // 银行表单是 HTML，不可能以 { 或 [ 开头，先做廉价判断避免无谓的 JSON.parse
+    if (!text.startsWith('{') && !text.startsWith('[')) {
+      return null
+    }
+    try {
+      obj = JSON.parse(text)
+    } catch {
+      return null
+    }
+  }
+  if (obj && typeof obj === 'object' && typeof obj.code === 'number' && obj.code !== 200) {
+    return obj as ApiResult
+  }
+  return null
+}
+
 const service: AxiosInstance = axios.create({
   baseURL: '/api',
   timeout: 15000,
@@ -32,11 +71,20 @@ service.interceptors.request.use(
 
 service.interceptors.response.use(
   ((response: any) => {
-    if (response.config?.responseType === 'text') {
-      return response.data
-    }
+    const isText = response.config?.responseType === 'text'
     const contentType = response.headers?.['content-type'] || ''
-    if (contentType.includes('text/html') || typeof response.data === 'string') {
+    const isHtmlOrText =
+      isText || contentType.includes('text/html') || typeof response.data === 'string'
+
+    if (isHtmlOrText) {
+      const envelope = parseErrorEnvelope(response.data)
+      if (envelope) {
+        ElMessage.error(envelope.msg || envelope.message || '请求失败')
+        if (envelope.code === 401 || envelope.code === 403) {
+          redirectToLogin()
+        }
+        return Promise.reject(new Error(envelope.msg || envelope.message || 'Error'))
+      }
       return response.data
     }
 
@@ -46,10 +94,7 @@ service.interceptors.response.use(
     }
     ElMessage.error(res?.msg || res?.message || '请求失败')
     if (res?.code === 401 || res?.code === 403) {
-      document.cookie = 'user_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login'
-      }
+      redirectToLogin()
     }
     return Promise.reject(new Error(res?.msg || res?.message || 'Error'))
   }) as any,

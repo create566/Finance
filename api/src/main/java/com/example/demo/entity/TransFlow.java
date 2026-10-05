@@ -65,6 +65,16 @@ public class TransFlow implements Serializable {
     private BigDecimal transAmount;
 
     /**
+     * 交易状态
+     * 充值/提现在发起时先落一条「处理中」流水（银行回调后置为成功/失败），
+     * 投标/回款/放款/还款由银行回调一次落库，直接是成功态。
+     *
+     * @see com.example.demo.enums.TransStatusEnum
+     */
+    @TableField("status")
+    private Integer status;
+
+    /**
      * 备注
      */
     @TableField("memo")

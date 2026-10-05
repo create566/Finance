@@ -71,3 +71,39 @@ export function getMyInvestments(): Promise<{ list: MyInvestment[]; total: numbe
     method: 'get',
   })
 }
+
+/** 推荐结果：标的本体 + 得分 + 可解释的推荐理由 */
+export interface RecommendLend {
+  lend: LendItem
+  score: number
+  scoreDetail?: Record<string, number>
+  reason: string
+  tags: string[]
+  remainAmount: number
+  progress: number
+  /** RULE / ITEM_CF / FUSION / FALLBACK_HOT —— 便于埋点与调参排查 */
+  source: string
+}
+
+export interface RecommendResult {
+  list: RecommendLend[]
+  total: number
+}
+
+/** 为你推荐（规则打分 + Item-CF 融合；后端已保证永不空返回） */
+export function getRecommendLends(topN = 5): Promise<RecommendResult> {
+  return request<RecommendResult>({
+    url: '/core/lend/auth/recommend',
+    method: 'get',
+    params: { topN },
+  })
+}
+
+/** 相似标的（详情页底部） */
+export function getSimilarLends(id: number, topN = 5): Promise<RecommendResult> {
+  return request<RecommendResult>({
+    url: `/core/lend/${id}/similar`,
+    method: 'get',
+    params: { topN },
+  })
+}

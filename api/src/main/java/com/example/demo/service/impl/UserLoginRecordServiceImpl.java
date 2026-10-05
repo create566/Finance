@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import com.example.demo.utils.PageUtils;
 
 @Slf4j
 @Service
@@ -25,7 +26,7 @@ public class UserLoginRecordServiceImpl extends ServiceImpl<UserLoginRecordMappe
 
     @Override
     public Page<UserLoginRecord> adminPageList(Integer pageNum, Integer pageSize, String keyword, Integer loginResult) {
-        Page<UserLoginRecord> pageParam = new Page<>(pageNum, pageSize);
+        Page<UserLoginRecord> pageParam = PageUtils.of(pageNum, pageSize);
         LambdaQueryWrapper<UserLoginRecord> wrapper = new LambdaQueryWrapper<>();
         // keyword：按手机号在 user 表匹配出 userId 列表（之前误用来 like ip，搜索永远无效）
         if (keyword != null && !keyword.isEmpty()) {

@@ -2,6 +2,7 @@ package com.example.demo.entity;
 
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
@@ -65,6 +66,22 @@ public class BorrowInfo implements Serializable {
      */
     @TableField("status")
     private Integer status;
+
+    /**
+     * 审核管理员ID（审核通过/拒绝时写入，未审核为 null）。
+     * <p>内部审计字段，{@code @JsonIgnore} 不对前台暴露；后台列表在 AdminBorrowInfoController 里显式回填。
+     */
+    @TableField("check_admin_id")
+    @JsonIgnore
+    private Long checkAdminId;
+
+    /**
+     * 审核时间（审核通过/拒绝时写入，未审核为 null）。
+     * <p>内部审计字段，不对前台暴露。
+     */
+    @TableField("check_time")
+    @JsonIgnore
+    private LocalDateTime checkTime;
 
     /**
      * 创建时间

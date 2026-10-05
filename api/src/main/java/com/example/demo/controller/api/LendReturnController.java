@@ -58,10 +58,14 @@ public class LendReturnController {
         return new PccAjaxResult(200, "获取回款计划成功", list);
     }
 
-    @ApiOperation("查询某一期的投资人回款明细")
+    @ApiOperation("查询某一期的投资人回款明细（借款人看全部，投资人只看到自己那条）")
     @GetMapping("/itemReturns/{lendReturnId}")
     public PccAjaxResult itemReturns(@PathVariable Long lendReturnId) {
-        List<LendItemReturn> list = lendReturnService.listItemReturns(lendReturnId);
+        Integer userIdInt = LoginUserContext.getUserid();
+        if (userIdInt == null) {
+            return new PccAjaxResult(401, "请先登录");
+        }
+        List<LendItemReturn> list = lendReturnService.listItemReturns(lendReturnId, userIdInt.longValue());
         return new PccAjaxResult(200, "获取回款明细成功", list);
     }
 }

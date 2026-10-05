@@ -65,7 +65,7 @@ public interface MessageService extends IService<Message> {
         String content = approved
                 ? "您的投资人实名认证已通过，现在可以正常投标"
                 : "您的投资人实名认证未通过，请核对资料后重新提交";
-        return send(userId, MessageTypeEnum.BORROWER_AUTH, "【实名认证结果】", content);
+        return send(userId, MessageTypeEnum.INVESTOR_AUTH, "【实名认证结果】", content);
     }
 
     /** 发送标的发布通知（给借款人） */
@@ -106,6 +106,66 @@ public interface MessageService extends IService<Message> {
     default Message sendLendFailNotice(Long userId, String lendNo, java.math.BigDecimal amount) {
         return send(userId, MessageTypeEnum.LEND_FAIL, "【标的流标】",
                 "您的借款标的 " + lendNo + "（金额 " + amount + " 元）因募集超时已流标，资金已退回投资人账户");
+    }
+
+    /** 发送投资回款到账通知（给投资人） */
+    default Message sendInvestReturnNotice(Long userId, Integer period, java.math.BigDecimal total,
+                                           String lendTitle) {
+        return send(userId, MessageTypeEnum.INVEST_RETURN, "【投资回款到账】",
+                "您投资的标的「" + lendTitle + "」第 " + period + " 期回款 " + total
+                        + " 元已到账，请查收");
+    }
+
+    /** 发送合同签署成功通知 */
+    default Message sendContractSignNotice(Long userId, String contractTypeText, String contractNo) {
+        return send(userId, MessageTypeEnum.CONTRACT_SIGN, "【合同签署成功】",
+                "您已成功签署《" + contractTypeText + "》，合同编号：" + contractNo
+                        + "。可前往「我的合同」查看正文与签署存证。");
+    }
+
+    /** 发送撤标成功通知（给投资人，资金已解冻） */
+    default Message sendInvestCancelNotice(Long userId, java.math.BigDecimal amount, String lendTitle) {
+        return send(userId, MessageTypeEnum.INVEST_CANCEL, "【撤标成功】",
+                "您对标的「" + lendTitle + "」的投资 " + amount + " 元已撤销，冻结资金已解冻");
+    }
+
+    /** 发送标的已下架通知（给借款人） */
+    default Message sendLendOfflineNotice(Long userId, String lendNo, java.math.BigDecimal amount) {
+        return send(userId, MessageTypeEnum.LEND_OFFLINE, "【标的已下架】",
+                "您的借款标的 " + lendNo + "（金额 " + amount + " 元）已被平台下架，不再对外募集。"
+                        + "若已产生投资，对应冻结资金将原路解冻退回投资人。");
+    }
+
+    /** 发送标的已下架、投资资金已解冻通知（给投资人） */
+    default Message sendLendOfflineRefundNotice(Long userId, java.math.BigDecimal amount,
+                                                String lendTitle) {
+        return send(userId, MessageTypeEnum.LEND_OFFLINE, "【标的已下架】",
+                "您投资的标的「" + lendTitle + "」已被平台下架，您的投资 " + amount
+                        + " 元已解冻退回账户");
+    }
+
+    /**
+     * 发送"标的已满标、待借款人签署《放款确认书》"通知（给借款人）。
+     *
+     * <p>合规要点：投资人资金处于冻结状态，若借款人不签《放款确认书》则既不能放款也不能退回，
+     * 会形成资金无限期悬停（资金池风险）。此处主动告知借款人尽快签署，是"资金不悬停"的事中抓手。</p>
+     */
+    default Message sendMakeLoanPendingNotice(Long userId, String lendNo, java.math.BigDecimal amount) {
+        return send(userId, MessageTypeEnum.MAKE_LOAN_PENDING, "【满标待签署】",
+                "您的借款标的 " + lendNo + "（金额 " + amount + " 元）已满标，"
+                        + "请尽快签署《放款确认书》以便放款。逾期未签署的，平台将按约定退还投资人资金。");
+    }
+
+    /** 发送提现失败通知 */
+    default Message sendWithdrawFailNotice(Long userId, java.math.BigDecimal amount) {
+        return send(userId, MessageTypeEnum.WITHDRAW_FAIL, "【提现失败】",
+                "您的提现 " + amount + " 元未成功，资金仍在您的账户中，请检查银行卡状态后重试");
+    }
+
+    /** 发送充值失败通知 */
+    default Message sendRechargeFailNotice(Long userId, java.math.BigDecimal amount) {
+        return send(userId, MessageTypeEnum.RECHARGE_FAIL, "【充值失败】",
+                "您的充值 " + amount + " 元未成功，请确认银行卡状态后重试");
     }
 
     /**

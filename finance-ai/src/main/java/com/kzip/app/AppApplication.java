@@ -5,9 +5,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-import java.lang.reflect.Field;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 
 @SpringBootApplication
 @EnableScheduling
@@ -15,15 +13,16 @@ import java.nio.charset.StandardCharsets;
 public class AppApplication {
 
     static {
-        // Windows 默认 file.encoding=GBK，导致 ChromaApi 内部 String.getBytes() 编码中文为乱码
-        // 用反射强制修改 Charset.defaultCharset() 为 UTF-8
-        try {
-            Field field = Charset.class.getDeclaredField("defaultCharset");
-            field.setAccessible(true);
-            field.set(null, StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            System.err.println("无法设置默认编码为UTF-8: " + e.getMessage());
-        }
+        // Windows 默认 file.encoding=GBK，导致 ChromaApi 内部 String.getBytes() 按默认编码
+        // 把中文写成 GBK 而乱码。在 JVM 首次访问默认字符集前，把编码固定为 UTF-8：
+        // 先设置 file.encoding / sun.jnu.encoding 系统属性，再触发一次默认字符集懒加载，
+        // 让 Charset.defaultCharset() 读到 UTF-8。避免用反射改私有字段
+        // （反射对 JDK 版本敏感、易被模块系统/安全策略拦截，属于脆弱方案）。
+        // 说明：maven 启动时 spring-boot-maven-plugin 的 jvmArguments 已带 -Dfile.encoding=UTF-8，
+        // 此处作为 IDE 直跑等未显式传参场景的兜底。
+        System.setProperty("file.encoding", "UTF-8");
+        System.setProperty("sun.jnu.encoding", "UTF-8");
+        Charset.defaultCharset();
     }
 
     public static void main(String[] args) {

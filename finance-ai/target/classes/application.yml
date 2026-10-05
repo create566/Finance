@@ -2,12 +2,22 @@ server:
   port: 8081 # AI服务端口
 
 spring:
+  # MongoDB 会话历史存储（本地已装 MongoDB）
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/ww_finance_ai}
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      database: 0
   ai:
     # MaaS 平台 OpenAI 兼容模式（qwen3.8-max 走 /compatible-mode 端点）
     openai:
-      base-url: https://maas.qianwenaiapi.com
-      # 直接写死的 MaaS 平台 key（不读取系统环境变量，避免环境变量覆盖导致排查困难）
-      api-key: sk-ws-H.PLMEYEH.oPjQ.MEYCIQCCdaRzX7ouq3QBMgyJJD99r393HUImT16W_Q4U0FsUjgIhANcFXE8GyVKeVJhdnjXXUAdZEHjWnCZQ-es4mGNeF1Zx
+      base-url: ${MAAS_BASE_URL:https://maas.qianwenaiapi.com}
+      # 密钥优先从环境变量 MAAS_API_KEY 注入；下方默认值仅为本地开发过渡用。
+      # 注意：该 key 历史上曾明文提交进代码库，视为已泄露，请尽快到 MaaS 平台轮换，
+      # 轮换后设置系统环境变量 MAAS_API_KEY 并删除此默认值
+      api-key: ${MAAS_API_KEY:sk-ws-H.PLMEYEH.oPjQ.MEYCIQCCdaRzX7ouq3QBMgyJJD99r393HUImT16W_Q4U0FsUjgIhANcFXE8GyVKeVJhdnjXXUAdZEHjWnCZQ-es4mGNeF1Zx}
       chat:
         completions-path: /compatible-mode/v1/chat/completions
         options:
@@ -48,3 +58,12 @@ mybatis-plus:
   type-aliases-package: com.kzip.app.entity
   configuration:
     map-underscore-to-camel-case: true
+
+# RAG 检索配置
+rag:
+  search:
+    # 相似度阈值：similarity = 1 - distance（cosine）。
+    # 实测（qwen3.7-text-embedding-flash + 本知识库）：
+    #   相关查询 distance 0.51~0.61，无关查询 0.67~0.76，
+    #   默认 0.35（distance 上限 0.65）可切分；设为 0 关闭过滤
+    similarity-threshold: ${RAG_SIMILARITY_THRESHOLD:0.35}

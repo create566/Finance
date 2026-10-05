@@ -24,7 +24,22 @@ public enum MessageTypeEnum {
     MAKE_LOAN(19, "满标放款"),
     REPAY(20, "还款成功"),
     LEND_SETTLE(21, "标的结清"),
-    LEND_FAIL(22, "标的流标");
+    LEND_FAIL(22, "标的流标"),
+
+    // 资金与合同类通知（补齐"操作发生了但消息中心没动静"的缺口）
+    INVEST_RETURN(23, "投资回款"),
+    CONTRACT_SIGN(24, "合同签署"),
+    INVEST_CANCEL(25, "撤标"),
+    WITHDRAW_FAIL(26, "提现失败"),
+    RECHARGE_FAIL(27, "充值失败"),
+    INVESTOR_AUTH(28, "投资人认证"),
+
+    // 标的生命周期补漏：下架与流标一样会退还投资人资金，但此前下架后双方都收不到任何消息
+    LEND_OFFLINE(29, "标的已下架"),
+
+    // 资金安全补漏：满标后借款人未签《放款确认书》会卡在"满标待放款"，
+    // 投资人冻结资金既不能放款也不能退回 —— 必须主动催签，避免资金无限期悬停
+    MAKE_LOAN_PENDING(30, "满标待签确认书");
 
     private final Integer code;
     private final String desc;

@@ -1,0 +1,50 @@
+# ===== Java / Maven =====
+target/
+*.class
+*.jar
+*.war
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/
+mvnw
+mvnw.cmd
+
+# ===== IDE =====
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.project
+.classpath
+.settings/
+.factorypath
+
+# ===== 前端 =====
+node_modules/
+dist/
+dist-ssr/
+.npm/
+.pnpm-store/
+*.local
+
+# ===== 运行时数据目录（不入库） =====
+logs/
+uploads/
+pdf-storage/
+chroma_db_v060/
+ww_bank_tmp/
+
+# ===== 临时/调试产物 =====
+*.log
+derby.log
+chroma*.log
+~$*.pptx
+~$*.docx
+~$*.xlsx
+*.decompile.txt
+*_decompile.txt
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+Desktop.ini

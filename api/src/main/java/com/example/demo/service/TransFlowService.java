@@ -39,6 +39,15 @@ public interface TransFlowService extends IService<TransFlow> {
     boolean existsByTransNo(String bankTransNo);
 
     /**
+     * 判断某单号是否已有「终态」流水（成功/失败）。
+     *
+     * 与 {@link #existsByTransNo} 的区别：充值/提现在用户发起时就已落了一条
+     * 「处理中」流水，如果幂等判断把处理中的也算作"已入账"，
+     * 银行回调会被误判成重复通知而直接吞掉 —— 那笔钱永远停在处理中。
+     */
+    boolean existsSettledByTransNo(String transNo);
+
+    /**
      * 处理银行充值异步回调：验签 → 校验状态/金额/用户 → 幂等判断 → 入账
      *
      * @param params 银行回调的全部参数（含 sign）
@@ -58,12 +67,13 @@ public interface TransFlowService extends IService<TransFlow> {
     /**
      * 查询当前用户的交易流水（分页，按时间倒序）
      *
-     * @param userId 用户id
-     * @param page   页码
-     * @param limit  每页条数
+     * @param userId    用户id
+     * @param page      页码
+     * @param limit     每页条数
+     * @param transType 交易类型（可选，1充值2提现3投标4回款5放款6还款）
      * @return 分页结果
      */
-    IPage<TransFlow> listByUser(Long userId, long page, long limit);
+    IPage<TransFlow> listByUser(Long userId, long page, long limit, Integer transType);
 
     /**
      * 管理端：全平台流水分页查询（按用户/类型/日期筛选）

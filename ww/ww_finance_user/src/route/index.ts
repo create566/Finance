@@ -69,6 +69,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '回款计划' },
       },
       {
+        path: 'contract/my',
+        name: 'MyContracts',
+        component: () => import('@/views/contract/my.vue'),
+        meta: { title: '我的合同' },
+      },
+      {
+        path: 'contract/detail/:id',
+        name: 'ContractDetail',
+        component: () => import('@/views/contract/detail.vue'),
+        meta: { title: '合同详情' },
+      },
+      {
         path: 'auth',
         name: 'RealnameAuth',
         component: () => import('@/views/auth/index.vue'),
@@ -109,6 +121,12 @@ const routes: RouteRecordRaw[] = [
         name: 'Message',
         component: () => import('@/views/message/index.vue'),
         meta: { title: '消息中心' },
+      },
+      {
+        path: 'chat',
+        name: 'Chat',
+        component: () => import('@/views/chat/index.vue'),
+        meta: { title: '智能客服' },
       },
       {
         path: 'profile',

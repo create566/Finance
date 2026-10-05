@@ -7,9 +7,10 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo.entity.TransFlow;
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserBind;
+import com.example.demo.enums.TransStatusEnum;
 import com.example.demo.enums.TransTypeEnum;
 import com.example.demo.exception.BusinessException;
-import com.example.demo.exception.ResourceNotFoundException;
+import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.example.demo.mapper.TransFlowMapper;
 import com.example.demo.mapper.UserMapper;
 import com.example.demo.service.*;
@@ -21,7 +22,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Map;
+import com.example.demo.utils.PageUtils;
 
 /**
  * 交易流水 Service 实现类
@@ -77,9 +80,10 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
         if (user == null) {
             throw new ResourceNotFoundException(404, "用户不存在，充值失败");
         }
+        // 发起充值时已落过一条「处理中」流水，这里把它置为成功（找不到才补插）。
         // 平台不操作余额，仅记录交易流水
-        saveTransFlow(user, TransTypeEnum.RECHARGE.getCode(), TransTypeEnum.RECHARGE.getDesc(),
-                amount, "用户充值", bankTransNo);
+        settleFlow(user, TransTypeEnum.RECHARGE, amount, "用户充值",
+                bankTransNo, TransStatusEnum.SUCCESS);
         userAccountService.updateBalance(userId, TransTypeEnum.RECHARGE, amount);
         int points = amount.intValue();
         if (points > 0) {
@@ -102,9 +106,9 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
         if (user == null) {
             throw new ResourceNotFoundException(404, "用户不存在，提现失败");
         }
-        // 平台不操作余额，仅记录交易流水
-        saveTransFlow(user, TransTypeEnum.WITHDRAW.getCode(), TransTypeEnum.WITHDRAW.getDesc(),
-                amount, "用户提现", bankTransNo);
+        // 发起提现时已落过一条「处理中」流水，这里把它置为成功
+        settleFlow(user, TransTypeEnum.WITHDRAW, amount, "用户提现",
+                bankTransNo, TransStatusEnum.SUCCESS);
         userAccountService.updateBalance(userId, TransTypeEnum.WITHDRAW, amount);
         log.info("提现流水已记录，userId={}, amount={}", userId, amount);
         messageService.sendWithdrawNotice(userId, amount);
@@ -112,9 +116,42 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
 
     @Override
     public boolean existsByTransNo(String transNo) {
-        LambdaQueryWrapper<TransFlow> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(TransFlow::getTransNo, transNo);
-        return this.count(wrapper) > 0;
+        if (transNo == null || transNo.isEmpty()) {
+            return false;
+        }
+        return this.count(new LambdaQueryWrapper<TransFlow>()
+                .eq(TransFlow::getTransNo, transNo)) > 0;
+    }
+
+    @Override
+    public boolean existsSettledByTransNo(String transNo) {
+        if (transNo == null || transNo.isEmpty()) {
+            return false;
+        }
+        return this.count(new LambdaQueryWrapper<TransFlow>()
+                .eq(TransFlow::getTransNo, transNo)
+                .ne(TransFlow::getStatus, TransStatusEnum.PROCESSING.getCode())) > 0;
+    }
+
+    /**
+     * 取本次回调对应的业务单号。
+     *
+     * 充值/提现必须优先用平台自生成的 agentBillNo —— 用户在页面上点"充值"时，
+     * 平台已经按这个号落了一条「处理中」流水，银行会把 agentBillNo 原样回带，
+     * 用它才能找到并更新那条记录；换成银行的流水号就会对不上，
+     * 结果是处理中流水永远挂着、又凭空多出一条成功流水。
+     * 投标/放款/还款没有预留流水，用银行流水号即可。
+     */
+    private String resolveTransNo(Map<String, Object> params) {
+        String agentBillNo = (String) params.get("agentBillNo");
+        if (agentBillNo != null && !agentBillNo.trim().isEmpty()) {
+            return agentBillNo.trim();
+        }
+        String bankTransNo = (String) params.getOrDefault("transNo", params.get("bankTransNo"));
+        if (bankTransNo != null && !bankTransNo.trim().isEmpty()) {
+            return bankTransNo.trim();
+        }
+        return LendNoUtils.getTransNo();
     }
 
     /**
@@ -131,16 +168,11 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
         }
         String agentUserId = (String) params.get("agentUserId");
         String amountStr = (String) params.getOrDefault("amount", params.get("chargeAmt"));
-        String transNo = (String) params.getOrDefault("transNo", params.get("agentBillNo"));
+        String transNo = resolveTransNo(params);
         String status = (String) params.getOrDefault("status", params.get("resultCode"));
 
         if ("0001".equals(status)) {
             status = BANK_STATUS_SUCCESS;
-        }
-
-        if (!BANK_STATUS_SUCCESS.equals(status)) {
-            log.warn("充值回调银行状态非成功，status={}", status);
-            return true;
         }
         if (amountStr == null || !amountStr.matches(AMOUNT_REGEX)) {
             log.warn("充值回调金额非法，amount={}", amountStr);
@@ -152,12 +184,22 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
                     agentUserId, params.get("bindCode"));
             return false;
         }
-        // 幂等：同一银行流水号不重复记录
-        if (transNo != null && existsByTransNo(transNo)) {
+        // 幂等只看「终态」：发起充值时就落的那条处理中流水不算已入账，
+        // 否则回调会被当成重复通知吞掉，那笔钱永远停在处理中
+        if (existsSettledByTransNo(transNo)) {
             log.info("充值回调重复通知，直接确认，transNo={}", transNo);
             return true;
         }
-        // 平台不操作余额，仅记录流水
+        if (!BANK_STATUS_SUCCESS.equals(status)) {
+            // 银行侧失败：把处理中流水置为失败并告知用户，
+            // 不能让这笔单一直挂着"处理中"——用户会以为钱卡住了
+            BigDecimal amount = new BigDecimal(amountStr);
+            settleFlow(user, TransTypeEnum.RECHARGE, amount,
+                    "充值失败（银行侧未成功）", transNo, TransStatusEnum.FAILED);
+            messageService.sendRechargeFailNotice(user.getId(), amount);
+            log.warn("充值回调银行状态非成功，已置失败，userId={}, transNo={}", user.getId(), transNo);
+            return true;
+        }
         recharge(user.getId(), new BigDecimal(amountStr), transNo);
         return true;
     }
@@ -176,13 +218,12 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
         }
         String agentUserId = (String) params.get("agentUserId");
         String amountStr = (String) params.getOrDefault("amount", params.get("fetchAmt"));
-        String transNo = (String) params.getOrDefault("transNo", params.get("agentBillNo"));
+        String transNo = resolveTransNo(params);
         String status = (String) params.getOrDefault("status", params.get("resultCode"));
 
         if ("0001".equals(status)) {
             status = BANK_STATUS_SUCCESS;
         }
-
         if (amountStr == null || !amountStr.matches(AMOUNT_REGEX)) {
             log.warn("提现回调金额非法，amount={}", amountStr);
             return false;
@@ -193,20 +234,23 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
                     agentUserId, params.get("bindCode"));
             return false;
         }
-        // 幂等：成功流水和冲正流水共用同一银行流水号维度（冲正落库带 _REVERSAL 后缀，需一并查）
-        if (transNo != null && (existsByTransNo(transNo) || existsByTransNo(transNo + "_REVERSAL"))) {
+        // 幂等：同上，处理中不算已入账
+        if (existsSettledByTransNo(transNo)) {
             log.info("提现回调重复通知，直接确认，transNo={}", transNo);
             return true;
         }
-        // 银行失败 → 记冲正流水
+        BigDecimal amount = new BigDecimal(amountStr);
+        // 银行失败 → 把发起时落的那条处理中流水置为失败，并通知用户。
+        // 注意：提现失败不需要"回滚余额" —— 平台在发起时就没扣钱，钱一直在用户账上。
         if (!BANK_STATUS_SUCCESS.equals(status)) {
-            saveTransFlow(user, TransTypeEnum.WITHDRAW.getCode(), TransTypeEnum.WITHDRAW.getDesc(),
-                    new BigDecimal(amountStr), "提现失败冲正 " + transNo, transNo + "_REVERSAL");
-            log.warn("提现回调银行失败，冲正流水已记录，userId={}", user.getId());
+            settleFlow(user, TransTypeEnum.WITHDRAW, amount,
+                    "提现失败（银行侧未成功）", transNo, TransStatusEnum.FAILED);
+            messageService.sendWithdrawFailNotice(user.getId(), amount);
+            log.warn("提现回调银行失败，已置失败，userId={}, transNo={}", user.getId(), transNo);
             return true;
         }
-        // 银行成功 → 记正常流水
-        withdraw(user.getId(), new BigDecimal(amountStr), transNo);
+        // 银行成功 → 置为成功并扣减平台账本镜像
+        withdraw(user.getId(), amount, transNo);
         return true;
     }
 
@@ -232,28 +276,50 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
     }
 
     /**
-     * 记录交易流水
+     * 把一笔交易落成终态流水。
+     *
+     * 顺序是「先找发起时落的那条处理中流水，找到就更新，找不到才插入」：
+     * 充值/提现走"发起即落流水"，正常路径必定能找到；
+     * 找不到说明是历史数据或有人绕过平台直接调银行，此时补插一条保持账目完整。
      */
-    private void saveTransFlow(User user, int transType, String transTypeName,
-                                   BigDecimal amount, String memo, String bankTransNo) {
+    private void settleFlow(User user, TransTypeEnum type, BigDecimal amount, String memo,
+                            String bankTransNo, TransStatusEnum result) {
         String transNo = (bankTransNo != null && !bankTransNo.isEmpty())
                 ? bankTransNo : LendNoUtils.getTransNo();
-        TransFlow transFlow = new TransFlow()
+        LocalDateTime now = LocalDateTime.now();
+
+        TransFlow existed = this.getOne(new LambdaQueryWrapper<TransFlow>()
+                .eq(TransFlow::getTransNo, transNo)
+                .last("LIMIT 1"), false);
+        if (existed != null) {
+            existed.setStatus(result.getCode());
+            existed.setTransAmount(amount);
+            existed.setTransTypeName(type.getDesc());
+            existed.setMemo(memo);
+            existed.setUpdateTime(now);
+            this.updateById(existed);
+            return;
+        }
+
+        this.save(new TransFlow()
                 .setUserId(user.getId())
                 .setUserName(user.getName())
                 .setTransNo(transNo)
-                .setTransType(transType)
-                .setTransTypeName(transTypeName)
+                .setTransType(type.getCode())
+                .setTransTypeName(type.getDesc())
                 .setTransAmount(amount)
-                .setMemo(memo);
-        this.save(transFlow);
+                .setStatus(result.getCode())
+                .setMemo(memo)
+                .setCreateTime(now)
+                .setUpdateTime(now));
     }
 
     @Override
-    public IPage<TransFlow> listByUser(Long userId, long page, long limit) {
-        Page<TransFlow> pageParam = new Page<>(page, limit);
+    public IPage<TransFlow> listByUser(Long userId, long page, long limit, Integer transType) {
+        Page<TransFlow> pageParam = PageUtils.of(page, limit);
         LambdaQueryWrapper<TransFlow> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(TransFlow::getUserId, userId)
+                .eq(transType != null, TransFlow::getTransType, transType)
                 .orderByDesc(TransFlow::getCreateTime);
         return baseMapper.selectPage(pageParam, wrapper);
     }
@@ -261,7 +327,7 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
     @Override
     public IPage<TransFlow> adminPageList(Integer pageNum, Integer pageSize,
                                           Long userId, Integer transType, String userName) {
-        Page<TransFlow> pageParam = new Page<>(pageNum, pageSize);
+        Page<TransFlow> pageParam = PageUtils.of(pageNum, pageSize);
         LambdaQueryWrapper<TransFlow> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(userId != null, TransFlow::getUserId, userId);
         wrapper.eq(transType != null, TransFlow::getTransType, transType);

@@ -47,9 +47,11 @@ security:
     # 默认值必须与 TokenUtil 的历史硬编码值一致，改错会让所有已登录用户掉线（验签失败）。
     secret: ${JWT_SECRET:vsofo-5grcs-secret}
     expiration: 604800
-  bank:
-    sign-key: ${BANK_SIGN_KEY:change-bank-sign-key-in-prod}
-    agent-id: ${BANK_AGENT_ID:999888}
+  # ⚠ 注意：签名相关配置不在此处生效，别改这里。
+  # HfbConst.SIGN_KEY 与 finance-common 的 BankSignUtil.SIGN_KEY 都是直接读环境变量
+  # BANK_SIGN_KEY（默认 9876543210，必须与银行端 SignUtil.SIGN_KEY 一致，否则回调全部验签失败）。
+  # 同理 agentId 读环境变量 BANK_AGENT_ID（默认 999888）。
+  # 两边必须同值：改一处不生效，改错则验签不通。
 
 # 文件存储配置（可动态切换存储策略）
 file:
@@ -73,6 +75,24 @@ file:
 ai:
   embedding:
     service-url: ${AI_EMBEDDING_URL:http://localhost:8081/ai/knowledge/embedding}
+
+# 定时任务分布式锁（2026-10-06 新增）
+# 多实例部署时必须为 true：Spring Task 会在每个实例各跑一遍，
+# 其中「超期未签确认书自动退资」是动钱动作，重复执行 = 重复退资。
+# 本地单实例开发可置 false 关闭（跳过抢锁，行为与改造前一致）。
+job:
+  distributed-lock:
+    enabled: ${JOB_DISTRIBUTED_LOCK_ENABLED:true}
+
+# 银行对接地址（2026-10-06 新增，原为 HfbConst 中的 localhost 硬编码）
+# ⚠ 部署到非本机环境必须显式覆盖这三项，否则所有动钱接口会指向自己、银行回调也永远收不到。
+bank:
+  # 银行网关地址：我方提交充值/提现/投标/放款/还款表单的目标地址
+  base-url: ${BANK_BASE_URL:http://localhost:9090}
+  # 我方接收银行异步回调的地址：会随表单提交给银行，必须是银行能访问到的地址
+  notify-base-url: ${BANK_NOTIFY_BASE_URL:http://localhost:8990}
+  # 银行处理完成后跳回的前端页面地址
+  front-base-url: ${BANK_FRONT_BASE_URL:http://localhost:5174}
 
 # 银行库（旺旺银行）。生产环境必须用环境变量注入，禁止把真实凭据提交到仓库。
 # 默认值仅为保证本地开发开箱即跑；⚠ 若本文件曾推送到远端，请立即在阿里云侧轮换该密码。

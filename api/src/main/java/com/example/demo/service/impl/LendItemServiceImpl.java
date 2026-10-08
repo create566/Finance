@@ -313,6 +313,10 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         Lend updatedLend = lendService.getById(lendId);
         if (updatedLend.getInvestAmount().compareTo(updatedLend.getAmount()) >= 0) {
             updatedLend.setStatus(LendStatusEnum.COMPLETED.getCode());
+            // 满标时刻 = 3 个自然日签署宽限期的起算点，只在此刻写一次。
+            // 必须显式设置：MyBatis-Plus 默认只更新非 null 字段，但此处若不设，
+            // 定时任务就拿不到起算点，会自动跳过该标的 → 资金永久悬停。
+            updatedLend.setCompleteTime(now);
             updatedLend.setUpdateTime(now);
             lendService.updateById(updatedLend);
             // 满标后同步把该标的全部投资记录置为满标状态（否则撤标校验的死分支永远进不去）

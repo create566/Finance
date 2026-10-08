@@ -67,6 +67,7 @@ export const MESSAGE_TYPE_META: Record<number, { text: string; tag: string }> = 
   28: { text: '投资人认证', tag: 'warning' },
   29: { text: '标的已下架', tag: 'info' },
   30: { text: '满标待签确认书', tag: 'warning' },
+  31: { text: '超期未签已退款', tag: 'info' },
 }
 
 export function messageTypeText(type: number): string {

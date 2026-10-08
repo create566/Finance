@@ -39,7 +39,12 @@ public enum MessageTypeEnum {
 
     // 资金安全补漏：满标后借款人未签《放款确认书》会卡在"满标待放款"，
     // 投资人冻结资金既不能放款也不能退回 —— 必须主动催签，避免资金无限期悬停
-    MAKE_LOAN_PENDING(30, "满标待签确认书");
+    MAKE_LOAN_PENDING(30, "满标待签确认书"),
+
+    // 资金安全闭环：满标后借款人超期未签《放款确认书》，定时任务自动终止撮合并退还投资人资金。
+    // 与 LEND_OFFLINE(29) 区分开：29 是人工下架，31 是系统按合同条款自动处置，
+    // 对投资人的说法完全不同（一个是"平台下架了"，一个是"借款人逾期未签，钱退给你"）。
+    MAKE_LOAN_TIMEOUT(31, "超期未签已退款");
 
     private final Integer code;
     private final String desc;

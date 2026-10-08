@@ -1,6 +1,7 @@
 package com.example.demo.service.strategy.impl;
 
 import com.example.demo.service.strategy.FileStorageStrategy;
+import com.wwfinance.common.exception.ResourceNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -27,12 +28,17 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
     private String urlPrefix;
 
     @Override
-    public String upload(MultipartFile file, String category) {
-        String originalFileName = file.getOriginalFilename();
-        String extension = getFileExtension(originalFileName);
+    public String upload(MultipartFile file, String category, Long ownerId) {
+        if (ownerId == null) {
+            // 归属是这个方法的全部意义，宁可拒绝也不能落一个"无主文件"
+            throw new IllegalArgumentException("用户上传必须携带属主 ID");
+        }
+        String extension = getFileExtension(file.getOriginalFilename());
+        // 文件名里的前缀用原始 category，避免生成 "images/u33_1712..." 这种带斜杠的名字
         String newFileName = generateFileName(category, extension);
 
-        return uploadWithCustomName(file, category, newFileName);
+        // 关键：属主编进存储路径，归属自证，删除时据此校验，无需额外建表
+        return uploadWithCustomName(file, category + "/" + ownerDir(ownerId), newFileName);
     }
 
     @Override
@@ -67,7 +73,9 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
     @Override
     public String uploadWithCustomName(MultipartFile file, String category, String customFileName) {
         try {
-            String categoryPath = basePath + File.separator + category;
+            // category 允许带子目录（如 images/u33），统一成本地分隔符再拼盘路径
+            String normalizedCategory = category.replace("/", File.separator);
+            String categoryPath = basePath + File.separator + normalizedCategory;
             Path dirPath = Paths.get(categoryPath);
 
             if (!Files.exists(dirPath)) {
@@ -91,7 +99,41 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
     }
 
     @Override
-    public void delete(String fileUrl) {
+    public void deleteOwned(String fileUrl, Long ownerId) {
+        if (ownerId == null) {
+            throw new ResourceNotFoundException(401, "请先登录");
+        }
+        if (!isOwnedBy(fileUrl, ownerId)) {
+            // 不区分"文件不存在"与"不是你的"：统一回 403，避免用响应差异探测他人文件是否存在
+            log.warn("拒绝删除非本人文件: url={}, ownerId={}", fileUrl, ownerId);
+            throw new ResourceNotFoundException(403, "无权删除该文件");
+        }
+        deleteUnchecked(fileUrl);
+    }
+
+    /**
+     * 严格匹配 {@code <category>/u<ownerId>/<fileName>} 三段式。
+     *
+     * <p>历史上传的文件形如 {@code images/xxx.png}（无属主段）不满足三段式，
+     * 一律判为"非本人"—— 宁可少删一个旧文件，也不能放过一次跨用户删除。
+     * 同时三段式天然排除了 {@code ..} 等路径穿越形态。</p>
+     */
+    private boolean isOwnedBy(String fileUrl, Long ownerId) {
+        if (fileUrl == null || !fileUrl.startsWith(urlPrefix + "/")) {
+            return false;
+        }
+        String relative = fileUrl.substring(urlPrefix.length() + 1);
+        String[] segments = relative.split("/");
+        return segments.length == 3 && ownerDir(ownerId).equals(segments[1]);
+    }
+
+    /** 属主目录名，带 {@code u} 前缀避免与同层的普通目录重名 */
+    private static String ownerDir(Long ownerId) {
+        return "u" + ownerId;
+    }
+
+    @Override
+    public void deleteUnchecked(String fileUrl) {
         try {
             if (fileUrl == null || fileUrl.isEmpty()) {
                 return;

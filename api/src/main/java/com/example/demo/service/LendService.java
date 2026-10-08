@@ -37,6 +37,26 @@ public interface LendService extends IService<Lend> {
     boolean offline(Long lendId, Long adminId);
 
     /**
+     * 由定时任务执行的系统自动退资处置：借款人满标后超期未签《放款确认书》时调用。
+     *
+     * <p>与 {@link #offline(Long, Long)} 的差异：本方法没有人类操作人，
+     * 落库时 {@code offline_admin_id} 为 NULL（审计上表示"系统自动处置"），
+     * 通知文案也改为"因借款人超期未签"而非"平台下架"。</p>
+     *
+     * @return 处置成功返回 true；标的不存在或状态不合规返回 false / 抛业务异常
+     */
+    boolean offlineBySystem(Long lendId);
+
+    /**
+     * 借款人签署《放款确认书》的宽限期（自然日）。
+     *
+     * <p><b>必须与合同模板 TPL_LOAN / TPL_INVEST 中的条款天数保持一致</b> ——
+     * 平台是依据合同里那句事先约定才有权处置投资人的冻结资金的，
+     * 代码写 7 天、合同写 3 天，处置行为就失去了依据。</p>
+     */
+    int MAKE_LOAN_SIGN_DEADLINE_DAYS = 3;
+
+    /**
      * 前台投资人分页查询募资中的标的（按发布时间倒序）
      */
     Page<Lend> listFundingLends(Integer pageNum, Integer pageSize);

@@ -229,6 +229,57 @@ class LendOfflineClosureTest {
     }
 
     @Test
+    @DisplayName("系统自动退资：操作人留 NULL，且发的是「超期未签」而不是「标的已下架」")
+    void offlineBySystem_nullOperatorAndTimeoutNotice() {
+        Long lendId = 116L;
+        Lend target = lend(lendId, LendStatusEnum.COMPLETED.getCode());
+        LendItem item = investItem(202L, lendId, 42L);
+        item.setStatus(2);
+
+        when(baseMapper.selectById(lendId)).thenReturn(target);
+        when(baseMapper.updateById(any(Lend.class))).thenReturn(1);
+        when(lendItemService.list(any())).thenReturn(Collections.singletonList(item));
+        when(contractService.list(any())).thenReturn(Collections.emptyList());
+
+        assertTrue(lendService.offlineBySystem(lendId), "系统自动退资应成功");
+
+        // ① 操作人为 NULL —— 审计上表示"系统自动处置"，与人工下架可区分
+        assertFalse(target.getOfflineAdminId() != null, "offline_admin_id 应留空表示系统处置");
+        assertFalse(target.getOfflineTime() == null, "处置时间仍要记录");
+        assertEquals(LendStatusEnum.OFFLINE.getCode(), target.getStatus());
+
+        // ② 投资资金确实退了
+        assertEquals(1, item.getStatus(), "满标投资记录应被置为已撤标(1)");
+        verify(lendItemService).updateById(item);
+
+        // ③ 通知文案必须是"超期未签"，不能让投资人收到莫名的"标的已下架"
+        verify(messageService).sendMakeLoanTimeoutNoticeToBorrower(
+                eq(33L), eq("LEND_TEST_116"), any());
+        verify(messageService).sendMakeLoanTimeoutNoticeToInvestor(
+                eq(42L), eq(new BigDecimal("1000.00")), eq("测试标的"));
+        verify(messageService, never()).sendLendOfflineNotice(any(), any(), any());
+        verify(messageService, never()).sendLendOfflineRefundNotice(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("人工下架仍走原通道：操作人非空 + 发「标的已下架」")
+    void offline_byAdmin_keepsOriginalNotice() {
+        Long lendId = 117L;
+        Lend target = lend(lendId, LendStatusEnum.FUNDING.getCode());
+
+        when(baseMapper.selectById(lendId)).thenReturn(target);
+        when(baseMapper.updateById(any(Lend.class))).thenReturn(1);
+        when(lendItemService.list(any())).thenReturn(Collections.emptyList());
+        when(contractService.list(any())).thenReturn(Collections.emptyList());
+
+        assertTrue(lendService.offline(lendId, ADMIN_ID));
+
+        assertEquals(ADMIN_ID, target.getOfflineAdminId());
+        verify(messageService).sendLendOfflineNotice(eq(33L), eq("LEND_TEST_117"), any());
+        verify(messageService, never()).sendMakeLoanTimeoutNoticeToBorrower(any(), any(), any());
+    }
+
+    @Test
     @DisplayName("识别不到操作人时拒绝下架（禁止匿名处置投资人资金）")
     void offline_nullAdminId_throws() {
         ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,

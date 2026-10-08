@@ -156,6 +156,33 @@ public interface MessageService extends IService<Message> {
                         + "请尽快签署《放款确认书》以便放款。逾期未签署的，平台将按约定退还投资人资金。");
     }
 
+    /**
+     * 发送"超期未签《放款确认书》、系统已终止撮合"通知（给借款人）。
+     *
+     * <p>文案必须点明是"借款人自己逾期未签"导致的，而不是笼统的"平台下架" ——
+     * 处置依据来自《借款合同》里事先约定的超期条款，告知义务要做到位。</p>
+     */
+    default Message sendMakeLoanTimeoutNoticeToBorrower(Long userId, String lendNo,
+                                                        java.math.BigDecimal amount) {
+        return send(userId, MessageTypeEnum.MAKE_LOAN_TIMEOUT, "【超期未签，已终止】",
+                "您的借款标的 " + lendNo + "（金额 " + amount + " 元）已满标，"
+                        + "但您未在约定时限内签署《放款确认书》。平台已按合同约定终止本次借贷，"
+                        + "投资人的冻结资金将原路退回。");
+    }
+
+    /**
+     * 发送"因借款人超期未签，投资资金已退回"通知（给投资人）。
+     *
+     * <p>对投资人来说这跟"平台下架"是完全不同的两件事，用 LEND_OFFLINE(29) 会导致
+     * 用户莫名其妙：钱退回来了，却收到一条"标的已下架"。故独立成 MAKE_LOAN_TIMEOUT(31)。</p>
+     */
+    default Message sendMakeLoanTimeoutNoticeToInvestor(Long userId, java.math.BigDecimal amount,
+                                                        String lendTitle) {
+        return send(userId, MessageTypeEnum.MAKE_LOAN_TIMEOUT, "【超期未签，已退款】",
+                "您投资的标的「" + lendTitle + "」因借款人超期未签署《放款确认书》已终止，"
+                        + "您的投资 " + amount + " 元已解冻退回账户");
+    }
+
     /** 发送提现失败通知 */
     default Message sendWithdrawFailNotice(Long userId, java.math.BigDecimal amount) {
         return send(userId, MessageTypeEnum.WITHDRAW_FAIL, "【提现失败】",

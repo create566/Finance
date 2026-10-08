@@ -175,7 +175,9 @@ public class KnowledgeDocServiceImpl extends ServiceImpl<KnowledgeDocMapper, Kno
 
         if ("pdf".equals(existing.getSource()) && existing.getFileUrl() != null && !existing.getFileUrl().isEmpty()) {
             try {
-                fileStorageStrategy.delete(existing.getFileUrl());
+                // 用 deleteUnchecked 是有意的：文件地址取自库中该文档记录（不是请求参数），
+                // 且入口已受管理端鉴权保护，此处不存在跨用户越权面。
+                fileStorageStrategy.deleteUnchecked(existing.getFileUrl());
                 log.info("已通过{}删除PDF文件: url={}",
                          fileStorageStrategy.getClass().getSimpleName(),
                          existing.getFileUrl());

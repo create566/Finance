@@ -120,6 +120,23 @@ public class LendServiceImpl extends ServiceImpl<LendMapper, Lend> implements Le
         if (adminId == null) {
             throw new ResourceNotFoundException(500, "无法识别操作人，已拒绝下架：处置投资人资金必须留痕");
         }
+        return offlineInternal(lendId, adminId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean offlineBySystem(Long lendId) {
+        // 定时任务没有人类操作人，走系统通道：offline_admin_id 落 NULL，
+        // 与"人工下架"在审计上可区分（前端据此显示"系统自动处置"）。
+        // 注意这里**不**放宽成"允许 null 的 offline()"——那个入口必须持续保证
+        // "人工操作一定有操作人"，两个入口的语义不能混。
+        return offlineInternal(lendId, null);
+    }
+
+    /**
+     * 下架 / 退资处置的核心逻辑。人工与系统两个入口共用，差别只在 {@code adminId} 是否为 null。
+     */
+    private boolean offlineInternal(Long lendId, Long adminId) {
         Lend lend = this.getById(lendId);
         if (lend == null) {
             throw new ResourceNotFoundException(500, "标的不存在");
@@ -140,7 +157,9 @@ public class LendServiceImpl extends ServiceImpl<LendMapper, Lend> implements Le
 
         // 2. 作废该标下所有"待签署"合同（预生成的《借款合同》+ 已产生的《出借协议》）。
         //    已签署的合同按业务不可单方作废，单独兜住，绝不因一份脏数据阻断整笔下架。
-        int revoked = revokePendingContracts(lend, "标的已下架：" + lend.getLendNo());
+        int revoked = revokePendingContracts(lend,
+                (adminId == null ? "借款人超期未签《放款确认书》，系统终止：" : "标的已下架：")
+                        + lend.getLendNo());
 
         // 3. 翻转标的状态
         lend.setStatus(LendStatusEnum.OFFLINE.getCode());
@@ -155,15 +174,27 @@ public class LendServiceImpl extends ServiceImpl<LendMapper, Lend> implements Le
             recommendService.evictAll();
         }
 
-        // 4. 通知双方：借款人 + 每一位投资人。此前下架是"静默"的，用户只能自己发现标的不见了
-        messageService.sendLendOfflineNotice(lend.getUserId(), lend.getLendNo(), lend.getAmount());
-        for (LendItem item : items) {
-            messageService.sendLendOfflineRefundNotice(
-                    item.getInvestUserId(), item.getInvestAmount(), lend.getTitle());
+        // 4. 通知双方：借款人 + 每一位投资人。此前下架是"静默"的，用户只能自己发现标的不见了。
+        //    adminId 为 null 表示系统自动处置（超期未签），文案要说明是借款人逾期所致，
+        //    不能让投资人收到一条莫名的"标的已下架"。
+        boolean bySystem = (adminId == null);
+        if (bySystem) {
+            messageService.sendMakeLoanTimeoutNoticeToBorrower(
+                    lend.getUserId(), lend.getLendNo(), lend.getAmount());
+            for (LendItem item : items) {
+                messageService.sendMakeLoanTimeoutNoticeToInvestor(
+                        item.getInvestUserId(), item.getInvestAmount(), lend.getTitle());
+            }
+        } else {
+            messageService.sendLendOfflineNotice(lend.getUserId(), lend.getLendNo(), lend.getAmount());
+            for (LendItem item : items) {
+                messageService.sendLendOfflineRefundNotice(
+                        item.getInvestUserId(), item.getInvestAmount(), lend.getTitle());
+            }
         }
 
-        log.info("标的 {} 下架完成：退还投资 {} 笔，作废待签合同 {} 份，操作人 adminId={}",
-                lendId, items.size(), revoked, adminId);
+        log.info("标的 {} 退资处置完成：退还投资 {} 笔，作废待签合同 {} 份，操作人={}",
+                lendId, items.size(), revoked, bySystem ? "系统自动" : "adminId=" + adminId);
         return ok;
     }
 

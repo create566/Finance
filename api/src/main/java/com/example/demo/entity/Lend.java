@@ -99,6 +99,20 @@ public class Lend {
     @JsonIgnore
     private Long checkAdminId;
 
+    /**
+     * 满标时刻（募资金额达到目标那一刻写入）。
+     *
+     * <p><b>这是"3 个自然日签署宽限期"的唯一合法起算点。</b>不要用 {@link #updateTime} 代替 ——
+     * 该列是 {@code on update CURRENT_TIMESTAMP}，放款写 {@code payment_time}、下架写
+     * {@code offline_time}、后台任何一次编辑都会覆盖它。拿它做起算点等于"动一下记录就重置宽限"，
+     * 借款人拖着不签字反而能无限续期，用它做资金处置的触发条件是不安全的。</p>
+     *
+     * <p>仅在满标那一刻写一次，之后任何操作都不得修改。NULL = 尚未满标。</p>
+     */
+    @TableField("complete_time")
+    @JsonIgnore
+    private LocalDateTime completeTime;
+
     /** 放款时间（银行回调确认入账时写入，非管理员操作时间） */
     @TableField("payment_time")
     private LocalDateTime paymentTime;

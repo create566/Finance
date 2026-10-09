@@ -36,10 +36,45 @@ public interface ContractService extends IService<Contract> {
     Contract getOrCreate(ContractBizTypeEnum bizType, Long bizId, ContractTypeEnum type, Long partyId,
                          java.math.BigDecimal amount);
 
-    /** 金额取标的金额的便捷重载 */
+    /**
+     * 金额取标的金额的便捷重载
+     */
     default Contract getOrCreate(ContractBizTypeEnum bizType, Long bizId, ContractTypeEnum type, Long partyId) {
         return getOrCreate(bizType, bizId, type, partyId, null);
     }
+
+    /**
+     * 【P9-60 / P9-61】用户级一次性协议：获取或生成《居间服务协议》/《资金存管协议》。
+     *
+     * <p>这类协议不针对某个标的，而是"用户 ↔ 平台"（居间）与"用户 ↔ 存管银行"（存管）的
+     * 框架性约定，全平台一个用户只需签一次。落库形态：{@code biz_type=USER}、
+     * {@code biz_id=userId}、{@code party_a_id=userId}、{@code party_b_id=NULL}、
+     * {@code amount=0}（不能用 NULL，否则 MySQL 唯一键不去重会产生重复行）。</p>
+     *
+     * <p>模板未配置时返回 {@code null}（由调用方决定是否放行），不抛异常 ——
+     * 避免"模板脚本还没执行"就把绑卡/发标/投标整条链路卡死。</p>
+     *
+     * @param type   仅接受 {@link ContractTypeEnum#SERVICE} 与 {@link ContractTypeEnum#DEPOSIT}
+     * @param userId 用户 id
+     * @return 合同（已存在则返回原合同）；模板缺失时返回 null
+     */
+    Contract getOrCreateUserAgreement(ContractTypeEnum type, Long userId);
+
+    /**
+     * 【P9-60 / P9-61】用户级协议签署前置强校验。
+     *
+     * <p>先按需生成（见 {@link #getOrCreateUserAgreement}），再校验是否已签署；
+     * 未签署则抛出"请先签署《X》，可在「我的合同」中完成签署"。
+     * <b>模板缺失时直接放行</b>（降级为不阻断），保证部署顺序不敏感。</p>
+     */
+    void assertUserAgreementSigned(ContractTypeEnum type, Long userId);
+
+    /**
+     * 【P9-65】导出合同正文（供前端下载）。
+     *
+     * @return {fileName, content}；调用方需校验可见性（本方法内部已校验）
+     */
+    Map<String, Object> exportFile(Long contractId, Long userId);
 
     /**
      * 签署前置强校验：未签署则抛出业务异常，由全局异常处理器转成标准返回。

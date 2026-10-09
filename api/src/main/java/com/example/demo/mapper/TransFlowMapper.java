@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * 交易流水 Mapper
@@ -34,4 +35,29 @@ public interface TransFlowMapper extends BaseMapper<TransFlow> {
     BigDecimal sumAmount(@Param("userId") Long userId,
                          @Param("transType") Integer transType,
                          @Param("status") Integer status);
+
+    /**
+     * 汇总某用户、多交易类型、指定状态的流水金额合计。
+     *
+     * <p>用途：P0-1「统一可用额口径」。银行侧 <b>扣款一律不校验余额</b>（javap 确认
+     * {@code lockAccount} / {@code withdraw} / {@code transferAccounts} 都是无条件加减），
+     * 所以平台必须在发起前把所有「已受理、银行尚未回调」的扣款类在途金额从可用额里扣掉，
+     * 否则并发两笔就能把账户扣成负数。
+     *
+     * <p>扣款类 = 提现(2) / 投标(3) / 还款(6)。充值(1) 是加钱、放款(5) 与回款(4) 不由用户余额出，
+     * 都不应占用可用额。
+     *
+     * <p>同样必须显式写 {@code is_deleted = 0}，理由见 {@link #sumAmount}。
+     *
+     * @return 合计金额；无匹配行时由 IFNULL 兜底为 0，调用方无需判空
+     */
+    @Select("<script>"
+            + "SELECT IFNULL(SUM(trans_amount), 0) FROM trans_flow "
+            + "WHERE user_id = #{userId} AND status = #{status} AND is_deleted = 0 "
+            + "AND trans_type IN "
+            + "<foreach collection='transTypes' item='t' open='(' separator=',' close=')'>#{t}</foreach>"
+            + "</script>")
+    BigDecimal sumAmountByTypes(@Param("userId") Long userId,
+                                @Param("transTypes") List<Integer> transTypes,
+                                @Param("status") Integer status);
 }

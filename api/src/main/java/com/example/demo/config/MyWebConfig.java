@@ -1,15 +1,31 @@
 package com.example.demo.config;
 
-import com.example.demo.interceptor.JwtAuthInterceptor;
+import com.wwfinance.common.auth.JwtAuthInterceptor;
+import com.wwfinance.common.auth.JwtAuthInterceptor.AdminPolicy;
+import com.wwfinance.common.auth.JwtAuthInterceptor.PathRule;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import java.util.Arrays;
+
+/**
+ * api 的 Web 配置。
+ *
+ * <p><b>2026-10-08</b>：{@code JwtAuthInterceptor} 已上移到 finance-common，主链共享；
+ * api 侧只保留自己的「角色-路径准入策略」（原先硬编码在 api 版拦截器里），
+ * 通过 {@link PathRule} 列表在这里声明。</p>
+ */
 @Configuration
+@Import(com.wwfinance.common.config.JwtSecretConfig.class)
 public class MyWebConfig implements WebMvcConfigurer {
+
     @Autowired
     private JwtAuthInterceptor jwtAuthInterceptor;
     @Autowired
@@ -17,6 +33,21 @@ public class MyWebConfig implements WebMvcConfigurer {
 
     @Value("${file.storage.local.base-path:./uploads}")
     private String uploadBasePath;
+
+    /**
+     * api 的准入策略（与迁移前逐条等价）：
+     * <ul>
+     *   <li>{@code /admin/**} 必须管理员，否则 403「无权限访问后台接口」；</li>
+     *   <li>{@code /api/**} 禁止管理员，否则 403「管理员请使用后台管理接口」。</li>
+     * </ul>
+     * 本拦截器只注册在 {@code /api/**} 与 {@code /admin/**} 上，其余路径不会被拦到。
+     */
+    @Bean
+    public JwtAuthInterceptor jwtAuthInterceptor(StringRedisTemplate stringRedisTemplate) {
+        return new JwtAuthInterceptor(stringRedisTemplate, Arrays.asList(
+                new PathRule("/admin/", AdminPolicy.REQUIRED, "无权限访问后台接口"),
+                new PathRule("/api/", AdminPolicy.FORBIDDEN, "管理员请使用后台管理接口")), true);
+    }
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
@@ -51,8 +82,6 @@ public class MyWebConfig implements WebMvcConfigurer {
                         "/api/oss/file/images/**",
                         "/api/knowledge/files/**",
                         "/admin/core/login",
-                        "/admin/core/knowledge/health",
-                        "/admin/core/knowledge/doc/*/embedding-status",
                         "/open/ai/health",
                         "/open/ai/prompt/**",
                         "/open/ai/model/**",

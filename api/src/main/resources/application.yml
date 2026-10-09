@@ -1,5 +1,19 @@
 server:
   port: 8990
+  # 访问日志：按天滚动落到 logs/access/，与业务日志（logs/api/）分开存放
+  # accesslog.directory 若写相对路径，是相对 Tomcat base dir（默认临时目录）解析的，
+  # 会落到 %TEMP%/tomcat.xxx 下，所以这里显式给绝对路径。可用 LOG_HOME 覆盖根目录。
+  tomcat:
+    accesslog:
+      enabled: true
+      directory: '${LOG_HOME:D:/桌面/实训/demo/logs}/access'
+      prefix: api-access.
+      suffix: .log
+      file-date-format: yyyy-MM-dd
+      rotate: true
+      buffered: false
+      max-days: 30
+      pattern: '%{yyyy-MM-dd HH:mm:ss.SSS}t %a "%r" %s %b %D'
 
 spring:
   servlet:
@@ -17,10 +31,20 @@ spring:
     database: 0
   cloud:
     nacos:
+      # 全量启用（2026-10-08）：api 也注册进 Nacos。
+      # 服务名 = application.properties 里的 spring.application.name=service-core，
+      # 与 finance-gateway 的 lb://service-core（/*/core/**、/api/user/**）严格对应，改名须两边同改。
+      # ⚠ 这里不要写 username/password（2026-10-08 实测）：
+      # 本机 Nacos 2.2.3 的 nacos.core.auth.enabled=false，其登录接口
+      # /nacos/v1/auth/users/login 因 JWT 插件未初始化而恒返回 500（配默认口令）
+      # 或 403 user not found（配自定义口令）。客户端一旦配了账号，就会每 2 秒
+      # 重试登录并刷 ERROR：SecurityProxy login ... serialize HttpRestResult failed。
+      # 而注册/发现走的是免鉴权的 v1 OpenAPI，本身就正常 —— 所以 auth 关闭时
+      # 「不配凭据」才是唯一正确写法。（以上结论已用 curl 直连登录接口验证。）
       discovery:
         server-addr: localhost:8848
-        enabled: false
-        register-enabled: false
+        enabled: true
+        register-enabled: true
     sentinel:
       enabled: false
   autoconfigure:
@@ -35,10 +59,15 @@ feign:
   sentinel:
     enabled: false
 
-# 本地开发：service-sms 直连 finance-message（无需 Nacos）
-service-sms:
-  ribbon:
-    listOfServers: localhost:8120
+# 短信服务 service-sms 的地址来源（2026-10-08 改动）
+# 原先这里是本地开发直连：
+#   service-sms:
+#     ribbon:
+#       listOfServers: localhost:8120
+# 已移除，原因：Ribbon 的静态 listOfServers 优先级高于 Nacos 服务发现，
+# 留着会让 api→短信 永远只打 localhost:8120，Nacos 注册形同虚设。
+# 现在由 Nacos 提供 service-sms 的实例列表 ⇒ finance-message 必须处于
+# 「已启动且已注册」状态，否则发验证码等短信相关接口会 503。
 
 # 安全配置
 security:

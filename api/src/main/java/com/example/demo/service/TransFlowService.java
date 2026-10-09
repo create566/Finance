@@ -3,6 +3,7 @@ package com.example.demo.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.example.demo.entity.TransFlow;
+import com.example.demo.enums.TransTypeEnum;
 
 import java.math.BigDecimal;
 import java.util.Map;
@@ -46,6 +47,28 @@ public interface TransFlowService extends IService<TransFlow> {
      * 银行回调会被误判成重复通知而直接吞掉 —— 那笔钱永远停在处理中。
      */
     boolean existsSettledByTransNo(String transNo);
+
+    /**
+     * 【P0-1】落一条「处理中」的在途流水，占用该用户的可用余额。
+     *
+     * <p>银行侧扣款一律不校验余额（javap 确认 {@code lockAccount}/{@code withdraw}/
+     * {@code transferAccounts} 都是无条件加减），所以平台必须在<b>发起前</b>就把这笔钱占住，
+     * 否则并发两笔投标/还款能把账户扣成负数 —— 库里现存的 3 个负余额账户就是这么来的。
+     *
+     * <p>原先只有充值/提现落 PROCESSING 流水，投标与还款不落 —— 三套口径各算各的。
+     * 现在投标与还款也走这里，可用额口径才真正统一。
+     *
+     * @param transNo 业务单号（银行会原样回带，用于对账与结算），不可为空
+     */
+    void savePending(Long userId, TransTypeEnum type, BigDecimal amount, String memo, String transNo);
+
+    /**
+     * 【P0-1】把某条在途流水置为终态，释放或固化它对可用余额的占用。
+     *
+     * @param transNo 业务单号
+     * @param success true=银行已成功扣款（置"成功"）；false=银行失败/用户撤销（置"失败"，释放占用）
+     */
+    void settlePending(String transNo, boolean success);
 
     /**
      * 处理银行充值异步回调：验签 → 校验状态/金额/用户 → 幂等判断 → 入账

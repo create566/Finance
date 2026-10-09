@@ -7,7 +7,7 @@ import com.example.demo.entity.vo.RecommendLendVO;
 import com.example.demo.service.LendItemService;
 import com.example.demo.service.LendService;
 import com.example.demo.service.RecommendService;
-import com.example.demo.utils.LoginUserContext;
+import com.wwfinance.common.utils.LoginUserContext;
 import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;

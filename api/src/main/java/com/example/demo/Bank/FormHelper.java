@@ -1,5 +1,7 @@
 package com.example.demo.Bank;
 
+import com.example.demo.utils.BankTradeLog;
+
 import java.util.Iterator;
 import java.util.Map;
 
@@ -12,6 +14,9 @@ public class FormHelper {
      * @return
      */
     public static String buildForm(String url, Map<String, Object> paramMap) {
+        // 全部 6 个出站口（绑卡/充值/提现/投标/放款/还款）都经此处，统一落一条对账流水。
+        BankTradeLog.outbound(url, paramMap);
+
         StringBuffer inputStr = new StringBuffer();
         Iterator<Map.Entry<String, Object>> entries = paramMap.entrySet().iterator();
         while(entries.hasNext()){

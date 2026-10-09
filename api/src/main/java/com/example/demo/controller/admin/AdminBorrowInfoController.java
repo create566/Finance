@@ -5,7 +5,7 @@ import com.example.demo.entity.BorrowInfo;
 import com.example.demo.entity.SysAdmin;
 import com.example.demo.mapper.SysAdminMapper;
 import com.example.demo.service.BorrowInfoService;
-import com.example.demo.utils.LoginUserContext;
+import com.wwfinance.common.utils.LoginUserContext;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wwfinance.common.result.PccAjaxResult;

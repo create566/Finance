@@ -214,16 +214,26 @@ function handleQuickQuestion(q: string) {
 }
 
 async function handleCloseSession() {
+  // 先确认：取消时 ElMessageBox 会 reject，这里静默返回
+  try {
+    await ElMessageBox.confirm('确定要结束当前会话吗？', '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  // 再结束：失败必须显式提示。
+  // 原实现用一个 catch 同时兜「用户取消」和「接口失败」，导致接口报错被当成取消吞掉
+  // —— 用户点了确定却毫无反应。这里把两件事分开。
   try {
     if (sessionId.value) {
-      await ElMessageBox.confirm('确定要结束当前会话吗？', '提示', { type: 'warning' })
       await closeSession(sessionId.value)
       ElMessage.success('会话已结束')
     }
-    handleClearChat()
-  } catch {
-    // 取消
+  } catch (err: any) {
+    console.error('[智能客服] 结束会话失败', err)
+    ElMessage.error('结束会话失败：' + (err?.response?.data?.msg || err?.message || '未知错误'))
+    return
   }
+  handleClearChat()
 }
 
 function handleClearChat() {

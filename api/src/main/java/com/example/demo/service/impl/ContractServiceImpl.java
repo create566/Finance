@@ -40,6 +40,16 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, Contract> i
     private static final int SIGN_IMG_MAX_BYTES = 2 * 1024 * 1024;
     /** 签署截止时间：合同创建后 7 天内 */
     private static final int SIGN_VALID_DAYS = 7;
+    /**
+     * 用户级框架协议（居间 / 存管）的签署期限：10 年。
+     * <p>这类协议是"用户 ↔ 平台 / 银行"的长期约定，不是单笔业务，
+     * 用 7 天会显得荒谬（且当前没有任何地方强制该截止时间）。
+     */
+    private static final int AGREEMENT_VALID_DAYS = 3650;
+    /** 居间服务协议的乙方（居间方）名称 */
+    private static final String PLATFORM_NAME = "旺旺金融平台";
+    /** 资金存管协议的乙方（存管方）名称 */
+    private static final String CUSTODY_BANK_NAME = "模拟存管银行";
     private static final DateTimeFormatter SIGN_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter NO_FMT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
@@ -186,6 +196,100 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, Contract> i
         return v;
     }
 
+    // ==================== 用户级一次性协议（P9-60 / P9-61） ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Contract getOrCreateUserAgreement(ContractTypeEnum type, Long userId) {
+        if (type != ContractTypeEnum.SERVICE && type != ContractTypeEnum.DEPOSIT) {
+            log.warn("非用户级协议类型，忽略，type={}", type);
+            return null;
+        }
+        if (userId == null) {
+            return null;
+        }
+        // 金额固定 0：uk_biz 含 amount 列，而 MySQL 唯一键对 NULL 不去重，
+        // 传 NULL 会导致同一用户重复生成同一份协议。
+        BigDecimal amount = BigDecimal.ZERO;
+        Contract exist = findOne(ContractBizTypeEnum.USER, userId, type, userId, amount);
+        if (exist != null) {
+            return exist;
+        }
+        ContractTemplate tpl = loadEnabledTemplate(type);
+        if (tpl == null) {
+            // 模板未配置：降级为"不阻断"。否则脚本没执行就会把绑卡/发标/投标整条卡死。
+            log.warn("《{}》模板未配置，跳过生成（不阻断业务），userId={}", type.getDesc(), userId);
+            return null;
+        }
+        String contractNo = genContractNo();
+        String content = render(tpl.getContentTpl(), buildUserAgreementVariables(userId, contractNo));
+
+        Contract c = new Contract();
+        c.setContractNo(contractNo);
+        c.setContractType(type.getCode());
+        c.setBizType(ContractBizTypeEnum.USER.getCode());
+        c.setBizId(userId);
+        c.setTemplateId(tpl.getId());
+        c.setTemplateVersion(tpl.getVersion());
+        c.setAmount(amount);
+        c.setContentSnapshot(content);
+        c.setContentHash(sha256(content));
+        c.setStatus(ContractStatusEnum.PENDING.getCode());
+        c.setSignDeadline(LocalDateTime.now().plusDays(AGREEMENT_VALID_DAYS));
+        // 甲方=用户（与正文口径一致）；乙方是平台/存管银行，都不是 user 表用户，
+        // 因此只落名称、不落 party_b_id（避免又造出"正文与字段指向相反"的问题）。
+        c.setPartyAId(userId);
+        c.setPartyAName(resolveName(userId, true));
+        c.setPartyBName(type == ContractTypeEnum.SERVICE ? PLATFORM_NAME : CUSTODY_BANK_NAME);
+        this.save(c);
+        log.info("用户级协议已生成: no={}, type={}, userId={}", contractNo, type.getCode(), userId);
+        return c;
+    }
+
+    @Override
+    public void assertUserAgreementSigned(ContractTypeEnum type, Long userId) {
+        if (type != ContractTypeEnum.SERVICE && type != ContractTypeEnum.DEPOSIT) {
+            return;
+        }
+        Contract c = getOrCreateUserAgreement(type, userId);
+        if (c == null) {
+            // 模板缺失 → 放行（部署顺序不敏感）
+            return;
+        }
+        if (ContractStatusEnum.SIGNED.getCode().equals(c.getStatus())) {
+            return;
+        }
+        if (ContractStatusEnum.REVOKED.getCode().equals(c.getStatus())) {
+            throw new ResourceNotFoundException(500,
+                    "《" + type.getDesc() + "》已作废，请联系管理员重新生成后再操作");
+        }
+        throw new ResourceNotFoundException(500,
+                "请先签署《" + type.getDesc() + "》（编号 " + c.getContractNo()
+                        + "），可在「我的合同」页面完成签署后再继续");
+    }
+
+    /**
+     * 用户级协议模板变量。
+     * <p>姓名取实名档案（借款人档案优先，其次投资人档案，缺失退回昵称/手机号），
+     * 与标的相关协议保持同一套兜底逻辑，保证不会渲染出空白主体。
+     */
+    private Map<String, String> buildUserAgreementVariables(Long userId, String contractNo) {
+        Map<String, String> v = new HashMap<>();
+        v.put("contractNo", contractNo);
+        v.put("userName", resolveName(userId, true));
+        v.put("userIdCard", maskIdCard(resolveAnyIdCard(userId)));
+        v.put("signDate", LocalDateTime.now().format(SIGN_DATE_FMT));
+        v.put("platformName", PLATFORM_NAME);
+        v.put("bankName", CUSTODY_BANK_NAME);
+        return v;
+    }
+
+    /** 身份证取实名档案：借款人档案优先，其次投资人档案 */
+    private String resolveAnyIdCard(Long userId) {
+        String id = resolveIdCard(userId, true);
+        return StringUtils.hasText(id) ? id : resolveIdCard(userId, false);
+    }
+
     private ContractTemplate loadEnabledTemplate(ContractTypeEnum type) {
         return contractTemplateMapper.selectOne(new LambdaQueryWrapper<ContractTemplate>()
                 .eq(ContractTemplate::getContractType, type.getCode())
@@ -330,9 +434,56 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, Contract> i
         LambdaQueryWrapper<Contract> w = new LambdaQueryWrapper<>();
         w.eq(StringUtils.hasText(contractType), Contract::getContractType, contractType);
         w.eq(status != null, Contract::getStatus, status);
-        w.and(x -> x.eq(Contract::getPartyAId, userId).or().eq(Contract::getPartyBId, userId));
+        // 【P9-58】可见性 = ①我是甲方或乙方；②我是该标的的投资人 → 可见《借款合同》《放款确认书》。
+        // 第 ② 条是必须的：这两类合同的乙方是"全体出借人"，party_b_id 为空，
+        // 只按甲乙匹配的话投资人永远看不到，与"借款人、投资人可随时查看"不符。
+        Set<Long> investedLendIds = myInvestedLendIds(userId);
+        w.and(x -> {
+            x.eq(Contract::getPartyAId, userId).or().eq(Contract::getPartyBId, userId);
+            if (!investedLendIds.isEmpty()) {
+                x.or(y -> y.in(Contract::getBizType, ContractBizTypeEnum.LEND.getCode())
+                        .in(Contract::getContractType,
+                                ContractTypeEnum.LOAN.getCode(), ContractTypeEnum.PAYMENT.getCode())
+                        .in(Contract::getBizId, investedLendIds));
+            }
+        });
         w.orderByDesc(Contract::getCreateTime);
         return this.page(page, w);
+    }
+
+    /** 我投过的标的 id 集合（含已撤标记录，用于把《借款合同》暴露给对应投资人，P9-58） */
+    private Set<Long> myInvestedLendIds(Long userId) {
+        Set<Long> ids = new HashSet<>();
+        if (userId == null) {
+            return ids;
+        }
+        List<LendItem> items = lendItemMapper.selectList(new LambdaQueryWrapper<LendItem>()
+                .eq(LendItem::getInvestUserId, userId)
+                .select(LendItem::getLendId));
+        for (LendItem it : items) {
+            if (it.getLendId() != null) {
+                ids.add(it.getLendId());
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * 合同是否对当前用户可见（但**不代表有签署权**）。
+     * <p>签署权仍严格看 party_a_id / party_b_id（见 {@link #sign}）——
+     * 投资人能看到《借款合同》但无权签它，这是"只读可见"，别把两者混为一谈。
+     */
+    private boolean canRead(Contract c, Long userId) {
+        if (userId == null) {
+            return true;
+        }
+        if (userId.equals(c.getPartyAId()) || userId.equals(c.getPartyBId())) {
+            return true;
+        }
+        boolean isLoanSide = ContractBizTypeEnum.LEND.getCode().equals(c.getBizType())
+                && (ContractTypeEnum.LOAN.getCode().equals(c.getContractType())
+                || ContractTypeEnum.PAYMENT.getCode().equals(c.getContractType()));
+        return isLoanSide && myInvestedLendIds(userId).contains(c.getBizId());
     }
 
     @Override
@@ -341,7 +492,7 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, Contract> i
         if (c == null) {
             throw new ResourceNotFoundException(500, "合同不存在");
         }
-        if (userId != null && !userId.equals(c.getPartyAId()) && !userId.equals(c.getPartyBId())) {
+        if (!canRead(c, userId)) {
             throw new ResourceNotFoundException(403, "无权查看该合同");
         }
         ContractSignRecord r = contractSignRecordMapper.selectOne(new LambdaQueryWrapper<ContractSignRecord>()
@@ -357,6 +508,25 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, Contract> i
         boolean hashValid = r == null
                 || sha256(c.getContentSnapshot()).equals(r.getContentHash());
         data.put("hashValid", hashValid);
+        // 是否是签署方 —— 前端据此决定要不要显示"手写签名"入口
+        data.put("signable", userId != null
+                && (userId.equals(c.getPartyAId()) || userId.equals(c.getPartyBId())));
+        return data;
+    }
+
+    @Override
+    public Map<String, Object> exportFile(Long contractId, Long userId) {
+        Contract c = this.getById(contractId);
+        if (c == null) {
+            throw new ResourceNotFoundException(500, "合同不存在");
+        }
+        if (!canRead(c, userId)) {
+            throw new ResourceNotFoundException(403, "无权导出该合同");
+        }
+        ContractTypeEnum t = ContractTypeEnum.fromCode(c.getContractType());
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("fileName", (t != null ? t.getDesc() : "电子合同") + "_" + c.getContractNo() + ".txt");
+        data.put("content", c.getContentSnapshot() == null ? "" : c.getContentSnapshot());
         return data;
     }
 
@@ -398,17 +568,22 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, Contract> i
         // （getOrCreate 对已存在的合同是幂等返回，光看返回值分不出新建还是复用）
         long before = countMyContracts(userId);
 
-        // ① 我是借款人的标的（待发布/募资中）→《借款合同》；募资中的再补《放款确认书》
+        // ① 【P9-66】我是借款人的标的 →《借款合同》；募资中及以后 →《放款确认书》。
+        //    原先只覆盖"待发布/募资中"，于是**已满标/还款中的存量标的（如 2/5/7/9）永远补不出合同**。
+        //    这里放宽为"除已流标/已下架外"的全部状态；已流标/已下架的标的合同已由
+        //    offline() 的 revokePendingContracts 批量作废，不再补建。
         List<Lend> myLends = lendMapper.selectList(new LambdaQueryWrapper<Lend>()
                 .eq(Lend::getUserId, userId)
-                .in(Lend::getStatus, LendStatusEnum.PENDING.getCode(), LendStatusEnum.FUNDING.getCode()));
+                .notIn(Lend::getStatus, LendStatusEnum.FAILED.getCode(), LendStatusEnum.OFFLINE.getCode()));
         for (Lend lend : myLends) {
             try {
                 if (getOrCreate(ContractBizTypeEnum.LEND, lend.getId(),
                         ContractTypeEnum.LOAN, userId) != null) {
                     processed++;
                 }
-                if (LendStatusEnum.FUNDING.getCode().equals(lend.getStatus())
+                // 放款确认书：募资完成后的标的才有确认放款的意义（含满标/还款中/已完结）
+                if (lend.getStatus() != null
+                        && lend.getStatus() >= LendStatusEnum.COMPLETED.getCode()
                         && getOrCreate(ContractBizTypeEnum.LEND, lend.getId(),
                         ContractTypeEnum.PAYMENT, userId) != null) {
                     processed++;
@@ -435,6 +610,20 @@ public class ContractServiceImpl extends ServiceImpl<ContractMapper, Contract> i
                 skipped++;
                 notes.add("投资记录 " + item.getId() + " 出借协议补建失败：" + e.getMessage());
                 log.warn("补建出借协议失败: lendItemId={}, userId={}", item.getId(), userId, e);
+            }
+        }
+
+        // ③ 【P9-60/P9-61】用户级一次性协议：《居间服务协议》+《资金存管协议》。
+        //    不挂标的，只有一份；模板未配置时返回 null（降级不阻断）。
+        for (ContractTypeEnum t : new ContractTypeEnum[]{ContractTypeEnum.SERVICE, ContractTypeEnum.DEPOSIT}) {
+            try {
+                if (getOrCreateUserAgreement(t, userId) != null) {
+                    processed++;
+                }
+            } catch (Exception e) {
+                skipped++;
+                notes.add("《" + t.getDesc() + "》补建失败：" + e.getMessage());
+                log.warn("补建用户级协议失败: userId={}, type={}", userId, t.getCode(), e);
             }
         }
 

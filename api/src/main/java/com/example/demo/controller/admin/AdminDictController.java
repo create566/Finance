@@ -2,6 +2,8 @@ package com.example.demo.controller.admin;
 
 import com.example.demo.entity.Dict;
 import com.example.demo.service.DictService;
+import com.wwfinance.common.auth.AdminRoles;
+import com.wwfinance.common.auth.RequireAdminRole;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -42,6 +44,8 @@ public class AdminDictController {
 
     @ApiOperation("新增分类")
     @PostMapping("/category")
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "字典为全局基础数据，变更仅限超级管理员")
     public PccAjaxResult saveCategory(@RequestBody Map<String, String> body) {
         String dictCode = body.get("dictCode");
         String name = body.get("name");
@@ -51,6 +55,8 @@ public class AdminDictController {
 
     @ApiOperation("新增选项")
     @PostMapping("/option")
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "字典为全局基础数据，变更仅限超级管理员")
     public PccAjaxResult saveOption(@RequestBody Dict dict) {
         Dict saved = dictService.saveOption(dict.getParentId(), dict.getName(), dict.getValue());
         return new PccAjaxResult(200, "新增选项成功", saved);
@@ -58,6 +64,8 @@ public class AdminDictController {
 
     @ApiOperation("更新字典节点")
     @PutMapping("/update")
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "字典为全局基础数据，变更仅限超级管理员")
     public PccAjaxResult update(@RequestBody Dict dict) {
         boolean ok = dictService.updateDict(dict);
         return new PccAjaxResult(200, "修改成功", ok);
@@ -65,6 +73,8 @@ public class AdminDictController {
 
     @ApiOperation("删除字典节点（分类删除时连带删除子选项）")
     @DeleteMapping("/remove/{id}")
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "字典为全局基础数据，删除仅限超级管理员")
     public PccAjaxResult remove(@PathVariable Long id) {
         boolean ok = dictService.removeDictById(id);
         return new PccAjaxResult(200, "删除成功", ok);

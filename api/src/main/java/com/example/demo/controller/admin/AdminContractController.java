@@ -7,6 +7,8 @@ import com.example.demo.entity.ContractSignRecord;
 import com.example.demo.mapper.ContractSignRecordMapper;
 import com.example.demo.service.ContractService;
 import com.example.demo.utils.ContractHashUtils;
+import com.wwfinance.common.auth.AdminRoles;
+import com.wwfinance.common.auth.RequireAdminRole;
 import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
@@ -109,6 +111,8 @@ public class AdminContractController {
 
     @ApiOperation("作废合同（仅待签署可作废）")
     @PostMapping("/{id}/revoke")
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "作废合同不可逆，仅限超级管理员")
     public PccAjaxResult revoke(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         try {
             Object reason = body == null ? null : body.get("reason");

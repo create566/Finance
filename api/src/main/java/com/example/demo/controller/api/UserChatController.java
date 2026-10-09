@@ -5,7 +5,7 @@ import com.example.demo.entity.ChatMessage;
 import com.example.demo.entity.ChatSession;
 import com.example.demo.service.ChatMessageService;
 import com.example.demo.service.ChatSessionService;
-import com.example.demo.utils.LoginUserContext;
+import com.wwfinance.common.utils.LoginUserContext;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;

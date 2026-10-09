@@ -27,7 +27,9 @@ CREATE TABLE IF NOT EXISTS `user` (
     `create_time`         DATETIME     DEFAULT NULL COMMENT '创建时间',
     `update_time`         DATETIME     DEFAULT NULL COMMENT '更新时间',
     `is_deleted`          TINYINT(1)   DEFAULT 0 COMMENT '逻辑删除(1已删 0未删)',
-    PRIMARY KEY (`id`)
+    PRIMARY KEY (`id`),
+    -- 手机号唯一：一个手机号只能注册一个账号（应用层查重非原子，必须由数据库兜底）
+    UNIQUE KEY `uk_mobile` (`mobile`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '用户表';
 
 -- 用户账户表（对应 com.example.demo.entity.UserAccount）
@@ -40,7 +42,9 @@ CREATE TABLE IF NOT EXISTS `user_account` (
     `update_time`   DATETIME       DEFAULT NULL COMMENT '更新时间',
     `is_deleted`    TINYINT(1)     DEFAULT 0 COMMENT '逻辑删除(1已删 0未删)',
     `version`       INT            DEFAULT 0 COMMENT '版本号',
-    PRIMARY KEY (`id`)
+    PRIMARY KEY (`id`),
+    -- P5-27：此唯一键此前只存在于线上库、脚本未声明（按脚本重建库会丢失，并发可插出多账户）
+    UNIQUE KEY `uk_user_id` (`user_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '用户账户表';
 
 -- 借款信息表（对应 com.example.demo.entity.BorrowInfo）
@@ -73,7 +77,9 @@ CREATE TABLE IF NOT EXISTS `user_bind` (
     `create_time`      DATETIME       DEFAULT NULL COMMENT '创建时间',
     `update_time`      DATETIME       DEFAULT NULL COMMENT '更新时间',
     `is_deleted`       TINYINT(1)     DEFAULT 0 COMMENT '逻辑删除(1已删 0未删)',
-    PRIMARY KEY (`id`)
+    PRIMARY KEY (`id`),
+    -- P5-27：同 uk_user_id，一个用户只能有一条绑卡记录
+    UNIQUE KEY `uk_user_id` (`user_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '用户绑定表';
 
 -- 管理员表（后台登录用）
@@ -83,6 +89,7 @@ CREATE TABLE IF NOT EXISTS `sys_admin` (
     `password`     VARCHAR(64)  NOT NULL COMMENT '密码(MD5)',
     `name`         VARCHAR(50)  DEFAULT NULL COMMENT '姓名',
     `avatar`       VARCHAR(255) DEFAULT NULL COMMENT '头像',
+    `role`         VARCHAR(32)  NOT NULL DEFAULT 'ADMIN' COMMENT '后台角色:SUPER_ADMIN/ADMIN',
     `create_time`  DATETIME     DEFAULT NULL COMMENT '创建时间',
     `update_time`  DATETIME     DEFAULT NULL COMMENT '更新时间',
     `is_deleted`   TINYINT(1)   DEFAULT 0 COMMENT '逻辑删除',
@@ -91,8 +98,9 @@ CREATE TABLE IF NOT EXISTS `sys_admin` (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '管理员表';
 
 -- 初始管理员：admin / 123456（密码 BCrypt 加密，明文 123456）
-INSERT INTO `sys_admin` (`username`, `password`, `name`, `create_time`)
-VALUES ('admin', '$2b$10$3945YgHYWC0u.vYHybs.5OZlTydLPIsAgKjICtl771wpdNrUnA0lq', '超级管理员', NOW())
+-- role 显式给 SUPER_ADMIN：新环境只有这一个账号，不给最高权限则放款/下架无法演示。
+INSERT INTO `sys_admin` (`username`, `password`, `name`, `role`, `create_time`)
+VALUES ('admin', '$2b$10$3945YgHYWC0u.vYHybs.5OZlTydLPIsAgKjICtl771wpdNrUnA0lq', '超级管理员', 'SUPER_ADMIN', NOW())
 ON DUPLICATE KEY UPDATE `username` = `username`;
 
 -- ============================================
@@ -240,7 +248,8 @@ CREATE TABLE IF NOT EXISTS `borrower` (
   `update_time` DATETIME NOT NULL COMMENT '更新时间',
   `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
   PRIMARY KEY (`id`),
-  KEY `idx_user_id` (`user_id`),
+  -- P5-27：脚本原写 `KEY idx_user_id`，线上库实为唯一键；一个用户只能有一份借款人档案
+  UNIQUE KEY `uk_user_id` (`user_id`),
   KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='借款人档案表';
 
@@ -309,6 +318,8 @@ CREATE TABLE IF NOT EXISTS `dict` (
   `update_time` DATETIME NOT NULL COMMENT '更新时间',
   `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
   PRIMARY KEY (`id`),
+  -- P5-27：同一分类下的选项 value 不得重复（此前只在库里）
+  UNIQUE KEY `uk_parent_id_value` (`parent_id`, `value`),
   KEY `idx_dict_code` (`dict_code`),
   KEY `idx_parent_id` (`parent_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据字典表';
@@ -320,7 +331,7 @@ CREATE TABLE IF NOT EXISTS `integral_grade` (
   `id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
   `integral_start` INT(11) DEFAULT NULL COMMENT '积分下限',
   `integral_end` INT(11) DEFAULT NULL COMMENT '积分上限',
-  `borrow_amount` DECIMAL(16,2) DEFAULT NULL COMMENT '可借额度',
+  `borrow_amount` DECIMAL(20,2) DEFAULT NULL COMMENT '可借额度',
   `create_time` DATETIME NOT NULL COMMENT '创建时间',
   `update_time` DATETIME NOT NULL COMMENT '更新时间',
   `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
@@ -355,6 +366,8 @@ CREATE TABLE IF NOT EXISTS `lend_return` (
   `update_time` DATETIME NOT NULL COMMENT '更新时间',
   `is_deleted` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
   PRIMARY KEY (`id`),
+  -- P5-27：还款编号唯一，防止重复生成本期计划（此前只在库里）
+  UNIQUE KEY `uk_return_no` (`return_no`),
   KEY `idx_lend_id` (`lend_id`),
   KEY `idx_user_id` (`user_id`),
   KEY `idx_status` (`status`)
@@ -401,7 +414,7 @@ CREATE TABLE IF NOT EXISTS `trans_flow` (
   `trans_no` VARCHAR(64) NOT NULL COMMENT '交易单号（唯一，防重复提交）',
   `trans_type` TINYINT(4) DEFAULT NULL COMMENT '交易类型（1充值 2提现 3投标 4回款 5放款 6还款）',
   `trans_type_name` VARCHAR(32) DEFAULT NULL COMMENT '交易类型名称',
-  `trans_amount` DECIMAL(16,2) DEFAULT NULL COMMENT '交易金额',
+  `trans_amount` DECIMAL(20,2) DEFAULT NULL COMMENT '交易金额',
   `memo` VARCHAR(255) DEFAULT NULL COMMENT '备注',
   `create_time` DATETIME NOT NULL COMMENT '创建时间',
   `update_time` DATETIME NOT NULL COMMENT '更新时间',

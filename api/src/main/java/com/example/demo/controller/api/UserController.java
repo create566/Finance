@@ -4,7 +4,7 @@ import com.example.demo.entity.User;
 import com.example.demo.entity.dto.UserDto;
 import com.example.demo.client.SMSApiSmsClient;
 import com.example.demo.service.UserService;
-import com.example.demo.utils.LoginUserContext;
+import com.wwfinance.common.utils.LoginUserContext;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;

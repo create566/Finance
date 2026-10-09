@@ -5,14 +5,16 @@ spring:
     name: service-sms # 服务名
   cloud:
     nacos:
-      username: nacos
-      password: shangqiuqwjk832
+      # ⚠ 不要写 username/password：本机 Nacos 2.2.3 已关鉴权
+      # （nacos.core.auth.enabled=false），其登录接口恒失败（500 / 403 user not found），
+      # 配了账号只会让客户端每 2 秒重试并刷 ERROR 日志。详见 api/application.yml 同处注释。
       discovery:
         server-addr: localhost:8848 # nacos服务地址
-        # 本地开发：api 通过 ribbon 直连 localhost:8120（见 api/application.yml），无需注册 Nacos。
-        # Nacos 未启动时强制注册会导致服务启动失败
-        enabled: false
-        register-enabled: false
+        # 全量启用（2026-10-08）：注册进 Nacos，供 api 的 service-sms 客户端
+        # 与网关的 lb://service-sms（/*/sms/**）发现。
+        # 注意：Nacos 未启动时会因注册失败而启动报错，这属于此方案的预期代价。
+        enabled: true
+        register-enabled: true
         # 配置命名空间
         namespace: public
       config:

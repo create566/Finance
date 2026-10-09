@@ -250,6 +250,31 @@ public class ChatController {
         return Result.success("删除成功", null);
     }
 
+    /**
+     * 结束当前用户的一个会话（Mongo 侧 status → 1）。
+     *
+     * <p>前台「结束会话」按钮调用。<b>会话数据在 Mongo，关闭也必须落在这里。</b></p>
+     *
+     * <p><b>2026-10-08 修复</b>：原实现误调 api 的
+     * {@code PUT /api/core/chat/session/{id}/close} —— 那是迁移前的 MySQL 遗留链路，
+     * 它的 {@code chat_session} 表 54 行全部属于 {@code user_id=1}，
+     * 而前端传入的是 Mongo 的 sessionId，因此真实用户调用必然失败（实测 code 500），
+     * 且前端把该错误当成「用户取消」吞掉，表现为「点了确定毫无反应」。
+     * 归属校验沿用 {@link #ownsSession} 的 fail-closed 口径。</p>
+     */
+    @PutMapping("/sessions/{sessionId}/close")
+    public Result<Object> closeSession(@PathVariable Long sessionId) {
+        if (sessionId == null) {
+            return Result.fail("会话ID不能为空");
+        }
+        Long userId = UserContext.getUserid();
+        if (!ownsSession(sessionId, userId)) {
+            return Result.fail("无权结束该会话");
+        }
+        boolean ok = mongoService.closeSession(sessionId);
+        return ok ? Result.success("会话已结束", null) : Result.fail("操作失败");
+    }
+
     /** 校验会话归属：sessionId 必须属于当前登录用户 */
     private boolean ownsSession(Long sessionId, Long userId) {
         try {

@@ -1,211 +1,77 @@
-# ww_finance（D:\桌面\实训\demo）项目长期笔记
+# ww_finance（D:\桌面\实训\demo）长期笔记
 
-P2P 网络借贷信息中介平台（实训）。借款人发标 → 投资人投标 → 满标放款 → 分期还款。
-平台不碰资金，**存管银行** `ww_bank-1.0.0.jar`（手动启动，9090）持有并划转。
+P2P 借贷：发标→投标→满标放款→分期还款。**平台不持有资金**；存管银行 `ww_bank-1.0.0.jar`（手动起 9090，**无源码**）持有账户与划转。
+构建/启动/排障见 skill `finance-demo-build`；日志见 skill `spring-boot-log-rolling`。
+> ⚠️ **长尾实证全在 `reference/deep-dive.md`，相关问题先 Read 它**（收费字节码 / 数据核查逐条 / 合同签署时机与退出细节 / 网关·OSS·Nacos / 安全缺口 / Mongo·AI·Chroma / docs）。本文件只留高频铁律。
+> ⚠️ **本仓库常有并行改动**：动手前先看目标文件 mtime。
 
-## 工程结构
-- 多模块 Maven：`api`(8990) / `finance-ai`(8081) / `finance-message`(8120) / `finance-gateway` /
-  `finance-common` / `finance-base` / `finance-oss`。Spring Boot 2.3.4 + MyBatis-Plus。
-- 前端 `ww/ww_finance_admin`(5173)、`ww/ww_finance_user`(5174)：Vue3 + Vite + TS + Element Plus。
-- 中间件 Docker（只有 `ww_redis` + `ww_chroma`）；MySQL `ww_finance`。
-- 构建三坑（Bash PATH / JDK24×Lombok / mvn 脚本起不来）见 skill `finance-demo-build`。
+## 结构与端口
+- api(8990,`service-core`) / finance-ai(8081) / finance-message(8120) / finance-gateway(8088) / finance-oss(8130) / common+base；Spring Boot 2.3.4 + MyBatis-Plus。
+- 前端 `ww_finance_admin`(5173) / `ww_finance_user`(5174)：**统一代理到网关 8088**（`VITE_API_TARGET`/`VITE_AI_TARGET` 可绕过；排障起隔离 8991）。
+- **Nacos 8848 只作注册中心**（无配置条目）；注册方 = api/message/oss/gateway；**ai 未注册**（网关 `/ai/**` 直连 8081）。银行 9090 由 api 直连。
+- Docker 只 redis+chroma；MySQL 3306 root/123456 `ww_finance`；MongoDB 27017（独立进程）。
 
-## 铁律（操作前必读）
-- **不占 8081**（用户 IDEA 在跑 finance-ai）；自测 `--server.port=8082`，**测完必杀**。
-  沙箱注入 `SERVER_PORT`，永远显式加 `--server.port=<port>`。
-- 读 MySQL 加 `--default-character-set=utf8mb4`；判真乱码用 `HEX()`（出 `3F` 才是）。
-- curl 本机端口加 `--noproxy "*"`。
-- `bash` 工具 PATH 缺 `date`/`dirname`，先 `export PATH="/usr/bin:/bin:/c/Windows/System32:/c/Windows"`。
+## 环境铁律
+- **不占 8081**（IDEA 在跑）；自测 8082/8991，**测完必杀**；沙箱注入 `SERVER_PORT`，永远显式传端口。
+- bash 先 `export PATH="/usr/bin:/bin:/c/Windows/System32:/c/Windows:$PATH"`；PortableGit **无 git**。
+- mysql 读必加 `--default-character-set=utf8mb4`；javap 用 jdk-17；托管 python **不认 `/d/桌面/...` 先 cd**；curl 本机加 `--noproxy "*"`；**非 HTTP 探活用 `/dev/tcp`**。
+- Maven：JDK17 + plexus-classworlds 启动器。**改 finance-common 后 `-f api/pom.xml` 必须带 `-am`**。
 
-## 数据源
-- `bankJdbcTemplate` → 阿里云 RDS `rm-uf6ry261ghx3995253o...`，库 `ww_bank`，只用 `user_account`。
-  **本地 `bank` 库是别的示例项目（emp/dept/salarygrade），无关。**
-- `BankDataSourceConfig` 已 `setInitializationFailTimeout(-1)`；`BankAccountSyncServiceImpl` 兜底降级
-  平台 `user_account`。超时 `bank-datasource.connect-timeout-ms` / `BANK_DB_CONNECT_TIMEOUT`（默认 8000/3000）。
-- 判别走银行库还是兜底：看提现超额文案的"当前可用 ¥Y"。模拟不可达：
-  `--bank-datasource.url=jdbc:mysql://10.255.255.1:3306/ww_bank?serverTimezone=GMT%2B8`。
-- ⚠️ `application.yml` 硬编码真实 RDS 密码；若推过远端 → 轮换 + 改纯环境变量。
-- ⚠️ `security.bank.sign-key` / `agent-id` 是**死配置**（无代码读取）；生效的是环境变量
-  `BANK_SIGN_KEY` / `BANK_AGENT_ID`。三方签名密钥必须同为 `9876543210`
-  （`SignUtil.SIGN_KEY` = `HfbConst.SIGN_KEY` = `BankSignUtil.SIGN_KEY`），改一处即全线验签失败。
+## 资金链路（谁是账本）
+- **余额真源 = 银行库 `user_account`（`user_code`=bindCode）**；平台表只是镜像。生效密钥是 `BANK_SIGN_KEY`/`BANK_AGENT_ID`（三方同 `9876543210`）。
+- **可用额唯一真源 `BankAccountSyncService.getAvailableBalance(userId)`** = 银行余额 − Σ(PROCESSING 流水)，钳到 0；提现/投标/还款三处全调它（配 `savePending/settlePending`）。
+- `trans_flow.status` 0处理/1成功/2失败；幂等 `existsSettledByTransNo()` **只认终态**；**手写 SQL 必须显式 `is_deleted=0`**。`trans_type` 1充值/2提现/3投标/4回款/5放款/6还款；**退资回补复用 4(RETURN)** 靠 memo 区分。
+- ✅ **放款=服务端同步**：`AgreeAccountLendProject` 同步 JSON、**不发回调**；`resultCode=0000` 即成功（别混异步回调的 `"1"`/`"0001"`）。`prepareMakeLoanParams()` 必传 **`mchFee=0`**；出站走 `RequestHelper.sendFormRequest()`。
+- ✅ **投标表单必传 `benefitBindCode=借款人 bindCode`（别删）**：放款去向取自 `user_invest.benefit_bind_code`，缺了 → 银行返 **200+"出错了" HTML**。投标金额 ≤2 位小数。
+- ⚠️ **银行 jar 单边记账**（`unLockAccount` 只 freeze−；`transferAccounts` 只 amount+）⇒ **银行侧账实不能作为资金正确性依据**。
+- ✅ **退资回补**：`LendItemService.refundInvestment(item, memo)` 一处完成「翻已撤标 + `updateBalance(RETURN, amount)` + 退款流水」；⚠️ **只能走 `RETURN`**（投标用 `deductAmount`）。
+- **6 个银行回调都验签**；前端充值/提现/还款 `responseType:'text'`，业务失败是 **200+JSON `{"code":400}`**。
+- 定时（`FinanceJobHandler`，带 Redis 锁）：逾期 02:00 / 对账 03:30 / 未满标失败 01:00 / 宽限期退资 01:30。
+- ⚠️ **平台只赚服务费且一分未收**（三处 `fee` 硬编码 0）。⚠️ 存量脏数据：银行 4 负余额 / 6 条悬挂 `status=0` 流水 / `user_bind` 仅 20 条 / 11 条 `benefit_bind_code='0'`。
+- ✅ **对账心跳** `trans_no=RECON-HEARTBEAT-<日期>`，一天一行 ⇒ **别把 "reconciliation_record 0 行" 当"没差异"**。⚠️ **银行幂等不均**：`vote`/`makeLoan` 有去重，**`recharge`/`withdraw` 无** ⇒ 重复提交会重复入账。
 
-## 资金链路（余额闸门 / 流水状态机）
-- **余额是银行库余额**：`getBankBalance(userId)` 才是真余额，平台 `user_account.amount` 只是镜像。
-- **闸门统一 `utils/BalanceGuard`**：`require(actionName, available, required)` →
-  `{actionName}失败：可用余额不足，本次需 ¥X，当前可用 ¥Y，还差 ¥Z，请先充值。`
-  `actionName` 传**空串**不拼前缀（否则"投标失败：投标失败："）。已接：提现 / 还款 / 投标。
-  抛 `BusinessException` → 400 + 原文案。null 按 0，`setScale(2, HALF_UP)`。
-  `requirePositive(amount, actionName)`：≤0 或 >2 位小数即拒。
-- **`trans_flow.status`：0处理中 / 1成功 / 2失败**。充值/提现**发起即落 status=0**，
-  `agentBillNo`（`LendNoUtils.getChargeNo()/getWithdrawNo()`）随银行表单提交，回调按它定位终态。
-- **回调幂等**：`resolveTransNo()` 优先取银行回带 `agentBillNo`；`existsSettledByTransNo()` **只认终态**
-  （处理中不算已入账，否则回调被误判重复而整单吞掉）。
-- **提现可用额 = 银行余额 − 该用户 `status=0` 提现之和**（`sumPendingWithdraw`）。求和走
-  `TransFlowMapper.sumAmount` 注解 SQL，**必须显式 `is_deleted = 0`**（`@TableLogic` 不作用于手写 `@Select`）。
-- **投标金额必须 ≤2 位小数**：银行 `handleInvestNotify` 正则 `\d+(\.\d{1,2})?`，3 位小数会在银行已冻结
-  资金后 `return false` → 资金悬挂。`buildInvestForm` 前置 `scale()>2` 拦截。
-- `LendItemServiceImpl.buildInvestForm` **已移除 Redis 锁**（不写库；旧锁按标的分 key 误判并投）。
-- **银行回调验签已实现，别再当缺口**：6 个处理器第一件事就验签，失败 `return false` ——
-  `UserBindServiceImpl:77`、`TransFlowServiceImpl:165`(充值)/`215`(提现)、`LendItemServiceImpl:217`(投标)、
-  `LendReturnServiceImpl:192`(放款)/`455`(还款)。验签在 Service 层。⚠️ 曾用大小写敏感 `grep "sign"`
-  误判"不验签"；排查能力是否存在必须加 `-i` 或按语义 grep。存疑未实证：还款回调 resultParam 看不到 `sign`。
-- **前端致命坑**：充值/提现/还款是 `responseType:'text'`（返回银行 HTML 表单），业务失败却是
-  **HTTP 200 + JSON `{"code":400,"msg":...}`**。`utils/request.ts` 的 `parseErrorEnvelope()` 专门识别；
-  缺了它"余额不足"被静默吞成"提交成功"。
+## 标的业务循环（2026-10-08 全通）
+- 借款申请→审批→发标→募资→满标→放款→**还款**全通；**至今无标的到 status=6**。
+- ⚠️ **银行 `returnCommit` 强等式**：`voteFeeAmt + ΣtransitAmt == totalAmt`（转 double 比较），不等抛 `RETURN_AMMOUNT_MORE_ERROR`、返 200+错误页。**改还款代码前必读。**
+- **还款三条铁律（已固化）**：① `total = 已舍入principal + 已舍入interest`，月供先舍入为权威、本金倒挤；② 投资人明细**按投资占比切分期供**；③ 生成期 `balanceItemReturns()` 倒挤到**投资额最大**一户。
+- **逾期**：`voteFeeAmt = overdueTotal − total`。⚠️ 仅单测覆盖。
+- 银行还款**两段式**：`/lendReturn/AgreeUserRepayment`（确认页不动钱）→ `/lendReturn/returnCommit`（真扣款，**不验签**）。充值/投标一段式。回调 **`/api/core/lendReturn/notifyUrl`**。
+- ⚠️ `LendStatusEnum`：0待发布/1募资中/2已满标待放款/3已逾期/**4已下架**/5还款中/6已完结/7已流标。
 
-## 合同挂载与标的退出（下架 / 流标）
-- 一个标的全部合同落在 `contract.biz_type='LEND' + biz_id=lendId`，靠 `contract_type`（LOAN 借款合同 /
-  INVEST 出借协议 / PAYMENT 放款确认书）+ `party_b_id` 区分。`ContractBizTypeEnum.LEND_ITEM` **从未被使用**。
-- `ContractStatusEnum` 待签署(0)/已签署(1)/已作废(2)。`contractService.revoke()` **只作废待签署**且 reason
-  必填 → **批量作废必须逐个 try/catch**，否则一份已签能把整笔下架事务带崩。已签靠 `content_snapshot` 冻结。
-- **三份合同签署时机（定论，别再挪）**：LOAN = 建标后上架募资前，强校验 `LendServiceImpl.publish()` 关口一；
-  INVEST = 投标时，`LendItemServiceImpl` 关口二；PAYMENT = **满标后、放款前**，
-  `LendReturnServiceImpl.buildMakeLoanForm()` 关口三。⚠️ 曾误把 PAYMENT 提前到 `publish()` 并已撤销；
-  `publish()/createLend()` 只做 `getOrCreate` 幂等预生成。
-- **`LendService.offline(lendId, adminId)` 必须传操作人**，null 直接拒（查库前驳回，零副作用）。落
-  `lend.offline_admin_id`/`offline_time`；NULL = **系统自动处置**。两入口 `offline()` 人工 /
-  `offlineBySystem()` 系统共用 `offlineInternal`，**不要把 offline() 放宽成接受 null**；
-  发消息分流：系统 `MAKE_LOAN_TIMEOUT(31)`，人工 `LEND_OFFLINE(29)`。
-- 退资出口状态：**PENDING(0)/FUNDING(1)/COMPLETED(2)**，绝不含 REPAYING(5)/SETTLED(6)。⚠️ 管理端按钮
-  `v-if` 要与后端准入**同步**（曾出现后端放开 0/1/2 而 UI 只给 FUNDING）；`offline()` 准入含 `COMPLETED`
-  与 `withdrawAllInvestments` 覆盖 `status IN (0,2)` —— **两处必须成对，只改一处是假修复**。
-- **宽限期起算点是 `lend.complete_time` 不是 `update_time`**（后者 `on update CURRENT_TIMESTAMP`，
-  动一下就重置 ⇒ 拖着不签可无限续期）。`MAKE_LOAN_SIGN_DEADLINE_DAYS = 3` **必须与合同模板天数一致**。
-  定时 `FinanceJobHandler#refundUnsignedCompletedLends`（每天 01:30）三个防误伤边界：`complete_time`
-  非空 / PAYMENT 未签 / `payment_admin_id` 为空。
-- **改合同模板必须版本化**：INSERT `version+1`(status=1) + 同编号旧版本置 `status=0`，运行时
-  `status=1 ORDER BY version DESC LIMIT 1`。⚠️ MySQL `'\n'` 是**真换行**（`'\\n'` 落库成字面反斜杠-n）；
-  `||` 是**逻辑或**不是拼接，必须 `CONCAT()`。
-- 定时超期处置三兜底：① 满标催签站内信(30) ② `offline()` 退资出口 ③ 模板超期条款
-  （`sql/contract_overdue_clause.sql`）。
+## 合同体系（2026-10-09 整改后）
+- **5 类**：`ContractTypeEnum` = LOAN 借款合同 / INVEST 出借协议 / PAYMENT 放款确认书 / **SERVICE 居间服务协议** / **DEPOSIT 资金存管协议**。`ContractBizTypeEnum` = LEND/BORROW_INFO/LEND_ITEM/**USER**（用户级：`biz_id=party_a_id=userId`、`party_b_id=NULL`；⚠️ amount **不能 NULL**）。
+- ✅ 模板各 1 启用版本：`LOAN v3`/`INVEST v2`/`PAYMENT v1`/`SERVICE v1`/`DEPOSIT v1`（`status=1 ORDER BY version DESC LIMIT 1`）。SQL：`sql/contract_loan_party_fix.sql`、`sql/contract_service_deposit.sql`。
+- ✅ **主体口径（答辩必用）**：`TPL_LOAN` v3 = **甲方（借款人）/ 乙方（全体出借人）**，与 `party_a_id=借款人` 一致。⚠️ **`party_b_id` 仍 NULL 是"每人一份"有意建模**，双边合同是《出借协议》。**别再当缺陷报。**
+- ✅ 投资人可见《借款合同》《放款确认书》（`myInvestedLendIds` 分支）；`detail` 返 **`signable`**。**可见 ≠ 可签**。
+- ✅ **闸门**：LOAN=建标预生成+上架前必签；INVEST=投标硬前置；PAYMENT=放款前必签；**SERVICE=发标+投标**；**DEPOSIT=绑卡**。⚠️ `getOrCreateUserAgreement` **模板缺失时降级放行**，别当"校验被绕过"。
+- ✅ 导出 `GET /api/core/contract/auth/export/{contractId}` → `{fileName, content}`。
+- ⛔ **未改（设计取舍）**：① **罚息归平台**（`LendReturnServiceImpl:817-823`）；② 满标不生成合同/不签章（有意）；③ 正文未渲染还款计划表。
+- `contract` 状态 0待签/1已签/2已作废；`revoke()` 只作废待签且 reason 必填 → **批量作废逐个 try/catch**；`offline(lendId,adminId)` **必须传操作人**。
+- **宽限期起算 `complete_time` 不是 `update_time`**；`MAKE_LOAN_SIGN_DEADLINE_DAYS=3` 须与模板一致。
+- 脚本签合同：`POST /api/core/contract/auth/prepare` → `POST .../sign {contractId,signImgBase64}`（1x1 base64 PNG 即可）。
 
-## 平台侧通用约定
-- **分页必须 `PageUtils.of(pageNum, pageSize)`**，禁裸 `new Page<>()`。`MAX_PAGE_SIZE=100` /
-  `MAX_PAGE_NUM=10000`；`pageSize<1` 归一 **10**（不是 1），`pageNum<1` 归一 1。只有 `(Integer,Integer)`
-  + `(long,long)` 两个重载，**不可再加 `(Long,Long)`**（编译歧义）。
-- **状态文案唯一真源 `ww_finance_user/src/utils/enumText.ts`**：`LEND_STATUS_MAP`（lend.status，8 态）、
-  `LEND_ITEM_STATUS_MAP`（lend_item.status，3 态：0募资中/1已撤标/2满标待放款）、`enumTag()`。
-  ⚠️ **两套编码绝不可合并**（`lend_item.status=1` 已撤标 ≠ `lend.status=1` 募资中）。
-- **`BankBindController.bindDirect` 强制实名门禁**：仅 `InvestorAuthStatusEnum.AUTHED=2` 或
-  `BorrowerAuthStatusEnum.AUTHED=2` 才可绑卡；姓名/身份证**一律取登录用户自己的实名信息**，
-  不接受请求体传入（旧版可传 `name/idCard` 冒用他人身份）。
-- 站内信类型已扩到 **31**（末位 `MAKE_LOAN_TIMEOUT(31)`）；`Message.readFlag` 是 JSON 字段名
-  （**不是 `isRead`**）。**加类型要同时改三处**：Java `MessageTypeEnum`、前端
-  `ww_finance_user/src/api/message.ts` 的 `MESSAGE_TYPE_META`、按 code 统计的 SQL。
-- 前端 dev server 代理固定 8990（用户端 `VITE_API_TARGET` 可覆盖成 8991 隔离自测）。
-- 前端回传 `createTime/updateTime` → 三个 `updateWithCheck` 均置空，交给 `MyMetaObjectHandler` 写 now()。
-- 登录态存 Redis（`login:token:user:<id>`）。`JwtAuthInterceptor` 强依赖 Redis：token 需 `5grcs ` 前缀
-  + 与 `login:token:<role>:<userId>` **完全相等**，命中续期 7 天。**Docker 未启动 → 6379 不可达 →
-  所有 `/api/**`、`/admin/**` 都进不去**，只能靠 Mockito 单测。
+## 平台约定
+- 分页必须 `PageUtils.of(pageNum,pageSize)`；MAX_PAGE_SIZE=100/MAX_PAGE_NUM=10000；**不可加 `(Long,Long)` 重载**。
+- 状态文案真源 `ww_finance_user/src/utils/enumText.ts`（LEND 8态 / LEND_ITEM 3态，**绝不可合并**）。加站内信类型须同改 Java 枚举（已到 31）+ 前端 `MESSAGE_TYPE_META` + 统计 SQL。
+- 登录态 Redis `login:token:<role>:<id>`，需 `5grcs ` 前缀且值完全相等；**Docker 未起 → 6379 不可达 → /api、/admin 全进不去**。
+- ✅ **手机号唯一（10-08 修）**：真 UNIQUE + 捕 `DuplicateKeyException`（`sql/fix_user_mobile_unique.sql`）。
+- ✅ **角色判据**：**借款**=`borrow_auth_status=2`；**投资**=`user_type==1` **或** `invest_auth_status==2`（`user_type` 只是注册时意向）。
+- ✅ **合同类型下拉真源 = `ContractTypeEnum.values()`**；管理端 `CONTRACT_TYPE_META` **必须手加键**，否则类型检查报缺键。
+- ✅ 管理端权限分级：`sys_admin.role`(SUPER_ADMIN/ADMIN) + JWT `token_admin_role` + `@RequireAdminRole`（**不能用 `@PreAuthorize`**，全站 500）。⚠️ **api 需重启生效**。
+- ✅ **P5-23~27 已修**（`sql/fix_schema_drift.sql`，幂等）：16 表 utf8mb4 / 金额 decimal(20,2) / `lend_item.status` NOT NULL DEFAULT 0。⚠️ **P5-68：`db_init.sql` 已无法重建线上库，别按脚本重建。**
+- 日志根**必须绝对路径** `D:/桌面/实训/demo/logs`；银行往来独立 `logs/bank-trade/bank-trade.log`（REQ/CALLBACK/RECON，90 天）—— **对账唯一凭据**。Gateway 只做路由+CORS，**不做鉴权**。未修项见 deep-dive。
 
-## AI 配置：谁真正生效（改动前先看）
-| 配置 | 生效 | 读取方 |
-| --- | --- | --- |
-| `ai_chat_model_binding.scene=intent/chat/rag` | ✅ 最高优先级 | `ReActService`：绑定的**模型+提示词+知识库**都生效 |
-| `prompt_config.scene=intent/chat/rag`（`is_default=1`） | ✅ 仅当上面未绑定/未启用 | `PromptService.getConfigByScene` → `PromptSelector` |
-| `prompt_config.prompt_key=UNSAFE_KEYWORDS`/`HANDOFF_KEYWORDS` | ✅ | `ContentGuard`（命中直接回话术，不调模型） |
-| `prompt_config.scene=risk/audit/summary` | ❌ | 无代码读取（软删除留存） |
-| `ai_model_config`：`model_type='chat'` + `test_status=1` + `status=1` | ✅ | 唯一可被绑定的模型池 |
-| `ai_chat_model_binding.scene=chitchat/summary/safety/answer` | ❌ | 已归档（`answer` 已拆为 `chat` + `rag`） |
+## 测试（2026-10-09）
+- 后端白名单 **22 类 / 144 用例全绿**（根 pom + `-pl api -am`）。⚠️ 集成类依赖 Redis/MySQL，Docker 没起时全量必 FAIL（**不是回归**）。⚠️ **改闸门必须同步改 `BankBindTest`**（绑卡有 DEPOSIT 闸门）。
+- **接口测试资产（用户自跑）**：
+  - **Postman**：`docs/postman/ww_finance.postman_collection.json` + `..._environment.json`（104 请求 / 12 目录，覆盖全部 103 接口）。**集合级 Pre-request 脚本自动登录取 token**（adminToken/userToken/investorToken；JWT exp 提前 60s 刷新 + 401 自愈重放）⇒ **导入即跑，不用管 token**。生成器 `generate_collection.py`（改接口后重跑）。
+  - **JMeter**：`docs/jmeter/ww_finance_benchmark.jmx`。SetupThreadGroup 三方登录取 token → `props.put` → `__P(adminToken)`；主场景**只读接口**（充值/提现/投标/还款有脏数据风险，不压）。CLI：`jmeter -n -t ww_finance_benchmark.jmx -l result.jtl -e -o report`。
+  - 报告/截图统一落 `docs/test-reports/`（`.html`/`.csv`/`.json`/`shots/` 15 张 PNG）。执行器 `.workbuddy/tmp/run_api_tests.py`。**实测 58 执行 / 58 通过 / 100%**。
+  - ⚠️ 易踩坑：`dict/listByCode` 参数名是 **`dictCode`**；`prepare` 必须用借款人本人名下的标（集合变量 `prepLendId=5`）；`chat/message/list` 需本人会话（已给用户 30 插 fixture 会话 **id=55**）。
+  - 🔴 **真缺陷待修**：`prepare` 非签署方调用 → 查重键与写入 `party_a_id` 不一致 → 撞 `uk_biz` → **500 + msg 泄露 SQL 异常**（应 403）。
+  - 截图脚本 `.workbuddy/tmp/shot_report.js`（playwright + 显式 executablePath chromium-1228；**agent-browser 在沙箱内挂起不可用**）。使用说明 `docs/postman/接口测试使用说明.md`。
 
-- 三个运行场景必须与提示词场景**同名同数**：`intent` 意图路由 / `chat` 闲聊应答 / `rag` 知识库问答。
-- **两层语义**：绑定是覆盖层，Prompt 设置是默认值层。运行时先看绑定场景 `prompt_key`
-  （`PromptService.getConfigByKey` 还原），取不到才回退 `PromptSelector`。
-  排查"改了提示词没反应"看 `GET /ai/admin/chat/model/effective`。
-- 默认值层唯一真源 `PromptSelector.pickEffectiveByScene()`（`update_time DESC, id ASC`，
-  同场景 `is_default=1` 覆盖）。
-- 模型门禁（`ChatModelBindingServiceImpl.resolveNames`）：绑定模型必须 chat 类型 + 测试通过 + 已启用。
-  `test_status` 由 `POST /ai/admin/model/config/test/{id}` 落库；改 apiUrl/apiKey/modelName/modelType 即失效。
-- `content_type='keywords'` 的行**不参与**场景指令选择。
-- 关键词切分在 `KeywordUtils.split`（逗号/中文逗号/顿号/分号/换行），归一化去所有标点与空白，
-  **管理端计数必须同一套规则**。⚠️ 在 **finance-ai**（`com.kzip.app.util`），**不在 api 模块**。
-- 两张关键词表已被运行时使用 → 禁止删除/停用（`assertRuntimeKeywordNotDisabled`），关闭只能清空内容。
-- 改 Prompt 走 `PromptService.ChangedEvent`（`@TransactionalEventListener(AFTER_COMMIT)`）立即刷缓存，
-  5 分钟兜底。日志 `Prompt 配置变更，立即刷新缓存`。
-- 三入口都已接前置拦截：`/ai/chat`、`/ai/chat-stream`（SSE，**前台主链路**）、`/ai/chat-sync`。
-  SSE 拦截标记走响应头 `X-Guard`，不拼进 token 流。
-- 改 `scene` 字面量要同时改三处：Java 常量、`sql/fix_ai_config.sql`、前端 `sceneText` —— 必漏其一。
-- `binding.model_name` 会被 `ReActService` 当真实模型名发出，改「模型配置」modelName 必须同步
-  `syncModelName` 全部绑定，否则线上静默请求旧模型名。
-- apiKey 接口只返回 `****` + 末 4 位；保存时入参是掩码则沿用原值，防回传覆盖真密钥。
-
-## 测试用例：位置与跑法
-- **单元测试**：`D:\桌面\实训\demo\api\src\test\java\com\example\demo\**`，共 **18 个 `*Test.java`**。
-  其中 **12 个纯 Mockito/纯 JUnit、离线可跑（87 用例；未含 2026-10-08 新增的
-  `LocalFileStorageOwnershipTest` 12 用例 → 全绿时共 99）**：`TransFlowNotifyServiceTest`(12)、`BalanceGuardTest`(12)、
-  `LocalFileStorageOwnershipTest`(12，文件归属隔离)、`LendOfflineClosureTest`(9)、
-  `ReconciliationServiceImplTest`(8)、`StatusEnumTest`(7)、`UserAccountWithdrawGuardTest`(7)、
-  `PageUtilsTest`(7)、`BankNotifyControllerTest`(6)、`FinanceJobHandlerTest`(5)、
-  `UserBindNotifyServiceTest`(5)、`TokenUtilTest`(5)、`HfbConstTest`(4)。
-  需真实环境、**不进白名单**：`TokenFlowTest`、`CrudTest`、`DbConnectTest`、`BankBindTest`、`DemoApplicationTests`。
-- 跑法见 skill `finance-demo-build`：`... Launcher -o -B -f "D:/桌面/实训/demo/api/pom.xml" test
-  -Dtest="$TESTS" -DfailIfNoTests=false`。**多类必须用逗号**；`-Dtest=A+B+C` 会**静默跑 0 个并报
-  BUILD SUCCESS**（假绿灯），跑完必须核对 `Tests run:` 总数。
-- **接口测试**：`D:\桌面\实训\demo\docs\postman\` —— `ww_finance.postman_collection.json`（55 个请求，
-  10 个业务文件夹）、`ww_finance.postman_environment.json`、`generate_collection.py`、`README.md`。
-  集合级 Pre-request Script 自动登录取 token（已排除 `/login`、`/register`、`/sendCode` 防死循环）；
-  admin 用 `token` 头、user 用 `Authorization` 头，**两端 token 不能混用**。
-  **`generate_collection.py` 是集合 JSON 的唯一真源**（手写 JSON 要转义换行/引号，不可维护）——
-  接口有增删改这个脚本后 `python docs/postman/generate_collection.py` 重跑，**别手改 JSON**。
-  ⚠️ **它只是生成器，不发任何请求**（只 import json/os）。真正执行断言要靠 newman 或 Postman
-  Collection Runner；本机 newman **未安装**。
-- **项目根目录已有纯 Python 联调范式**（写 Python runner 时的现成地基，别从零造）：
-  - `_token.py` —— 自签 JWT（秘钥 `vsofo-5grcs-secret`，**jjwt 0.9.1 会把密钥 base64 解一次**
-    再当 HMAC key，直接用原文会判"token 无效"）+ 写 `login:token:<role>:<id>`；绕过 BCrypt 密码。
-  -   `_e2e_market.py` —— 端到端断言脚本范式：`req()` / `check()` / 末尾 PASS-FAIL 汇总，
-    还含 `form_post()` 按银行签名规则（TreeMap 排序 + 每值后拼 `|` + MD5）模拟回调。
-    **惯例是打隔离实例 8991，不碰用户正在用的 8990。**
-  - `_e2e_owner_isolation.py`（2026-10-08 新增）—— OSS 文件归属隔离的端到端回归探针（14 项断言）。
-    可作新脚本的模板：`import _token` 复用登录态签发，PNG 内联 base64 免外部素材，
-    `disk_path(url)` 把 URL 换算回磁盘路径直接断言文件存在性。
-
-## 用户隔离审计（2026-10-08，只读审计）
-**结论：用户端水平隔离基本完整；1 处确认越权 + 2 处信息暴露疑点；管理端无权限分级。**
-三层机制：① `JwtAuthInterceptor`（token 需 `5grcs ` 前缀 + 与 Redis 会话**完全相等**，可实现强制下线）
-② `LoginUserContext`（ThreadLocal，`afterCompletion` 清理）③ Controller/Service 用**登录态 userId** 下推
-SQL 限定归属，不信前端传参。Redis key 按角色分命名空间（user 与 sys_admin 主键可能相同，混用会顶掉会话）。
-跨角色双向隔离：`/admin/**` 需 admin，`/api/**` 禁 admin（`JwtAuthInterceptor:76-88`）。
-- ✅ **文件删除越权已修（2026-10-08）**：原 `DELETE /api/oss/file/remove?url=...` 只校验 url 前缀 +
-  无 `..`、**无属主判断**（`LocalFileStorageStrategy.delete` 按路径直接删盘），任意登录用户拿到他人 URL
-  即可删实名身份证图与合同签名存证（签名图 URL 经 `ContractServiceImpl.detail()` 的
-  `signRecord.signImgUrl` 暴露给同合同另一方 → URL 来源现成）。
-  **修法 = 归属写进物理路径**：上传落 `images/u<userId>/<file>`（`upload(file, category, ownerId)`），
-  删除走 `deleteOwned(url, ownerId)` 严格匹配 `<category>/u<ownerId>/<file>` **三段式**
-  （天然排除 `..` 穿越与 `u33`/`u330` 误判）；匹配失败统一 403「无权删除该文件」，
-  不区分"不存在"与"不是你的"（防探测）。无属主段的**旧文件一律拒绝删除（fail-closed）**。
-  `delete(String)` 已**重命名为 `deleteUnchecked(String)`** —— 故意让调用点编译报错、强制逐个人工确认；
-  唯一保留的调用是 `KnowledgeDocServiceImpl.removeWithFile`（文件地址取自库记录而非请求参数，
-  且入口受管理端鉴权保护）。**新增用户上传必须走三参 `upload`，不得回退到无属主版本。**
-  验收：单测 `LocalFileStorageOwnershipTest`(12) + 端到端 `_e2e_owner_isolation.py`（8991，14/14 全绿）。
-  ⚠️ 前端 `deleteFile()` 定义了但**从未被调用**，故收紧删除接口零功能回归。
-- ⚠️ **管理端无权限分级**：`sys_admin` 表**无角色字段**，`TokenUtil:91` 硬编码 `token_role="admin"`，
-  全项目 `@PreAuthorize`/`@Secured` **零命中**（`SecurityConfig` 已开 `@EnableGlobalMethodSecurity(prePostEnabled=true)`
-  —— 能力在但没用）。任何管理员都能审核/下架/放款/作废合同，无最小权限边界。
-- 疑点：`GET /api/core/lend/{id}` 返回完整 `Lend` 实体（含借款人 userId）；
-  `GET /api/core/lend/{lendId}/investments` 返回全部 `LendItem`（含他人 `investUserId`/`investName`/`investAmount`）
-  —— 若产品不做「投资人名单公开」即为他人投资信息泄露。
-- ⚠️ **`GET /api/core/user/checkMobile/{mobile}` 在拦截器 exclude 白名单里**（`MyWebConfig:50`）→
-  **无需登录**即可枚举手机号是否已注册。
-- 已抽查确认**正确**的：`UserMessageController`（markRead 校验 `message.userId`）、
-  `ContractController`（pageMy 按 partyA/partyB 过滤；detail/sign 校验签署方；prepare 校验 403）、
-  `LendReturnController.repay/{id}`、`TransFlowController`、`UserAccountController`、`LendController.myInvestments`、
-  `UserChatController`（`checkOwnSession`）、`BankBindController`、`Borrower/InvestorController`、
-  `BorrowInfoController`、`IntegralGradeController`。
-
-## 生产就绪度（2026-10-06 审计）
-**结论：业务功能完备；工程化与合规此前未就绪。**
-- ✅ **`HfbConst` 地址外置化**：21 处 `localhost` → `bank.base-url`（银行网关）/ `bank.notify-base-url`
-  （我方回调）/ `bank.front-base-url`，环境变量 `BANK_BASE_URL` / `BANK_NOTIFY_BASE_URL` / `BANK_FRONT_BASE_URL`。
-  ⚠️ **保留静态字段 + `@Value` setter**（`HfbConst.X` 散落 6 个 Service 共 26 处；不启容器即纯 Mockito
-  时行为与改造前一致、不 NPE）。任一 setter 被调即 `refresh()` 重算 21 个地址并吃掉结尾斜杠，
-  用例 `HfbConstTest`(4) 钉住。⚠️ `bank.notify-base-url` **必须银行能访问**，填 localhost = 回调永远收不到。
-- ✅ **定时任务分布式锁**：`utils/RedisDistributedLock`（`setIfAbsent` + `lua/unlock.lua` 校验 token 后释放）。
-  `FinanceJobHandler` 4 任务统一 `runWithLock(...)`，开关 `job.distributed-lock.enabled`（默认 true）。
-  **Redis 不可达 → 跳过本次而非放行**（宁可少跑一次不能重复动钱）。单测里 `@Value` 不生效 → 默认 false → 直接跑。
-- ❌ 无 profile 隔离（未配 `spring.profiles.active`）；凭据 `${ENV:明文默认值}` 硬兜底，`BANK_DB_PASSWORD` 是真密码。
-- ❌ 无 Dockerfile / 部署脚本 / logback 定制 / actuator 健康检查 / 监控告警 / DB 备份脚本 / 部署文档。
-- ❌ 无方法级鉴权（只有 URL 级拦截器 + `JwtAuthInterceptor`），无 `@PreAuthorize`；无身份证/银行卡脱敏。
-- ❌ 无乐观锁 / `SELECT FOR UPDATE`（`@Version` / `FOR UPDATE` 全项目零命中），并发扣款靠 Redis 锁 + 唯一约束。
-- ❌ 无集成测试 / 契约测试（单测见上节）。
-- 运行时硬依赖：Docker(redis+chroma)、`ww_bank-1.0.0.jar`(手动启动)、Nacos(`:8848`)、
-  `finance-message`(`:8120`，Feign `listOfServers` 硬编码)。
+## 测试账号
+- **全部密码 `123456`**（明文/MD5/BCrypt 混合，**仅 BCrypt 能登录**）。管理员 **admin/123456**。
+- 集合内置三身份（已验证）：借款人 **18538313405**（bind=1）；投资人 **14725836945**（invest_auth=2）。
+- 干净借款人：**35 / 张三 / 13800001111**。干净且已绑卡投资人：**22/26/28/29/32**（**42/张伟** 银行余额 −650.60 异常）。✅ **投标不校验 `invest_auth_status`**：①`user_type=1` ②绑卡且银行 bind_code 在 ③余额够 即可。

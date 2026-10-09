@@ -7,6 +7,8 @@ import com.example.demo.entity.UserLoginRecord;
 import com.example.demo.entity.dto.AdminUserQuery;
 import com.example.demo.service.UserLoginRecordService;
 import com.example.demo.service.UserService;
+import com.wwfinance.common.auth.AdminRoles;
+import com.wwfinance.common.auth.RequireAdminRole;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -54,6 +56,8 @@ public class AdminUserController {
 
     @ApiOperation("修改会员状态（启用/禁用）")
     @PutMapping("/{id}/status")
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "启用/禁用会员会直接影响用户登录，仅限超级管理员")
     public PccAjaxResult updateStatus(
             @PathVariable Long id,
             @RequestBody Map<String, Object> body) {
@@ -71,6 +75,8 @@ public class AdminUserController {
 
     @ApiOperation("新增会员（管理员手动开户）")
     @PostMapping
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "手动开户会绕过短信验证直接建号，仅限超级管理员")
     public PccAjaxResult addMember(@RequestBody Map<String, Object> body) {
         String mobile = body.get("phone") == null ? null : body.get("phone").toString();
         String nickName = body.get("nickname") == null ? null : body.get("nickname").toString();

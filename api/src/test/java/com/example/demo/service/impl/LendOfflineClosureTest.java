@@ -112,9 +112,9 @@ class LendOfflineClosureTest {
 
         assertTrue(lendService.offline(lendId, ADMIN_ID), "下架应返回成功");
 
-        // ① 投资记录置为已撤标(1) —— 银行侧据此解冻投资人冻结资金
-        assertEquals(1, item.getStatus(), "投资记录应被置为已撤标(1)");
-        verify(lendItemService).updateById(item);
+        // ① 投资记录交给 LendItemService 退资：翻「已撤标」+ 回补平台镜像 + 落退款流水（P4-19）。
+        //    退资细节（镜像回补、流水类型）由 LendItemRefundMirrorTest 锁定，此处只验委派正确。
+        verify(lendItemService).refundInvestment(eq(item), eq("标的已下架退款 LEND_TEST_110"));
 
         // ② 标的已投金额清零、状态翻为已下架(4)
         assertEquals(0, BigDecimal.ZERO.compareTo(target.getInvestAmount()), "已投金额应清零");
@@ -152,7 +152,7 @@ class LendOfflineClosureTest {
 
         assertTrue(lendService.offline(lendId, ADMIN_ID));
 
-        verify(lendItemService, never()).updateById(any(LendItem.class));
+        verify(lendItemService, never()).refundInvestment(any(LendItem.class), anyString());
         verify(redisTemplate, never()).delete(anyString());
         verify(messageService, never()).sendLendOfflineRefundNotice(any(), any(), any());
         verify(messageService).sendLendOfflineNotice(eq(33L), eq("LEND_TEST_113"), any());
@@ -209,8 +209,7 @@ class LendOfflineClosureTest {
         assertTrue(lendService.offline(lendId, ADMIN_ID), "满标待放款标的应允许下架");
 
         // 撤标范围必须覆盖 status=2，否则这里会静默空跑、投资人资金冻在银行一笔都没退
-        assertEquals(1, item.getStatus(), "满标的投资记录也应被置为已撤标(1)");
-        verify(lendItemService).updateById(item);
+        verify(lendItemService).refundInvestment(eq(item), eq("标的已下架退款 LEND_TEST_114"));
         verify(redisTemplate).delete("lend:leftAmount:" + lendId);
         verify(messageService).sendLendOfflineNotice(eq(33L), eq("LEND_TEST_114"), any());
         verify(messageService).sendLendOfflineRefundNotice(eq(42L), eq(new BigDecimal("1000.00")), eq("测试标的"));
@@ -248,9 +247,8 @@ class LendOfflineClosureTest {
         assertFalse(target.getOfflineTime() == null, "处置时间仍要记录");
         assertEquals(LendStatusEnum.OFFLINE.getCode(), target.getStatus());
 
-        // ② 投资资金确实退了
-        assertEquals(1, item.getStatus(), "满标投资记录应被置为已撤标(1)");
-        verify(lendItemService).updateById(item);
+        // ② 投资资金确实退了（系统通道退资，流水备注为"超期未签退款"）
+        verify(lendItemService).refundInvestment(eq(item), eq("超期未签退款 LEND_TEST_116"));
 
         // ③ 通知文案必须是"超期未签"，不能让投资人收到莫名的"标的已下架"
         verify(messageService).sendMakeLoanTimeoutNoticeToBorrower(

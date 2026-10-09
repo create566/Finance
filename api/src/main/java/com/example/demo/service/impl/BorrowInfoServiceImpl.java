@@ -229,7 +229,19 @@ public class BorrowInfoServiceImpl extends ServiceImpl<BorrowInfoMapper, BorrowI
         return this.page(pageParam, wrapper);
     }
 
+    /**
+     * 管理端「审核」入口。
+     *
+     * <p>⚠️ 本方法**必须自带 {@code @Transactional}**：方法体内是
+     * {@code this.approveBorrowInfo(...)} 的同类自调用，Spring 事务代理不会介入，
+     * 内层 {@code approveBorrowInfo} 上的注解**形同虚设**。</p>
+     *
+     * <p>不加的后果：审核通过后 {@code createLend()} 建标或发通知抛异常时，
+     * 借款状态已被独立事务提交为"已通过"，留下"审核通过但没有对应标的"的悬挂借款；
+     * 而重审会被 {@code approveBorrowInfo} 的状态校验直接拒绝，无法自愈。</p>
+     */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean auditBorrowInfo(Long id, Integer status, Long adminId) {
         boolean approved = BorrowInfoStatusEnum.APPROVED.getCode().equals(status);
         return this.approveBorrowInfo(id, approved, adminId);

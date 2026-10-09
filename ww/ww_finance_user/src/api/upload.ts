@@ -10,11 +10,3 @@ export function uploadFile(file: File): Promise<string> {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
-
-export function deleteFile(url: string): Promise<null> {
-  return request<null>({
-    url: '/oss/file/remove',
-    method: 'delete',
-    params: { url },
-  })
-}

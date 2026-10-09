@@ -163,6 +163,8 @@ onMounted(fetchList)
             <el-option label="借款合同" value="LOAN" />
             <el-option label="出借协议" value="INVEST" />
             <el-option label="放款确认书" value="PAYMENT" />
+            <el-option label="居间服务协议" value="SERVICE" />
+            <el-option label="资金存管协议" value="DEPOSIT" />
           </el-select>
         </el-form-item>
         <el-form-item label="业务对象">

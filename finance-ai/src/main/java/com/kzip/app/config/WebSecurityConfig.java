@@ -10,7 +10,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * 接口鉴权注册。
  *
  * <p>1. 管理端：/ai/admin/**（后台管理：知识库/提示词/模型/场景绑定）与
- * /ai/knowledge/embedding/**（触发向量化）要求登录 token（非空校验）。
+ * /ai/knowledge/embedding/**（触发向量化）要求<b>严格管理员登录态</b>：
+ * JWT 解析 + token_role=admin + Redis 登录态比对；其中"写"操作再限 SUPER_ADMIN。
+ * （2026-10-09 修正：原为"token 非空即放行"，任何伪造 token 头都能篡改全局 AI 配置。）
  *
  * <p>2. 用户端：/ai/chat-sync、/ai/chat-stream、/ai/sessions**、/ai/chat-history/**
  * 要求真实用户登录（JWT 签名 + Redis 登录态校验），修复此前
@@ -28,7 +30,7 @@ public class WebSecurityConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(@NonNull InterceptorRegistry registry) {
-        registry.addInterceptor(new AdminAuthInterceptor())
+        registry.addInterceptor(new AdminAuthInterceptor(loginTokenStore))
                 .addPathPatterns(
                         "/ai/admin/**",
                         "/ai/knowledge/embedding/**"

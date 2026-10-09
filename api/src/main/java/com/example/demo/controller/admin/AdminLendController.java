@@ -11,7 +11,9 @@ import com.example.demo.service.LendItemService;
 import com.example.demo.service.LendReturnService;
 import com.example.demo.service.LendService;
 import com.example.demo.utils.LendNoUtils;
-import com.example.demo.utils.LoginUserContext;
+import com.wwfinance.common.auth.AdminRoles;
+import com.wwfinance.common.auth.RequireAdminRole;
+import com.wwfinance.common.utils.LoginUserContext;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wwfinance.common.exception.ResourceNotFoundException;
@@ -145,6 +147,8 @@ public class AdminLendController {
      */
     @ApiOperation("创建标的（后台测试用）")
     @PostMapping
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "创建标的属于高危动作，仅限超级管理员")
     public PccAjaxResult create(@RequestBody Map<String, Object> params) {
         try {
             String title = (String) params.get("title");
@@ -234,6 +238,8 @@ public class AdminLendController {
      */
     @ApiOperation("下架标的")
     @PutMapping("/{id}/offline")
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "下架标的会触发投资人退资，仅限超级管理员")
     public PccAjaxResult offline(@PathVariable Long id) {
         if (id == null || id <= 0) {
             return new PccAjaxResult(400, "标的ID无效", null);
@@ -258,6 +264,8 @@ public class AdminLendController {
      */
     @ApiOperation("发布标的（待发布→募资中）")
     @PutMapping("/{id}/publish")
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "发布标的将对投资人公开募资，仅限超级管理员")
     public PccAjaxResult publish(@PathVariable Long id) {
         if (id == null || id <= 0) {
             return new PccAjaxResult(400, "标的ID无效", null);
@@ -337,24 +345,30 @@ public class AdminLendController {
     }
 
     /**
-     * 满标放款
-     * 生成跳转旺旺银行的表单，余额入账由银行异步回调驱动
+     * 满标放款（服务端直连银行同步放款）。
+     *
+     * <p>旺旺银行 {@code /userInvest/AgreeAccountLendProject} 是<b>同步 JSON 接口，不发异步回调</b>。
+     * 旧实现返回一张自动提交表单让浏览器跳银行，结果只拿到一段 JSON，
+     * 平台的 {@code notifyMakeLoan} 永远不会被触发，标的就此永久卡在「已满标待放款」。
+     * 改为服务端直连：银行返回 resultCode=0000 即视为划转成功，平台随即落账。
      */
-    @ApiOperation("满标放款（跳转旺旺银行，余额入账由银行异步回调驱动）")
+    @ApiOperation("满标放款（服务端直连银行同步放款并落账）")
     @PutMapping("/{id}/makeLoan")
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "满标放款会真实划转资金，仅限超级管理员")
     public PccAjaxResult makeLoan(@PathVariable Long id) {
         if (id == null || id <= 0) {
             return new PccAjaxResult(400, "标的ID无效", null);
         }
         try {
-            String formHtml = lendReturnService.buildMakeLoanForm(id, currentAdminId());
-            Map<String, Object> data = new HashMap<>();
-            data.put("formHtml", formHtml);
-            log.info("生成放款表单成功: projectId={}", id);
-            return new PccAjaxResult(200, "生成放款表单成功", data);
+            Map<String, Object> result = lendReturnService.makeLoanSync(id, currentAdminId());
+            boolean ok = Boolean.TRUE.equals(result.get("success"));
+            String msg = String.valueOf(result.get("message"));
+            log.info("满标放款完成: projectId={}, success={}, msg={}", id, ok, msg);
+            return new PccAjaxResult(ok ? 200 : 500, msg, result);
         } catch (Exception e) {
-            log.error("生成放款表单失败: projectId={}, error={}", id, e.getMessage(), e);
-            return new PccAjaxResult(500, "生成放款表单失败: " + getErrMsg(e), null);
+            log.error("满标放款失败: projectId={}, error={}", id, e.getMessage(), e);
+            return new PccAjaxResult(500, "放款失败: " + getErrMsg(e), null);
         }
     }
 
@@ -385,6 +399,8 @@ public class AdminLendController {
      */
     @ApiOperation("手动触发逾期扫描（测试/补单用，定时任务每天02:00自动执行）")
     @PostMapping("/overdueCheck")
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "逾期扫描会批量变更还款状态，仅限超级管理员")
     public PccAjaxResult overdueCheck() {
         try {
             int count = lendReturnService.overdueCheck();

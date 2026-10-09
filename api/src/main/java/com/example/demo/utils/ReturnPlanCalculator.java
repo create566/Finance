@@ -97,28 +97,30 @@ public class ReturnPlanCalculator {
                                                               int months, LocalDate startDate) {
         BigDecimal i = monthRate(yearRate);
         // 月供 X = A × i × (1+i)^n / ((1+i)^n - 1)
+        // 【P4-53】月供**先舍入到分**再作为权威值使用：本金 = 月供 − 利息（倒挤），
+        // 这样每期 total 恒等于月供，不会出现"先算本金再加利息"导致的分位漂移。
         BigDecimal pow = i.add(BigDecimal.ONE).pow(months);
-        BigDecimal monthlyPayment = amount
+        BigDecimal monthlyPayment = money(amount
                 .multiply(i)
                 .multiply(pow)
-                .divide(pow.subtract(BigDecimal.ONE), INNER_SCALE, RoundingMode.HALF_UP);
+                .divide(pow.subtract(BigDecimal.ONE), INNER_SCALE, RoundingMode.HALF_UP));
 
         List<PeriodPlan> list = new ArrayList<>(months);
         BigDecimal remaining = amount;
         for (int k = 1; k <= months; k++) {
-            // 当月利息 = 月初剩余本金 × 月利率
-            BigDecimal interest = remaining.multiply(i);
+            // 当月利息 = 月初剩余本金 × 月利率（先舍入到分）
+            BigDecimal interest = money(remaining.multiply(i));
             BigDecimal principal;
             if (k < months) {
+                // 本金倒挤：保证 principal + interest == 月供
                 principal = monthlyPayment.subtract(interest);
             } else {
-                // 最后一期：剩余本金全部还清，修正尾差
+                // 最后一期：剩余本金全部还清，消化累计尾差
                 principal = remaining;
             }
-            BigDecimal total = principal.add(interest);
             remaining = remaining.subtract(principal);
 
-            list.add(buildPlan(k, principal, interest, total, remaining, startDate));
+            list.add(buildPlan(k, principal, interest, remaining, startDate));
         }
         return list;
     }
@@ -129,24 +131,23 @@ public class ReturnPlanCalculator {
     private static List<PeriodPlan> equalPrincipal(BigDecimal amount, BigDecimal yearRate,
                                                    int months, LocalDate startDate) {
         BigDecimal i = monthRate(yearRate);
-        // 每月固定本金 = A / n（内部精度，输出2位）
-        BigDecimal monthPrincipal = amount.divide(new BigDecimal(months), INNER_SCALE, RoundingMode.HALF_UP);
+        // 每月固定本金 = A / n（先舍入到分，作为权威值）
+        BigDecimal monthPrincipal = money(amount.divide(new BigDecimal(months), INNER_SCALE, RoundingMode.HALF_UP));
 
         List<PeriodPlan> list = new ArrayList<>(months);
         BigDecimal remaining = amount;
         for (int k = 1; k <= months; k++) {
-            BigDecimal interest = remaining.multiply(i);
+            BigDecimal interest = money(remaining.multiply(i));
             BigDecimal principal;
             if (k < months) {
                 principal = monthPrincipal;
             } else {
-                // 最后一期偿还剩余全部本金
+                // 最后一期偿还剩余全部本金，消化累计尾差
                 principal = remaining;
             }
-            BigDecimal total = principal.add(interest);
             remaining = remaining.subtract(principal);
 
-            list.add(buildPlan(k, principal, interest, total, remaining, startDate));
+            list.add(buildPlan(k, principal, interest, remaining, startDate));
         }
         return list;
     }
@@ -170,10 +171,9 @@ public class ReturnPlanCalculator {
                 principal = amount;
                 interest = monthlyInterest;
             }
-            BigDecimal total = principal.add(interest);
             BigDecimal remaining = amount.subtract(principal);
 
-            list.add(buildPlan(k, principal, interest, total, remaining, startDate));
+            list.add(buildPlan(k, principal, interest, remaining, startDate));
         }
         return list;
     }
@@ -187,14 +187,16 @@ public class ReturnPlanCalculator {
         // 总利息 = A × 月利率 × 月数
         BigDecimal interest = amount.multiply(i).multiply(new BigDecimal(months));
         BigDecimal principal = amount;
-        BigDecimal total = principal.add(interest);
         LocalDate returnDate = startDate.plusMonths(months);
 
+        // 【P4-53】同 buildPlan：total 取「已舍入的本金 + 已舍入的利息」
+        BigDecimal p = money(principal);
+        BigDecimal it = money(interest);
         PeriodPlan plan = new PeriodPlan(
                 1,
-                money(principal),
-                money(interest),
-                money(total),
+                p,
+                it,
+                p.add(it),
                 BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP),
                 returnDate);
         List<PeriodPlan> list = new ArrayList<>(1);
@@ -204,14 +206,22 @@ public class ReturnPlanCalculator {
 
     /**
      * 构建一期计划：金额保留2位、还款日 = 放款日 + k 个月
+     *
+     * <p><b>【P4-53】total 必须等于「已舍入的 principal + 已舍入的 interest」</b>，
+     * 不能对未舍入的 (principal+interest) 单独四舍五入 —— 两者在分位上会差 1 分
+     * （例如 803.224 + 66.665：分别舍入得 803.22 + 66.67 = 869.89，
+     * 而先相加再舍入得 869.88）。存量 60 期里有 22 期因此不满足
+     * {@code principal + interest == total}，是银行强等式校验失败的源头之一。
      */
     private static PeriodPlan buildPlan(int k, BigDecimal principal, BigDecimal interest,
-                                        BigDecimal total, BigDecimal remaining, LocalDate startDate) {
+                                        BigDecimal remaining, LocalDate startDate) {
+        BigDecimal p = money(principal);
+        BigDecimal i = money(interest);
         return new PeriodPlan(
                 k,
-                money(principal),
-                money(interest),
-                money(total),
+                p,
+                i,
+                p.add(i),
                 money(remaining),
                 startDate.plusMonths(k));
     }

@@ -15,7 +15,9 @@ import com.example.demo.enums.BankNotifyStatusEnum;
 import com.example.demo.enums.BindStatusEnum;
 import com.example.demo.enums.ContractBizTypeEnum;
 import com.example.demo.enums.ContractTypeEnum;
+import com.example.demo.enums.InvestorAuthStatusEnum;
 import com.example.demo.enums.LendStatusEnum;
+import com.example.demo.enums.TransStatusEnum;
 import com.example.demo.enums.TransTypeEnum;
 import com.example.demo.enums.UserTypeEnum;
 import com.example.demo.mapper.LendItemMapper;
@@ -100,8 +102,17 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         if (user == null) {
             throw new ResourceNotFoundException(500, "用户不存在");
         }
-        if (!UserTypeEnum.INVESTOR.getCode().equals(user.getUserType())) {
-            throw new ResourceNotFoundException(500, "你不是投资人，请去认证投资人");
+        // 投资能力的两种合法来源，满足其一即可投标：
+        //   ① 注册时选择了"投资者"（user_type==1）—— 存量 34 个未做投资人认证的账号走的就是这条，
+        //      若直接收紧会让它们突然不能投标，故保留。
+        //   ② 完成了投资人实名认证（invest_auth_status==2）—— 前端认证页明确写着
+        //      "投资人认证（认证后可参与投标）"，这是对用户作出的承诺。
+        // 原实现只认 ①，导致「注册成借款人 → 补做投资人认证 → 仍被拒」，与借款侧
+        // 看 borrow_auth_status（BorrowInfoServiceImpl:68）的做法也不对称。
+        boolean investorByUserType = UserTypeEnum.INVESTOR.getCode().equals(user.getUserType());
+        boolean investorByAuth = InvestorAuthStatusEnum.AUTHED.getCode().equals(user.getInvestAuthStatus());
+        if (!investorByUserType && !investorByAuth) {
+            throw new ResourceNotFoundException(500, "你不是投资人，请先完成投资人实名认证");
         }
 
         // 2. 校验绑卡（本地 + 银行侧都须存在，否则银行页面会因查无此记录而渲染异常）
@@ -147,6 +158,12 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         //     签完按相同金额重新提交即可放行（金额不同会被要求重新签署）。
         contractService.assertSigned(ContractBizTypeEnum.LEND, lendId, ContractTypeEnum.INVEST, userId, amount);
 
+        // 4.6 【P9-60】投资人侧《居间服务协议》：约定平台仅提供信息撮合、不兜底不担保，
+        //     并作为收取撮合服务费的依据。用户级一次性协议，首次投标签一次即可。
+        //     放在《出借协议》之后：先让用户签"这笔借贷"的协议，再补"与平台的关系"协议，
+        //     提示语顺序更自然（模板缺失时该方法降级放行，不会把投标卡死）。
+        contractService.assertUserAgreementSigned(ContractTypeEnum.SERVICE, userId);
+
         // 5. 校验剩余可投额度
         //
         // 注意：这里只是"下单前的友好提示"，**不是**防超募的真正闸门。
@@ -183,18 +200,41 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         // 6. 校验投资人余额（从银行查询，平台不持有余额）
         //    这里的 actionName 传空串：LendController 已经统一加了"投标失败："前缀，
         //    再传一遍会得到"投标失败：投标失败：可用余额不足…"
-        BigDecimal balance = bankAccountSyncService.getBankBalance(userId);
-        BalanceGuard.require("", balance, amount);
+        //
+        //    【P0-1】必须用「统一可用额」而不是裸银行余额：
+        //    银行 lockAccount（投标冻结）不校验余额，并发两笔投标都用同一份余额快照就能把账户扣成负数。
+        //    getAvailableBalance = 银行余额 − 在途(提现+投标+还款)，并会在本次落一条处理中流水占位。
+        BigDecimal available = bankAccountSyncService.getAvailableBalance(userId);
+        BalanceGuard.require("", available, amount);
 
         // 7. 冻结由银行执行，平台不操作真实资金：
         //    银行回调时冻结投资人资金，平台仅记录投标记录（见 handleInvestNotify）。
 
+        // 7.5 【P0-3】受益人（借款人）必须先绑卡，且要把它的银行账号传给银行。
+        //
+        //     银行放款（UserInvestServiceImpl.makeLoan）是把钱划到
+        //     user_invest.benefit_bind_code 上的。而这个字段银行并不自己算 ——
+        //     它由投标表单绑定进 UserInvest 对象。平台此前<b>从不传</b>这个参数，
+        //     于是银行侧 78 条投资记录里 11 条 benefit_bind_code 存成了 "0"，
+        //     makeLoan 执行 transferAccounts("0", ΣvoteAmt) 时对不上账户直接抛异常，
+        //     银行渲染"出错了"页面 —— 放款永远成功不了。这是「满标不放款」的最后一环。
+        //
+        //     顺带解决另一个困境：借款人没绑卡时资金照样能被冻结，
+        //     结果标投满了、放款却卡死，资金只能等 3 天宽限期自动退资。
+        //     这里前置拦住，比事后退资干净得多。
+        UserBind borrowerBind = userBindService.getByUserId(lend.getUserId());
+        if (borrowerBind == null || !BindStatusEnum.BOUND.getCode().equals(borrowerBind.getStatus())) {
+            throw new ResourceNotFoundException(500, "借款人尚未完成绑卡，该标的暂不可投标");
+        }
+
         // 8. 组装旺旺银行投标参数并签名
         Map<String, Object> paramMap = new HashMap<>();
         paramMap.put("agentId", HfbConst.AGENT_ID);
+        String investBillNo = LendNoUtils.getLendItemNo();
         paramMap.put("agentUserId", userBind.getMobile());
         paramMap.put("voteBindCode", userBind.getBindCode());
-        paramMap.put("agentBillNo", LendNoUtils.getLendItemNo());
+        paramMap.put("benefitBindCode", borrowerBind.getBindCode());
+        paramMap.put("agentBillNo", investBillNo);
         paramMap.put("voteAmt", amount);
         paramMap.put("votePrizeAmt", "0");
         paramMap.put("voteFeeAmt", "0");
@@ -206,7 +246,14 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         paramMap.put("timestamp", new Date().getTime());
         paramMap.put("sign", BankSignUtil.getSign(paramMap));
 
-        log.info("投标表单生成，userId={}, lendId={}, amount={}", userId, lendId, amount);
+        // 【P0-1】落一条「处理中」投标流水占位，占用该用户可用余额，
+        // 防止并发第二笔投标再用同一份余额快照（银行扣款无余额校验，会被扣成负数）。
+        // 银行回调到达后由 handleInvestNotify 结算为成功/失败并释放占用。
+        transFlowService.savePending(userId, TransTypeEnum.INVEST, amount,
+                "投标 " + lend.getLendNo(), investBillNo);
+
+        log.info("投标表单生成，userId={}, lendId={}, amount={}, agentBillNo={}",
+                userId, lendId, amount, investBillNo);
         return FormHelper.buildForm(HfbConst.INVEST_URL, paramMap);
     }
 
@@ -230,8 +277,10 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         }
 
         // 2. 银行侧处理失败：无需重试，应答 success
+        //    【P0-1】必须同时把在途占位流水置为失败，否则这笔钱会被永久占住、用户再也用不了。
         if (!BankNotifyStatusEnum.isSuccess(status)) {
             log.info("投标回调银行状态非成功，status={}", status);
+            transFlowService.settlePending(transNo, false);
             return true;
         }
 
@@ -250,7 +299,11 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         }
 
         // 5. 幂等：同一银行流水号不重复入账
-        if (transNo != null && transFlowService.existsByTransNo(transNo)) {
+        //    ⚠️ 必须用 existsSettledByTransNo（只认终态），不能用 existsByTransNo。
+        //    【P0-1】投标时已按同一 agentBillNo 落了一条「处理中」流水占位，
+        //    若这里把处理中也算作"已入账"，回调会被误判成重复通知直接吞掉 ——
+        //    那笔投标永远停在处理中，投资记录也永远不生成。
+        if (transNo != null && transFlowService.existsSettledByTransNo(transNo)) {
             log.info("投标回调重复通知，直接确认，transNo={}", transNo);
             return true;
         }
@@ -310,8 +363,18 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         messageService.sendInvestNotice(user.getId(), amount, lend.getTitle());
 
         // 12. 检查是否满标
+        // 【P4-20】invest_amount / amount 均为 decimal(10,2) NULL，且 atomicInvest 是
+        // `invest_amount = invest_amount + ?`（NULL 加任何数仍为 NULL）——
+        // 一条脏数据即让这行直接 NPE：投资人资金已被银行冻结，平台却不入账、不生成满标记。
+        // 统一用 nvl() 兜底再比较。
         Lend updatedLend = lendService.getById(lendId);
-        if (updatedLend.getInvestAmount().compareTo(updatedLend.getAmount()) >= 0) {
+        if (updatedLend == null) {
+            log.warn("投标回调后重新查询标的为空，跳过满标判定，lendId={}", lendId);
+            return true;
+        }
+        BigDecimal invested = nvl(updatedLend.getInvestAmount());
+        BigDecimal targetAmount = nvl(updatedLend.getAmount());
+        if (invested.compareTo(targetAmount) >= 0) {
             updatedLend.setStatus(LendStatusEnum.COMPLETED.getCode());
             // 满标时刻 = 3 个自然日签署宽限期的起算点，只在此刻写一次。
             // 必须显式设置：MyBatis-Plus 默认只更新非 null 字段，但此处若不设，
@@ -335,7 +398,7 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
                     updatedLend.getUserId(), updatedLend.getLendNo(), updatedLend.getAmount());
         } else {
             // 未满标，缓存剩余可投额度，供投标入口前置拦截使用
-            BigDecimal leftAmount = updatedLend.getAmount().subtract(updatedLend.getInvestAmount());
+            BigDecimal leftAmount = targetAmount.subtract(invested);
             redisTemplate.opsForValue().set(LEFT_AMOUNT_KEY + lendId, leftAmount.toString());
             // 该用户已投过此标 → 只失效他本人的推荐缓存（其他用户不受影响）
             recommendService.evict(user.getId());
@@ -372,19 +435,19 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
             throw new ResourceNotFoundException(500, "标的已放款，无法撤销投资");
         }
 
-        // 撤回：标记状态为已撤标，银行自动解冻冻结资金
-        lendItem.setStatus(1);
-        lendItem.setUpdateTime(LocalDateTime.now());
-        this.updateById(lendItem);
+        // 撤回：【P4-19】翻转「已撤标」+ 回补平台镜像余额 + 落一条退款流水。
+        // 银行侧依据冻结关系自动解冻，平台侧镜像必须在同一事务内对称加回，
+        // 否则任一次撤标都会让该投资人的镜像余额永久偏低（详见 refundInvestment）。
+        BigDecimal amount = nvl(lendItem.getInvestAmount());
+        this.refundInvestment(lendItem, "撤标退款 " + lend.getLendNo());
 
         // 更新标的已投金额和剩余缓存
-        BigDecimal amount = lendItem.getInvestAmount();
-        lend.setInvestAmount(lend.getInvestAmount().subtract(amount));
+        lend.setInvestAmount(nvl(lend.getInvestAmount()).subtract(amount));
         lend.setUpdateTime(LocalDateTime.now());
         lendService.updateById(lend);
         // 更新 Redis 缓存剩余额度
         String leftKey = LEFT_AMOUNT_KEY + lendItem.getLendId();
-        BigDecimal leftAmount = lend.getAmount().subtract(lend.getInvestAmount());
+        BigDecimal leftAmount = nvl(lend.getAmount()).subtract(nvl(lend.getInvestAmount()));
         redisTemplate.opsForValue().set(leftKey, leftAmount.toString());
 
         // 撤标后剩余额度增多，该标的对所有人的推荐价值变化 → 统一失效
@@ -396,6 +459,81 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         // 撤标通知（给投资人）：告诉他钱已解冻，否则用户只能靠刷新余额自己猜
         messageService.sendInvestCancelNotice(userId, amount, lend.getTitle());
         return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean refundInvestment(LendItem lendItem, String memo) {
+        if (lendItem == null) {
+            return false;
+        }
+        // 幂等：只有「投标中(0) / 满标待放款(2)」需要退资，已撤标(1)直接跳过。
+        // 满标时本类会把全部投资记录统一置为 2，故必须以 status in (0,2) 为准。
+        Integer status = lendItem.getStatus();
+        if (status != null && status == 1) {
+            log.info("投资记录已撤标，跳过重复退资，lendItemId={}", lendItem.getId());
+            return false;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        lendItem.setStatus(1);
+        lendItem.setUpdateTime(now);
+        this.updateById(lendItem);
+
+        BigDecimal amount = nvl(lendItem.getInvestAmount());
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            // 脏数据（金额为 NULL/0）：没有对应的镜像扣减，无钱可退，只翻状态即可
+            log.warn("退资金额非法，仅翻转状态不回补镜像，lendItemId={}, amount={}",
+                    lendItem.getId(), lendItem.getInvestAmount());
+            return true;
+        }
+        refundInvestorMirror(lendItem.getInvestUserId(), amount, memo, now);
+        return true;
+    }
+
+    /**
+     * 【P4-19】回补平台镜像余额，并落一条退款流水。
+     *
+     * <p>投标回调 {@code recordInvestFlow} 执行的是 {@code updateBalance(user, INVEST, amount)}
+     * （走 {@code UserAccountMapper.deductAmount}，即"可用额 −amount"），
+     * 因此退资必须走对称的加钱路径，否则任一「用户撤标 / 流标 / 下架 / 超期未签退资」
+     * 之后，该投资人的 {@code user_account.amount} 都会<b>永久偏低</b>
+     * —— 银行侧已解冻，平台侧没有加回。连带影响是
+     * {@code RecommendServiceImpl} 读该镜像做"可投能力"过滤时会误判余额不足。</p>
+     *
+     * <p>流水沿用 {@code RETURN(4)}（"投资回款"）类型：与银行侧"解冻退回"是同一笔资金回退，
+     * 前端 {@code TRANS_TYPE_META} 已按收入方向渲染；退款原因写进 {@code memo}
+     * （撤标 / 流标 / 下架），对账时按备注逐笔核对。若后续统计口径需要区分，再单开枚举码。</p>
+     *
+     * <p><b>不吞异常</b>：镜像回补失败必须让外层事务整体回滚，否则会留下
+     * "钱没退、状态却已撤"的脏数据（参见 P4-43 的反面教材）。</p>
+     */
+    private void refundInvestorMirror(Long userId, BigDecimal amount, String memo, LocalDateTime now) {
+        User user = userService.getById(userId);
+        TransFlow flow = new TransFlow();
+        flow.setUserId(userId);
+        flow.setUserName(user != null
+                ? (user.getName() != null ? user.getName() : user.getMobile()) : "");
+        flow.setTransNo(LendNoUtils.getTransNo());
+        flow.setTransType(TransTypeEnum.RETURN.getCode());
+        flow.setTransTypeName(TransTypeEnum.RETURN.getDesc());
+        flow.setTransAmount(amount);
+        flow.setStatus(TransStatusEnum.SUCCESS.getCode());
+        flow.setMemo(memo);
+        flow.setCreateTime(now);
+        flow.setUpdateTime(now);
+        transFlowService.save(flow);
+
+        userAccountService.updateBalance(userId, TransTypeEnum.RETURN, amount);
+        log.info("退资回补平台镜像成功，userId={}, amount={}, memo={}", userId, amount, memo);
+    }
+
+    /**
+     * 【P4-20】金额判空：库中 {@code lend.invest_amount} / {@code lend_item.invest_amount}
+     * 均为 {@code decimal(10,2) NULL}，统一按 0 处理，避免 NULL 参与运算或直接解引用。
+     */
+    private static BigDecimal nvl(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
     }
 
     @Override
@@ -455,12 +593,22 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
      */
     private void recordInvestFlow(User user, BigDecimal amount, Lend lend,
                                   LocalDateTime now, String bankTransNo) {
-        TransFlow flow = new TransFlow();
-        flow.setUserId(user.getId());
-        flow.setUserName(user.getName() != null ? user.getName() : user.getMobile());
         // 优先用银行流水号做 trans_no（回调幂等），没有则本地生成
         String transNo = (bankTransNo != null && !bankTransNo.isEmpty())
                 ? bankTransNo : LendNoUtils.getTransNo();
+
+        // 【P0-1】投标发起时已按同一单号落了一条「处理中」在途流水（用于占用可用余额）。
+        // 回调成功就地把那条置为成功，避免同一笔投标留下两条流水。
+        transFlowService.settlePending(transNo, true);
+        if (transFlowService.existsByTransNo(transNo)) {
+            userAccountService.updateBalance(user.getId(), TransTypeEnum.INVEST, amount);
+            return;
+        }
+
+        // 没有在途占位（银行未回带 agentBillNo 等场景）→ 补一条成功流水
+        TransFlow flow = new TransFlow();
+        flow.setUserId(user.getId());
+        flow.setUserName(user.getName() != null ? user.getName() : user.getMobile());
         flow.setTransNo(transNo);
         flow.setTransType(TransTypeEnum.INVEST.getCode());
         flow.setTransTypeName(TransTypeEnum.INVEST.getDesc());

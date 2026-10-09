@@ -135,16 +135,14 @@ function handleMakeLoan(row: LoanProject) {
   })
     .then(async () => {
       try {
-        const formHtml = await makeLoan(row.id)
-        // 在新窗口提交银行表单
-        const newWindow = window.open('', '_blank')
-        if (newWindow) {
-          newWindow.document.write(formHtml)
-          newWindow.document.close()
-          ElMessage.success('放款表单已生成，请在弹出的银行页面完成操作')
+        // 服务端直连银行同步放款，不再弹窗跳银行（银行该接口是同步 JSON，无异步回调）
+        const res = await makeLoan(row.id)
+        if (res.success) {
+          ElMessage.success(res.message || '放款成功')
         } else {
-          ElMessage.warning('请允许弹出窗口以完成放款')
+          ElMessage.error(res.message || '放款失败')
         }
+        fetchList()
       } catch {
         // error 已由拦截器处理
       }

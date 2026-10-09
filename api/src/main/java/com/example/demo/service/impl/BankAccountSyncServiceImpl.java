@@ -6,6 +6,8 @@ import com.example.demo.Bank.HfbConst;
 import com.example.demo.Bank.RequestHelper;
 import com.example.demo.entity.User;
 import com.example.demo.entity.UserAccount;
+import com.example.demo.enums.TransStatusEnum;
+import com.example.demo.enums.TransTypeEnum;
 import com.example.demo.mapper.UserAccountMapper;
 import com.example.demo.service.BankAccountSyncService;
 import com.example.demo.service.UserAccountService;
@@ -39,8 +41,46 @@ public class BankAccountSyncServiceImpl extends ServiceImpl<UserAccountMapper, U
     @Qualifier("bankJdbcTemplate")
     private JdbcTemplate bankJdbcTemplate;
 
+    @Autowired
+    private com.example.demo.mapper.TransFlowMapper transFlowMapper;
+
     private static final String BANK_QUERY_URL = "http://localhost:9090/userAccount/queryBalance";
     private static final String BANK_FLOW_URL = "http://localhost:9090/userAccount/queryFlow";
+
+    /**
+     * 扣款类交易：会真实减少用户可用余额的三种动作。
+     * 银行侧对它们一律不校验余额（javap 确认），所以平台必须自己算在途占用。
+     */
+    private static final List<Integer> DEBIT_TRANS_TYPES = Arrays.asList(
+            TransTypeEnum.WITHDRAW.getCode(),
+            TransTypeEnum.INVEST.getCode(),
+            TransTypeEnum.REPAY.getCode());
+
+    @Override
+    public BigDecimal getAvailableBalance(Long userId) {
+        BigDecimal balance = nvl(getBankBalance(userId));
+        BigDecimal pending = getPendingDebitAmount(userId);
+        BigDecimal available = balance.subtract(pending);
+        // 余额本身已经为负（历史脏数据）时不要把负号再放大
+        return available.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : available;
+    }
+
+    @Override
+    public BigDecimal getPendingDebitAmount(Long userId) {
+        try {
+            BigDecimal sum = transFlowMapper.sumAmountByTypes(
+                    userId, DEBIT_TRANS_TYPES, TransStatusEnum.PROCESSING.getCode());
+            return nvl(sum);
+        } catch (Exception e) {
+            // 查不到在途就当 0，不能因为这层增强把正常业务拦死
+            log.error("查询扣款类在途金额失败，userId={}，按 0 处理", userId, e);
+            return BigDecimal.ZERO;
+        }
+    }
+
+    private static BigDecimal nvl(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
+    }
 
     @Override
     public BigDecimal getBankBalance(Long userId) {
@@ -264,6 +304,27 @@ public class BankAccountSyncServiceImpl extends ServiceImpl<UserAccountMapper, U
         } catch (Exception e) {
             log.error("银行库查询余额失败，bindCode={}", bindCode, e);
             return null;
+        }
+    }
+
+    @Override
+    public List<Map<String, Object>> findAbnormalAccounts() {
+        try {
+            List<Map<String, Object>> rows = bankJdbcTemplate.queryForList(
+                    "SELECT user_code, amount, freeze_amount FROM user_account "
+                            + "WHERE is_deleted = 0 AND (amount < 0 OR freeze_amount < 0)");
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Map<String, Object> row : rows) {
+                Map<String, Object> m = new HashMap<>();
+                m.put("userCode", row.get("user_code"));
+                m.put("amount", row.get("amount"));
+                m.put("freezeAmount", row.get("freeze_amount"));
+                result.add(m);
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("扫描银行侧异常账户失败", e);
+            return Collections.emptyList();
         }
     }
 

@@ -64,7 +64,9 @@ onMounted(fetchData)
 
     <el-card shadow="never">
       <el-table :data="tableData" v-loading="loading" stripe border>
-        <el-table-column type="index" label="期次" width="70" align="center" />
+        <!-- 后端 listMyItemReturns 按 currentPeriod 倒序返回，行号 ≠ 期次，
+             用 type="index" 会把第 12 期显示成「1」。 -->
+        <el-table-column prop="currentPeriod" label="期次" width="70" align="center" />
         <el-table-column prop="id" label="回款ID" min-width="80" />
         <el-table-column prop="lendReturnId" label="还款计划ID" min-width="100" />
         <el-table-column prop="returnDate" label="回款日期" min-width="120" align="center" />
@@ -86,7 +88,10 @@ onMounted(fetchData)
         </el-table-column>
         <el-table-column label="操作" width="100" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button type="primary" link @click="showDetail(row.id)">明细</el-button>
+            <!-- 必须传 lendReturnId（lend_return.id），不能传 id：
+                 本表格的数据源是 myInvestList，返回的是 lend_item_return 记录，
+                 其 id 是明细ID，去查 lend_return 表必然查不到 → 后端返回「还款计划不存在」。 -->
+            <el-button type="primary" link @click="showDetail(row.lendReturnId)">明细</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -96,8 +101,10 @@ onMounted(fetchData)
       <el-table :data="detailData" v-loading="detailLoading" stripe border size="small">
         <el-table-column type="index" label="序号" width="60" align="center" />
         <el-table-column prop="returnDate" label="回款日期" min-width="110" />
-        <el-table-column prop="totalAmount" label="回款总额" min-width="100" align="right">
-          <template #default="{ row }">¥{{ row.totalAmount?.toFixed(2) ?? '0.00' }}</template>
+        <!-- 字段名是 total（LendItemReturn.total），没有 totalAmount。
+             写成 totalAmount 会让这一列恒显示 ¥0.00。 -->
+        <el-table-column prop="total" label="回款总额" min-width="100" align="right">
+          <template #default="{ row }">¥{{ row.total?.toFixed(2) ?? '0.00' }}</template>
         </el-table-column>
         <el-table-column prop="principal" label="本金" min-width="100" align="right">
           <template #default="{ row }">¥{{ row.principal?.toFixed(2) ?? '0.00' }}</template>

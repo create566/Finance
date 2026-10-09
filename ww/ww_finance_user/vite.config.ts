@@ -31,14 +31,18 @@ export default defineConfig({
     // 默认自动开浏览器；VITE_OPEN=false 可关闭（无人值守/自测时用）
     open: process.env.VITE_OPEN !== 'false',
     proxy: {
-      // 默认打本地 8990；自测时可用 VITE_API_TARGET 指向别的实例（如 8991），
-      // 避免为了自测去改这个文件、又忘了改回来。
+      // 统一入口（2026-10-08 改）：前端只跟 finance-gateway(8088) 说话，
+      // 由网关按路径转发：/api/user/** + /*/core/** → service-core、
+      // /api/oss/file/** → service-oss、/api/sms/** → service-sms、/ai/** → 8081。
+      // 这样「网关」才真正被使用；否则它只是一条没人走的路。
+      // 排障/自测需要绕过网关直连后端时，用环境变量覆盖即可（如
+      // VITE_API_TARGET=http://localhost:8991 起一个隔离实例）。
       '/api': {
-        target: process.env.VITE_API_TARGET || 'http://localhost:8990',
+        target: process.env.VITE_API_TARGET || 'http://localhost:8088',
         changeOrigin: true,
       },
       '/ai': {
-        target: process.env.VITE_AI_TARGET || 'http://localhost:8081',
+        target: process.env.VITE_AI_TARGET || 'http://localhost:8088',
         changeOrigin: true,
       },
     },

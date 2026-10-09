@@ -74,10 +74,48 @@
             <groupId>org.example</groupId>
             <artifactId>finance-common</artifactId>
         </dependency>
+
+        <!-- ================= 2026-10-08：finance-base 依赖「显式化」 =================
+             原先 api 依赖 org.example:finance-base，但代码里 **零** import com.wwfinance.base。
+             它其实是「传递承重的黑盒」，替 api 带入了下面这些 api 自己没声明的库；
+             直接删会编译失败，因此改为逐条显式声明（保持 classpath 等价）。
+             同时丢掉 api 用不到的部分：sentinel 全家桶（yml 里 autoconfig 已显式排除、代码 0 引用）、
+             commons-pool2（api 未配置 lettuce/jedis 连接池）、jackson-jsr310（starter-web 已带）。 -->
+        <!-- 服务调用：DemoApplication 的 @EnableFeignClients + client/SMSApiSmsClient 的 @FeignClient -->
         <dependency>
-            <groupId>org.example</groupId>
-            <artifactId>finance-base</artifactId>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+            <!-- 版本由 spring-cloud BOM (Hoxton.SR8) 管理 = 2.2.5.RELEASE -->
         </dependency>
+        <!-- Swagger 注解处理：config/SwaggerConfig 的 @EnableSwagger2 -->
+        <dependency>
+            <groupId>io.springfox</groupId>
+            <artifactId>springfox-swagger2</artifactId>
+            <!-- 版本由根 pom swagger.version = 2.9.2 -->
+        </dependency>
+        <!-- Swagger 文档 UI：/doc.html、/webjars/**（见 MyWebConfig.addResourceHandlers）。
+             swagger-bootstrap-ui 与 knife4j 原先都由 finance-base 带入，行为上「两个都留着」才与改动前一致 -->
+        <dependency>
+            <groupId>io.springfox</groupId>
+            <artifactId>springfox-swagger-ui</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.xiaoymin</groupId>
+            <artifactId>swagger-bootstrap-ui</artifactId>
+            <version>1.9.2</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.xiaoymin</groupId>
+            <artifactId>knife4j-spring-boot-starter</artifactId>
+            <version>${knife4j.version}</version>
+        </dependency>
+        <!-- JSON：Bank/RequestHelper、service/impl/LendReturnServiceImpl 使用 com.alibaba.fastjson -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>fastjson</artifactId>
+            <!-- 版本由根 pom fastjson.version = 1.2.72 -->
+        </dependency>
+        <!-- ================= finance-base 显式化结束 ================= -->
         <!-- 引用父 POM 中管理的 JAXB 版本 -->
         <dependency>
             <groupId>javax.xml.bind</groupId>

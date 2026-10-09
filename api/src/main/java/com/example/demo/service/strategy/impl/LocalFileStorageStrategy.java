@@ -7,7 +7,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,22 +46,21 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
         String newFileName = generateFileName(category, extension);
 
         try {
-            String categoryPath = basePath + File.separator + category;
-            Path dirPath = Paths.get(categoryPath);
+            // 路径穿越防护：目录与文件名一并经 normalize 校验，越出 basePath 即拒绝
+            Path dirPath = resolveSafePath(category);
 
             if (!Files.exists(dirPath)) {
                 Files.createDirectories(dirPath);
-                log.info("创建目录: {}", categoryPath);
+                log.info("创建目录: {}", dirPath);
             }
 
-            String filePath = categoryPath + File.separator + newFileName;
-            Path targetPath = Paths.get(filePath);
+            Path targetPath = resolveSafePath(category + "/" + newFileName);
 
             Files.write(targetPath, fileBytes);
 
             String fileUrl = urlPrefix + "/" + category + "/" + newFileName;
 
-            log.info("本地文件上传成功(byte[]): {} -> {}", newFileName, filePath);
+            log.info("本地文件上传成功(byte[]): {} -> {}", newFileName, targetPath);
             return fileUrl;
         } catch (IOException e) {
             log.error("本地文件上传失败: {}", e.getMessage(), e);
@@ -73,24 +71,21 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
     @Override
     public String uploadWithCustomName(MultipartFile file, String category, String customFileName) {
         try {
-            // category 允许带子目录（如 images/u33），统一成本地分隔符再拼盘路径
-            String normalizedCategory = category.replace("/", File.separator);
-            String categoryPath = basePath + File.separator + normalizedCategory;
-            Path dirPath = Paths.get(categoryPath);
+            // category 允许带子目录（如 images/u33）；resolveSafePath 同时完成拼盘与越界校验
+            Path dirPath = resolveSafePath(category);
 
             if (!Files.exists(dirPath)) {
                 Files.createDirectories(dirPath);
-                log.info("创建目录: {}", categoryPath);
+                log.info("创建目录: {}", dirPath);
             }
 
-            String filePath = categoryPath + File.separator + customFileName;
-            Path targetPath = Paths.get(filePath);
+            Path targetPath = resolveSafePath(category + "/" + customFileName);
 
             Files.copy(file.getInputStream(), targetPath);
 
             String fileUrl = urlPrefix + "/" + category + "/" + customFileName;
 
-            log.info("本地文件上传成功: {} -> {}", customFileName, filePath);
+            log.info("本地文件上传成功: {} -> {}", customFileName, targetPath);
             return fileUrl;
         } catch (IOException e) {
             log.error("本地文件上传失败: {}", e.getMessage(), e);
@@ -140,14 +135,13 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
             }
 
             String relativePath = fileUrl.replace(urlPrefix + "/", "");
-            String fullPath = basePath + File.separator + relativePath.replace("/", File.separator);
+            Path path = resolveSafePath(relativePath);
 
-            Path path = Paths.get(fullPath);
             if (Files.exists(path)) {
                 Files.delete(path);
-                log.info("本地文件删除成功: {}", fullPath);
+                log.info("本地文件删除成功: {}", path);
             } else {
-                log.warn("要删除的文件不存在: {}", fullPath);
+                log.warn("要删除的文件不存在: {}", path);
             }
         } catch (IOException e) {
             log.error("本地文件删除失败: {}", e.getMessage(), e);
@@ -159,8 +153,7 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
     public boolean exists(String fileUrl) {
         try {
             String relativePath = fileUrl.replace(urlPrefix + "/", "");
-            String fullPath = basePath + File.separator + relativePath.replace("/", File.separator);
-            return Files.exists(Paths.get(fullPath));
+            return Files.exists(resolveSafePath(relativePath));
         } catch (Exception e) {
             log.error("检查文件存在性失败: {}", e.getMessage());
             return false;
@@ -172,14 +165,13 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
         Map<String, Object> info = new HashMap<>();
         try {
             String relativePath = fileUrl.replace(urlPrefix + "/", "");
-            String fullPath = basePath + File.separator + relativePath.replace("/", File.separator);
-            Path path = Paths.get(fullPath);
+            Path path = resolveSafePath(relativePath);
 
             if (Files.exists(path)) {
                 info.put("exists", true);
                 info.put("size", Files.size(path));
                 info.put("lastModified", Files.getLastModifiedTime(path).toInstant().toEpochMilli());
-                info.put("path", fullPath);
+                info.put("path", path.toString());
             } else {
                 info.put("exists", false);
             }
@@ -189,6 +181,24 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
             info.put("error", e.getMessage());
         }
         return info;
+    }
+
+    /**
+     * 路径穿越防护核心：把相对路径解析为绝对路径并 normalize，
+     * 若结果逃逸出 basePath 则拒绝。所有文件读写必须经过此方法。
+     *
+     * <p>与 finance-oss 的 {@code FileServiceImpl#resolveSafePath} 同构。此前 api 版本只有
+     * 「前端传参里含 {@code ..} 就拒绝」这类粗检，而 category / 自定义文件名 / URL 三段
+     * 都是直接字符串拼接，任何一段带分隔符即可越界。</p>
+     */
+    private Path resolveSafePath(String relativePath) {
+        Path base = Paths.get(basePath).toAbsolutePath().normalize();
+        Path target = base.resolve(relativePath).normalize();
+        if (!target.startsWith(base)) {
+            log.warn("拒绝越界路径: base={}, relative={}", base, relativePath);
+            throw new IllegalArgumentException("非法路径：" + relativePath);
+        }
+        return target;
     }
 
     private String generateFileName(String category, String extension) {

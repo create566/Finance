@@ -34,6 +34,19 @@ services:
       - redis_data:/data
     restart: unless-stopped
 
+# ---------------------------------------------------------------------------
+# 注意：本项目的 Nacos 注册中心**不在本 compose 内**，而是宿主机上的独立安装：
+#   安装目录  D:\nacos\nacos-dist\nacos      （2.2.3，由 D:\nacos\nacos-src-2.2.3.zip 源码构建）
+#   启动脚本  D:\nacos\nacos-dist\nacos\start-standalone.bat
+#   监听端口  8848（HTTP API + 控制台 /nacos）、9848 / 9849（Nacos 2.x gRPC）
+#   关键配置  conf\application.properties → server.port=8848、nacos.core.auth.enabled=false
+# 因鉴权是关闭的，工程 yml 里**不再写** nacos 账号密码 —— 实测写了反而有害：
+# auth 关闭时 /nacos/v1/auth/users/login 恒失败（默认口令 500、自定义口令 403 user not found），
+# 客户端会每 2 秒重试并刷 SecurityProxy ERROR 日志。详见 api/application.yml 同处注释。
+# 2026-10-08 实测：该实例已在运行，v1 OpenAPI 正常；工程客户端是 nacos-client 1.4.x
+# （走 v1 HTTP 注册与心跳），而 Nacos 2.x 服务端完整保留 v1 OpenAPI，可直接注册成功。
+# 之所以不把 Nacos 塞进 compose：8848 已被上述宿主机实例占用，容器再起会端口冲突。
+# ---------------------------------------------------------------------------
 volumes:
   chroma_data:
   redis_data:

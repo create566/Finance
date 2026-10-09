@@ -6,8 +6,9 @@ spring:
 
   cloud:
     nacos:
-      username: nacos
-      password: shangqiuqwjk832
+      # ⚠ 不要写 username/password：本机 Nacos 2.2.3 已关鉴权
+      # （nacos.core.auth.enabled=false），其登录接口恒失败（500 / 403 user not found），
+      # 配了账号只会让客户端每 2 秒重试并刷 ERROR 日志。详见 api/application.yml 同处注释。
       discovery:
         server-addr: 127.0.0.1:8848 # nacos服务地址
         # 配置命名空间

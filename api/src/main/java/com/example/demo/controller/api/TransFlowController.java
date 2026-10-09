@@ -3,7 +3,7 @@ package com.example.demo.controller.api;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.example.demo.entity.TransFlow;
 import com.example.demo.service.TransFlowService;
-import com.example.demo.utils.LoginUserContext;
+import com.wwfinance.common.utils.LoginUserContext;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;

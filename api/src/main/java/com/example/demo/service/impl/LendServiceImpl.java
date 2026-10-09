@@ -96,6 +96,9 @@ public class LendServiceImpl extends ServiceImpl<LendMapper, Lend> implements Le
         // 真正把关在放款前（LendReturnServiceImpl.buildMakeLoanForm 的关口三）。
         contractService.getOrCreate(ContractBizTypeEnum.LEND, lend.getId(),
                 ContractTypeEnum.PAYMENT, lend.getUserId());
+        // 【P9-60】借款人侧《居间服务协议》也在建标时预生成（幂等；模板缺失时返回 null）。
+        // 发布时由 publish() 做强校验，与《借款合同》同一道关口。
+        contractService.getOrCreateUserAgreement(ContractTypeEnum.SERVICE, lend.getUserId());
         return lend;
     }
 
@@ -153,7 +156,8 @@ public class LendServiceImpl extends ServiceImpl<LendMapper, Lend> implements Le
         // 1. 下架即退出募集，已投的钱必须原路退回。
         //    此前这里只翻状态位：投资人的钱一直冻在银行、合同停在"待签署"、双方都收不到通知。
         //    待发布(0)的标的本就没有投资记录，此处为空跑。
-        List<LendItem> items = withdrawAllInvestments(lend);
+        List<LendItem> items = withdrawAllInvestments(lend,
+                adminId == null ? "超期未签退款" : "标的已下架退款");
 
         // 2. 作废该标下所有"待签署"合同（预生成的《借款合同》+ 已产生的《出借协议》）。
         //    已签署的合同按业务不可单方作废，单独兜住，绝不因一份脏数据阻断整笔下架。
@@ -201,18 +205,20 @@ public class LendServiceImpl extends ServiceImpl<LendMapper, Lend> implements Le
     /**
      * 把某标的下所有"已投标(0)"记录批量撤标，并退还投资人被冻结的资金。
      *
-     * <p>平台不持资金：这里只把投资记录置为"已撤标(1)"，银行侧依据冻结关系自动解冻，
-     * 与 {@code LendItemServiceImpl#cancelInvest} 是同一套机制。同时清零标的已投金额、
-     * 删除 Redis 剩余额度缓存，避免标的下架/流标后缓存里仍留着可投余额。</p>
+     * <p>平台不持资金：银行侧依据冻结关系自动解冻；平台侧则必须由本方法把镜像余额对称加回
+     * （【P4-19】）。退资动作统一委托给 {@code LendItemServiceImpl#refundInvestment}，
+     * 与用户主动撤标 {@code LendItemServiceImpl#cancelInvest} 是同一套机制。
+     * 同时清零标的已投金额、删除 Redis 剩余额度缓存，避免标的下架/流标后缓存里仍留着可投余额。</p>
      *
      * <p>撤标范围必须覆盖 <b>投标中(0)</b> 与 <b>满标待放款(2)</b> 两种记录：
      * 满标时 {@code LendItemServiceImpl} 会把该标的全部投资统一置为 2，
      * 只捞 status=0 的话，"满标待放款"标的退资会静默空跑 —— 投资人资金冻在银行
      * 却一笔都没退，且没有任何报错。</p>
      *
+     * @param reason 退款原因，写入流水备注，便于与银行逐笔对账
      * @return 被撤标的投资记录（供调用方逐个发通知，因此不在此处发投资人消息）
      */
-    private List<LendItem> withdrawAllInvestments(Lend lend) {
+    private List<LendItem> withdrawAllInvestments(Lend lend, String reason) {
         List<LendItem> items = lendItemService.list(new LambdaQueryWrapper<LendItem>()
                 .eq(LendItem::getLendId, lend.getId())
                 .in(LendItem::getStatus, 0, 2));
@@ -220,15 +226,14 @@ public class LendServiceImpl extends ServiceImpl<LendMapper, Lend> implements Le
             return items;
         }
         for (LendItem item : items) {
-            item.setStatus(1);
-            item.setUpdateTime(LocalDateTime.now());
-            lendItemService.updateById(item);
+            // 【P4-19】翻状态 + 回补平台镜像余额 + 落退款流水，三件事在同一事务内完成
+            lendItemService.refundInvestment(item, reason + " " + lend.getLendNo());
         }
         lend.setInvestAmount(BigDecimal.ZERO);
         lend.setUpdateTime(LocalDateTime.now());
         this.updateById(lend);
         redisTemplate.delete(LEFT_AMOUNT_KEY + lend.getId());
-        log.info("标的 {} 已退还 {} 笔投资，冻结资金由银行侧自动解冻", lend.getId(), items.size());
+        log.info("标的 {} 已退还 {} 笔投资（含镜像余额回补），冻结资金由银行侧自动解冻", lend.getId(), items.size());
         return items;
     }
 
@@ -273,6 +278,9 @@ public class LendServiceImpl extends ServiceImpl<LendMapper, Lend> implements Le
         // 签署关口一：借款人未签《借款合同》不允许上架募资（合同在 createLend 时已预生成）
         contractService.assertSigned(ContractBizTypeEnum.LEND, lendId,
                 ContractTypeEnum.LOAN, lend.getUserId(), null);
+        // 【P9-60】借款人还须先签《居间服务协议》—— 它是平台收取撮合服务费的合同依据，
+        // 也是"平台仅居间、不兜底"的责任边界依据。用户级一次性协议，首次发标签一次即可。
+        contractService.assertUserAgreementSigned(ContractTypeEnum.SERVICE, lend.getUserId());
         // 《放款确认书》**不在此处强制校验**。
         //     它是"确认放款、授权划款"的意思表示，标的尚未募满就要求借款人确认放款，
         //     法理上说不通，也不符合行业惯例。正确时机是"满标后、放款前"，
@@ -346,7 +354,7 @@ public class LendServiceImpl extends ServiceImpl<LendMapper, Lend> implements Le
         }
 
         // 1~2. 批量标记为已撤标(1)，银行自动解冻投资人冻结资金（与"下架"共用同一套逻辑）
-        List<LendItem> items = withdrawAllInvestments(lend);
+        List<LendItem> items = withdrawAllInvestments(lend, "标的流标退款");
 
         // 3. 标的已投金额清零，状态改为已流标
         lend.setInvestAmount(BigDecimal.ZERO);

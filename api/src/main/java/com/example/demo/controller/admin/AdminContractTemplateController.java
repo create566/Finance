@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.demo.entity.ContractTemplate;
 import com.example.demo.enums.ContractTypeEnum;
 import com.example.demo.service.ContractTemplateService;
+import com.wwfinance.common.auth.AdminRoles;
+import com.wwfinance.common.auth.RequireAdminRole;
 import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
@@ -75,6 +77,8 @@ public class AdminContractTemplateController {
 
     @ApiOperation("新增模板")
     @PostMapping
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "合同模板影响全体用户新签合同，仅限超级管理员")
     public PccAjaxResult create(@RequestBody ContractTemplate tpl) {
         try {
             return new PccAjaxResult(200, "新增成功", contractTemplateService.saveTemplate(tpl));
@@ -88,6 +92,8 @@ public class AdminContractTemplateController {
 
     @ApiOperation("修改模板（生成新版本，不覆盖历史）")
     @PutMapping("/{id}")
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "合同模板影响全体用户新签合同，仅限超级管理员")
     public PccAjaxResult update(@PathVariable Long id, @RequestBody ContractTemplate tpl) {
         try {
             return new PccAjaxResult(200, "修改成功，已生成新版本", contractTemplateService.updateTemplate(id, tpl));
@@ -101,6 +107,8 @@ public class AdminContractTemplateController {
 
     @ApiOperation("启用/停用模板")
     @PutMapping("/{id}/status")
+    @RequireAdminRole(value = AdminRoles.SUPER_ADMIN,
+            message = "合同模板影响全体用户新签合同，仅限超级管理员")
     public PccAjaxResult toggleStatus(@PathVariable Long id,
                                       @ApiParam("1启用 0停用") @RequestParam Integer status) {
         try {

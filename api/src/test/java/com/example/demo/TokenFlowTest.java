@@ -2,7 +2,7 @@ package com.example.demo;
 
 import com.example.demo.client.SMSApiSmsClient;
 import com.wwfinance.common.result.PccAjaxResult;
-import com.example.demo.utils.TokenUtil;
+import com.wwfinance.common.utils.TokenUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.MethodOrderer;

@@ -1,4 +1,3 @@
-import request from '../utils/request'
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios'
 
 // 从 cookie 读取用户登录 token（与 src/utils/request.ts 同一份数据）
@@ -47,20 +46,6 @@ export interface ChatMessage {
   createTime?: string
 }
 
-export interface ChatSession {
-  id?: number
-  userId?: number
-  userPhone?: string
-  userName?: string
-  title?: string
-  modelName?: string
-  kbName?: string
-  status?: number
-  createTime?: string
-  updateTime?: string
-  messages?: ChatMessage[]
-}
-
 export interface KnowledgeBase {
   id?: number
   name?: string
@@ -70,26 +55,33 @@ export interface KnowledgeBase {
   status?: number
 }
 
-// ========== API模块：会话/消息 CRUD ==========
+// ========== AI模块：会话/消息 ==========
 
-export function createSession(data: { userId?: number; title?: string }): Promise<ChatSession> {
-  return request({ url: '/core/chat/session/create', method: 'post', data })
+/**
+ * 解开 Result 信封：AI 模块的业务失败也是 **HTTP 200 + code!==200**，
+ * 而 aiRequest 的响应拦截器只处理 401 —— 不在这里显式抛错的话，
+ * 调用方的 try/catch 永远不触发，界面会显示"成功"或干脆毫无反应。
+ */
+function unwrap<T>(body: any): T {
+  if (body && typeof body === 'object' && typeof body.code === 'number' && body.code !== 200) {
+    throw new Error(body.msg || `请求失败(code ${body.code})`)
+  }
+  return (body?.data ?? null) as T
 }
 
-export function sendMessage(data: { sessionId: number; content: string; role?: string; userId?: number }): Promise<ChatMessage> {
-  return request({ url: '/core/chat/message/send', method: 'post', data })
-}
-
-export function getMessages(sessionId: number): Promise<ChatMessage[]> {
-  return request({ url: '/core/chat/message/list', method: 'get', params: { sessionId } })
-}
-
-export function getMySessions(userId: number): Promise<{ list: ChatSession[]; total: number }> {
-  return request({ url: '/core/chat/session/list', method: 'get', params: { userId } })
-}
-
-export function closeSession(sessionId: number): Promise<null> {
-  return request({ url: `/core/chat/session/${sessionId}/close`, method: 'put' })
+/**
+ * 结束会话（status → 1）。
+ *
+ * <p>走 AI 模块 —— 会话数据在 Mongo，关闭必须落在这里。</p>
+ *
+ * <p><b>2026-10-08 修复</b>：原实现调 `/core/chat/session/{id}/close`
+ * （api 的 MySQL 遗留链路），但传入的是 Mongo 的 sessionId，
+ * 且该表 54 行全属 user_id=1 ⇒ 真实用户恒失败（实测 code 500），
+ * 加上页面把错误当成"用户取消"吞掉，表现为「点了确定毫无反应」。</p>
+ */
+export async function closeSession(sessionId: number): Promise<null> {
+  const res = await aiRequest.put(`/sessions/${sessionId}/close`)
+  return unwrap<null>(res.data)
 }
 
 // ========== AI模块：同步问答 ==========
@@ -140,8 +132,10 @@ export function getAiSessions(): Promise<{ list: ChatSessionItem[]; total: numbe
 }
 
 // 删除当前用户的一个历史会话（连同消息一起删除）
-export function deleteAiSession(sessionId: number): Promise<null> {
-  return aiRequest.delete(`/sessions/${sessionId}`).then(res => res.data.data)
+// 用 unwrap：业务失败必须抛错，否则调用方的 catch 不触发、界面会误报"已删除"
+export async function deleteAiSession(sessionId: number): Promise<null> {
+  const res = await aiRequest.delete(`/sessions/${sessionId}`)
+  return unwrap<null>(res.data)
 }
 
 // ========== AI模块：SSE 流式问答 ==========

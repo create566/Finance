@@ -2,7 +2,7 @@ package com.example.demo.controller.api;
 
 import com.example.demo.entity.dto.TransAmountDto;
 import com.example.demo.service.UserAccountService;
-import com.example.demo.utils.LoginUserContext;
+import com.wwfinance.common.utils.LoginUserContext;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;

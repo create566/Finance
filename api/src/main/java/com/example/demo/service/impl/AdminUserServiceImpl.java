@@ -6,7 +6,8 @@ import com.example.demo.exception.BusinessException;
 import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.example.demo.mapper.SysAdminMapper;
 import com.example.demo.service.AdminUserService;
-import com.example.demo.utils.TokenUtil;
+import com.wwfinance.common.auth.AdminRoles;
+import com.wwfinance.common.utils.TokenUtil;
 import com.wwfinance.common.utils.MD5;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,7 +48,8 @@ public class AdminUserServiceImpl implements AdminUserService {
             admin.setPassword(passwordEncoder.encode(password));
             sysAdminMapper.updateById(admin);
         }
-        String token = TokenUtil.generateAdminToken(admin.getId().toString(), admin.getUsername());
+        String token = TokenUtil.generateAdminToken(
+                admin.getId().toString(), admin.getUsername(), admin.getRole());
         // Redis key 按角色命名空间隔离，避免与前台用户（user 表）主键冲突导致会话互踢
         stringRedisTemplate.opsForValue().set("login:token:admin:" + admin.getId(), token, TOKEN_TTL, TimeUnit.SECONDS);
         log.info("管理员 {} 登录成功", admin.getUsername());
@@ -65,6 +67,10 @@ public class AdminUserServiceImpl implements AdminUserService {
         info.put("username", admin.getUsername());
         info.put("nickname", admin.getName());
         info.put("avatar", admin.getAvatar());
+        // 前端据此决定是否渲染"放款 / 下架 / 作废合同"等高危按钮，避免点了才被 403。
+        // 仅作展示优化，真正的闸门在 JwtAuthInterceptor 的 @RequireAdminRole 校验。
+        info.put("role", AdminRoles.normalize(admin.getRole()));
+        info.put("superAdmin", AdminRoles.SUPER_ADMIN.equals(AdminRoles.normalize(admin.getRole())));
         return info;
     }
 

@@ -133,17 +133,20 @@ public class UserAccountServiceImpl implements UserAccountService {
         BalanceGuard.requirePositive(amount, "提现");
 
         BigDecimal balance = bankAccountSyncService.getBankBalance(userId);
-        BigDecimal pendingWithdraw = sumPendingWithdraw(userId);
-        BigDecimal available = balance.subtract(pendingWithdraw);
+        // 【P0-1】可用额统一走 BankAccountSyncService.getAvailableBalance：
+        // 银行余额 − 全部扣款类在途（提现 + 投标 + 还款）。
+        // 原来这里只扣"在途提现"，用户在途的投标/还款额度会被重复算成可用 → 并发即透支。
+        BigDecimal available = bankAccountSyncService.getAvailableBalance(userId);
+        BigDecimal pending = bankAccountSyncService.getPendingDebitAmount(userId);
 
-        // 余额本身够、但被在途提现占满了 —— 直接套用 BalanceGuard 的话用户会看到
+        // 余额本身够、但被在途单子占满了 —— 直接套用 BalanceGuard 的话用户会看到
         // "当前可用 ¥0" 而自己的余额明明是 1000，务必给出可解释的原因。
-        if (pendingWithdraw.compareTo(BigDecimal.ZERO) > 0
+        if (pending.compareTo(BigDecimal.ZERO) > 0
                 && available.compareTo(amount) < 0
                 && balance.compareTo(amount) >= 0) {
             throw new BusinessException(400, String.format(
-                    "提现失败：您有 ¥%s 提现在途（待银行处理），扣除后可用 ¥%s，本次需 ¥%s。请等待在途提现处理完成后再试。",
-                    pendingWithdraw.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString(),
+                    "提现失败：您有 ¥%s 资金在途（提现/投标/还款待银行处理），扣除后可用 ¥%s，本次需 ¥%s。请等待在途资金处理完成后再试。",
+                    pending.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString(),
                     available.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString(),
                     amount.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()));
         }

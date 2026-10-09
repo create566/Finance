@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import com.example.demo.utils.PageUtils;
 
@@ -131,6 +132,83 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
         return this.count(new LambdaQueryWrapper<TransFlow>()
                 .eq(TransFlow::getTransNo, transNo)
                 .ne(TransFlow::getStatus, TransStatusEnum.PROCESSING.getCode())) > 0;
+    }
+
+    @Override
+    public void savePending(Long userId, TransTypeEnum type, BigDecimal amount, String memo, String transNo) {
+        if (transNo == null || transNo.isEmpty()) {
+            log.warn("在途流水缺少业务单号，跳过占位，userId={}, type={}", userId, type);
+            return;
+        }
+        // 幂等：不能只看"同单号存在"，必须**分状态**处理 ——
+        //   · PROCESSING / SUCCESS → 跳过（前者已在占位，后者已完成，都不能再占）
+        //   · FAILED              → 重新激活为 PROCESSING，允许重试
+        // 典型场景：银行拒了一笔还款（等式校验失败等）→ 流水被置为 FAILED；
+        // 用户重试时若直接跳过占位，① 可用额占不住，并发保护失效；
+        // ② 重试成功后 settlePending 找不到 PROCESSING 流水可结算 ⇒ 成功流水丢失，对账缺一笔。
+        List<TransFlow> exists = this.list(new LambdaQueryWrapper<TransFlow>()
+                .eq(TransFlow::getTransNo, transNo));
+        if (!exists.isEmpty()) {
+            TransFlow first = exists.get(0);
+            Integer status = first.getStatus();
+            if (TransStatusEnum.PROCESSING.getCode().equals(status)
+                    || TransStatusEnum.SUCCESS.getCode().equals(status)) {
+                log.info("在途流水已存在（处理中/已成功），跳过重复占位，transNo={}, status={}", transNo, status);
+                return;
+            }
+            if (TransStatusEnum.FAILED.getCode().equals(status)) {
+                first.setStatus(TransStatusEnum.PROCESSING.getCode());
+                first.setTransAmount(amount);
+                first.setMemo(memo);
+                first.setUpdateTime(LocalDateTime.now());
+                this.updateById(first);
+                log.info("上次占位流水已失败，本次重试重新激活为处理中，transNo={}", transNo);
+                return;
+            }
+        }
+        User user = userService.getById(userId);
+        String userName = user != null ? (user.getName() != null ? user.getName() : user.getMobile()) : "";
+        TransFlow flow = new TransFlow();
+        flow.setUserId(userId);
+        flow.setUserName(userName);
+        flow.setTransNo(transNo);
+        flow.setTransType(type.getCode());
+        flow.setTransTypeName(type.getDesc());
+        flow.setTransAmount(amount);
+        flow.setMemo(memo);
+        flow.setStatus(TransStatusEnum.PROCESSING.getCode());
+        LocalDateTime now = LocalDateTime.now();
+        flow.setCreateTime(now);
+        flow.setUpdateTime(now);
+        this.save(flow);
+        log.info("在途流水已占位，transNo={}, userId={}, type={}, amount={}", transNo, userId, type.getDesc(), amount);
+    }
+
+    @Override
+    public void settlePending(String transNo, boolean success) {
+        if (transNo == null || transNo.isEmpty()) {
+            return;
+        }
+        // 只从「处理中 / 已失败」结算到终态：
+        //   · 含 FAILED —— 失败后重试成功时，要把那条失败流水翻成成功，否则丢一笔成功流水；
+        //   · 不含 SUCCESS —— 防止迟到的失败回调把已成功的流水又改回失败。
+        List<TransFlow> flows = this.list(new LambdaQueryWrapper<TransFlow>()
+                .eq(TransFlow::getTransNo, transNo)
+                .in(TransFlow::getStatus, java.util.Arrays.asList(
+                        TransStatusEnum.PROCESSING.getCode(),
+                        TransStatusEnum.FAILED.getCode())));
+        if (flows.isEmpty()) {
+            log.warn("未找到可结算的在途流水（可能已是终态或从未占位），transNo={}", transNo);
+            return;
+        }
+        TransStatusEnum target = success ? TransStatusEnum.SUCCESS : TransStatusEnum.FAILED;
+        LocalDateTime now = LocalDateTime.now();
+        for (TransFlow f : flows) {
+            f.setStatus(target.getCode());
+            f.setUpdateTime(now);
+            this.updateById(f);
+        }
+        log.info("在途流水已结算，transNo={}, count={}, status={}", transNo, flows.size(), target.getDesc());
     }
 
     /**

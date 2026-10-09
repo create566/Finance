@@ -153,12 +153,25 @@ export function publishLoan(id: number): Promise<null> {
 }
 
 // 满标放款 - 已对接后端
-// PUT /admin/core/loan/project/{id}/makeLoan → 返回 { formHtml } 自动提交银行表单
-export function makeLoan(id: number): Promise<string> {
+// PUT /admin/core/loan/project/{id}/makeLoan
+// 服务端直连银行同步放款：返回 { success, message, agentBillNo, resultCode, bankResponse }
+// 注：银行的放款接口是同步 JSON，不像充值/投标那样有异步回调，
+//     所以这里不再返回 formHtml 让浏览器跳银行（那样平台永远收不到结果）。
+export interface MakeLoanResult {
+  lendId: number
+  agentBillNo: string
+  resultCode: string
+  resultMsg: string
+  success: boolean
+  message: string
+  bankResponse: Record<string, any> | null
+}
+
+export function makeLoan(id: number): Promise<MakeLoanResult> {
   return request({
     url: `/loan/project/${id}/makeLoan`,
     method: 'put',
-  }).then((data: any) => data.formHtml as string)
+  }).then((data: any) => data as MakeLoanResult)
 }
 
 // 获取标的的投资列表 - 已对接后端

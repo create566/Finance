@@ -1,9 +1,9 @@
 import { request } from '@/utils/request'
 
-/** 合同类型：借款合同 / 出借协议 / 放款确认书 */
-export type ContractType = 'LOAN' | 'INVEST' | 'PAYMENT'
+/** 合同类型：借款合同 / 出借协议 / 放款确认书 / 居间服务协议 / 资金存管协议 */
+export type ContractType = 'LOAN' | 'INVEST' | 'PAYMENT' | 'SERVICE' | 'DEPOSIT'
 /** 合同关联的业务类型 */
-export type ContractBizType = 'LEND' | 'BORROW_INFO' | 'LEND_ITEM'
+export type ContractBizType = 'LEND' | 'BORROW_INFO' | 'LEND_ITEM' | 'USER'
 
 export interface Contract {
   id: number
@@ -51,6 +51,11 @@ export interface ContractDetail {
   signRecord: ContractSignRecord | null
   /** 后端重算快照哈希与存证哈希比对结果，false 代表正文被改动过 */
   hashValid: boolean
+  /**
+   * 当前用户是否是本合同的签署方（甲方或乙方）。
+   * 《借款合同》《放款确认书》对投资人是"只读可见"：能看，但 signable=false，不给签署入口。
+   */
+  signable: boolean
 }
 
 export interface ContractPrepareResult {
@@ -105,6 +110,17 @@ export function getContractDetail(contractId: number): Promise<ContractDetail> {
   })
 }
 
+/**
+ * 导出合同正文（返回 fileName + content，由前端拼成文件下载）。
+ * 用 JSON 而非 blob：与项目既有 request 封装（统一 token / 错误包）保持一致，避免另开一条下载通道。
+ */
+export function exportContract(contractId: number): Promise<{ fileName: string; content: string }> {
+  return request<{ fileName: string; content: string }>({
+    url: `/core/contract/auth/export/${contractId}`,
+    method: 'get',
+  })
+}
+
 /** 提交手写签名（signImgBase64 支持 data:image/png;base64,... 或裸 base64） */
 export function signContract(data: {
   contractId: number
@@ -139,6 +155,8 @@ export const CONTRACT_TYPE_META: Record<ContractType, { text: string; tag: strin
   LOAN: { text: '借款合同', tag: 'warning', hint: '标的发布募资前须由借款人签署' },
   INVEST: { text: '出借协议', tag: 'primary', hint: '投资下单前须由投资人签署' },
   PAYMENT: { text: '放款确认书', tag: 'success', hint: '满标放款前须由借款人签署' },
+  SERVICE: { text: '居间服务协议', tag: 'info', hint: '平台↔用户：约定撮合服务与责任边界，首次发标/投标前须签署' },
+  DEPOSIT: { text: '资金存管协议', tag: 'info', hint: '用户↔存管银行：开立存管账户前须签署' },
 }
 
 /** 合同状态展示元数据 */

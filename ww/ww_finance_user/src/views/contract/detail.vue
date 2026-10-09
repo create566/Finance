@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getContractDetail,
   signContract,
+  exportContract,
   CONTRACT_TYPE_META,
   CONTRACT_STATUS_META,
   contractTypeText,
@@ -41,6 +42,39 @@ const isLargeAmount = computed(() => {
   return a !== null && a !== undefined && Number(a) >= LARGE_AMOUNT
 })
 
+/**
+ * 是否是本合同的签署方。
+ * 《借款合同》《放款确认书》的乙方是"全体出借人"（party_b_id 为空），
+ * 投资人能看到它（只读可见）但无权签 —— 由后端 detail 返回的 signable 决定，
+ * 前后端同一判据，避免前端凭 partyBName 之类的展示字段猜。
+ */
+const isSignable = computed(() => detail.value?.signable === true)
+
+/** 甲乙方标签随合同类型变化：《借款合同》甲方是借款人，别一律写成"出借方" */
+const partyALabel = computed(() => {
+  switch (contract.value?.contractType) {
+    case 'INVEST':
+      return '甲方（出借人 / 投资人）'
+    case 'SERVICE':
+    case 'DEPOSIT':
+      return '甲方（用户）'
+    default:
+      return '甲方（借款人）'
+  }
+})
+const partyBLabel = computed(() => {
+  switch (contract.value?.contractType) {
+    case 'INVEST':
+      return '乙方（借款人）'
+    case 'SERVICE':
+      return '乙方（居间服务方）'
+    case 'DEPOSIT':
+      return '乙方（存管方）'
+    default:
+      return '乙方（全体出借人）'
+  }
+})
+
 async function fetchDetail() {
   loading.value = true
   try {
@@ -54,6 +88,25 @@ async function fetchDetail() {
 
 function openSignDialog() {
   signDialogVisible.value = true
+}
+
+/** 导出合同正文为本地文件（P9-65）。用 Blob 落地，避免另开一条 blob 下载通道 */
+async function handleExport() {
+  if (!contract.value) return
+  try {
+    const res = await exportContract(contractId)
+    const blob = new Blob([res.content ?? ''], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = res.fileName || `${contract.value.contractNo}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch {
+    // request.ts 已统一提示
+  }
 }
 
 function closeSignDialog() {
@@ -128,17 +181,21 @@ onMounted(async () => {
             <p class="tip">{{ typeMeta.hint }}</p>
           </div>
           <div class="head-actions">
-            <el-button v-if="!isSigned && !isRevoked" type="danger" size="large" @click="openSignDialog">
+            <el-button size="large" @click="handleExport">下载合同</el-button>
+            <el-button v-if="!isSigned && !isRevoked && isSignable" type="danger" size="large" @click="openSignDialog">
               立即签署
             </el-button>
+            <el-tag v-else-if="!isSigned && !isRevoked && !isSignable" type="info" size="large">
+              非签署方（只读）
+            </el-tag>
           </div>
         </div>
 
         <el-descriptions :column="2" border class="meta">
           <el-descriptions-item label="合同编号">{{ contract.contractNo }}</el-descriptions-item>
           <el-descriptions-item label="合同类型">{{ contractTypeText(contract.contractType) }}</el-descriptions-item>
-          <el-descriptions-item label="甲方（出借方）">{{ contract.partyAName || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="乙方（借款方）">{{ contract.partyBName || '—' }}</el-descriptions-item>
+          <el-descriptions-item :label="partyALabel">{{ contract.partyAName || '-' }}</el-descriptions-item>
+          <el-descriptions-item :label="partyBLabel">{{ contract.partyBName || '—' }}</el-descriptions-item>
           <el-descriptions-item label="合同金额">
             <span v-if="contract.amount !== null" class="money">¥{{ Number(contract.amount).toFixed(2) }}</span>
             <span v-else>-</span>

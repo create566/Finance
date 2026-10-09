@@ -98,6 +98,8 @@ export const CONTRACT_TYPE_META: Record<string, { label: string; tag: string }> 
   LOAN: { label: '借款合同', tag: 'primary' },
   INVEST: { label: '出借协议', tag: 'success' },
   PAYMENT: { label: '放款确认书', tag: 'warning' },
+  SERVICE: { label: '居间服务协议', tag: 'info' },
+  DEPOSIT: { label: '资金存管协议', tag: 'info' },
 }
 
 export const CONTRACT_STATUS_META: Record<number, { label: string; tag: string }> = {

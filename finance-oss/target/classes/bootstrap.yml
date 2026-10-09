@@ -6,9 +6,11 @@ spring:
 
   cloud:
     nacos:
-      # 全局用户名/密码：discovery 和 config 继承该值；两端不同时再各子节点覆盖
-      username: nacos
-      password: shangqiuqwjk832
+      # ⚠ 不要写 username/password：本机 Nacos 2.2.3 已关鉴权
+      # （nacos.core.auth.enabled=false），其登录接口恒失败（500 / 403 user not found），
+      # 配了账号只会让客户端每 2 秒重试并刷 ERROR 日志 —— finance-oss 实测日志里
+      # 满屏 "SecurityProxy login http request failed" 就是这么来的。
+      # 详见 api/application.yml 同处注释。
       discovery:
         enabled: true
         server-addr: 127.0.0.1:8848

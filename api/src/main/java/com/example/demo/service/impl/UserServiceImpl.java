@@ -21,10 +21,11 @@ import com.example.demo.service.MessageService;
 import com.example.demo.service.UserLoginRecordService;
 import com.example.demo.service.UserService;
 import com.example.demo.service.IntegralGradeService;
-import com.example.demo.utils.TokenUtil;
+import com.wwfinance.common.utils.TokenUtil;
 import com.wwfinance.common.utils.MD5;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -134,7 +135,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
         LocalDateTime now = LocalDateTime.now();
         user.setCreateTime(now);
         user.setUpdateTime(now);
-        save(user);
+        try {
+            save(user);
+        } catch (DuplicateKeyException e) {
+            // 同上：唯一索引 uk_mobile 是并发下的最终防线
+            throw new BusinessException(400, "该手机号已注册");
+        }
     }
 
     @Override
@@ -198,7 +204,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
         user.setStatus(1);
         user.setBorrowAuthStatus(0);
         user.setBindStatus(0);
-        save(user);
+        try {
+            save(user);
+        } catch (DuplicateKeyException e) {
+            // 并发兜底：上面的 getByMobile 查重是 check-then-insert，两个并发请求可能同时通过；
+            // 这里靠唯一索引 uk_mobile 兜底，把数据库层的冲突翻译成业务文案。
+            throw new BusinessException(400, "手机号已经存在");
+        }
         UserAccount userAccount = new UserAccount();
         userAccount.setUserId(user.getId());
         userAccountMapper.insert(userAccount);

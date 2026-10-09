@@ -70,12 +70,12 @@ class UserAccountWithdrawGuardTest {
     private UserAccountServiceImpl userAccountService;
 
     /**
-     * 绑卡状态、用户信息就绪，并 stub 在途提现合计。
+     * 绑卡状态、用户信息就绪，并按【统一可用额口径】stub 银行余额与在途占用。
      *
-     * @param pendingSum 在途提现合计；传 null 表示不 stub（走 Mockito 默认返回 null，
-     *                   用于验证 IFNULL 之外的"null 兜底"分支）
+     * @param pending  扣款类在途合计（提现 + 投标 + 还款）；传 null 表示不 stub
+     * @param balance  银行余额；传 null 表示不 stub（用于"压根不该查余额"的用例）
      */
-    private void boundUserWithPendingWithdraw(BigDecimal pendingSum) {
+    private void boundUserWithPending(BigDecimal pending, BigDecimal balance) {
         User user = new User();
         user.setId(USER_ID);
         user.setMobile("13800000000");
@@ -88,22 +88,27 @@ class UserAccountWithdrawGuardTest {
 
         when(userService.getById(USER_ID)).thenReturn(user);
         when(userBindService.getByUserId(USER_ID)).thenReturn(bind);
-        if (pendingSum != null) {
-            when(transFlowMapper.sumAmount(USER_ID, WITHDRAW, PROCESSING)).thenReturn(pendingSum);
+
+        if (balance != null) {
+            when(bankAccountSyncService.getBankBalance(USER_ID)).thenReturn(balance);
+        }
+        if (pending != null && balance != null) {
+            when(bankAccountSyncService.getPendingDebitAmount(USER_ID)).thenReturn(pending);
+            when(bankAccountSyncService.getAvailableBalance(USER_ID)).thenReturn(balance.subtract(pending));
         }
     }
 
     @Test
     @DisplayName("在途提现占满额度 → 拒绝，并说明是在途占用而非余额不足")
     void pendingWithdrawExhaustsBalance_rejectedWithExplanation() {
-        boundUserWithPendingWithdraw(new BigDecimal("1000.00"));
+        boundUserWithPending(new BigDecimal("1000.00"), new BigDecimal("1000.00"));
         when(bankAccountSyncService.getBankBalance(USER_ID)).thenReturn(new BigDecimal("1000.00"));
 
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> userAccountService.buildWithdrawForm(USER_ID, new BigDecimal("1000.00")));
 
         assertEquals(400, ex.getCode());
-        assertTrue(ex.getMessage().contains("¥1000.00 提现在途"), "应说明在途金额，实际：" + ex.getMessage());
+        assertTrue(ex.getMessage().contains("¥1000.00 资金在途"), "应说明在途金额，实际：" + ex.getMessage());
         assertTrue(ex.getMessage().contains("扣除后可用 ¥0.00"), "应给出扣除后可用余额，实际：" + ex.getMessage());
         // 关键：被拒的提现绝不能落「处理中」流水，否则占用会被重复计算
         verify(transFlowMapper, never()).insert(any(TransFlow.class));
@@ -112,14 +117,14 @@ class UserAccountWithdrawGuardTest {
     @Test
     @DisplayName("在途提现部分占用 → 按「余额 − 在途」判定，不足即拒")
     void pendingWithdrawPartiallyReserves_usesAvailableBalance() {
-        boundUserWithPendingWithdraw(new BigDecimal("600.00"));
+        boundUserWithPending(new BigDecimal("600.00"), new BigDecimal("1000.00"));
         when(bankAccountSyncService.getBankBalance(USER_ID)).thenReturn(new BigDecimal("1000.00"));
 
         // 可用 = 1000 - 600 = 400 < 500
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> userAccountService.buildWithdrawForm(USER_ID, new BigDecimal("500.00")));
 
-        assertTrue(ex.getMessage().contains("¥600.00 提现在途"), "实际：" + ex.getMessage());
+        assertTrue(ex.getMessage().contains("¥600.00 资金在途"), "实际：" + ex.getMessage());
         assertTrue(ex.getMessage().contains("扣除后可用 ¥400.00"), "实际：" + ex.getMessage());
         verify(transFlowMapper, never()).insert(any(TransFlow.class));
     }
@@ -127,7 +132,7 @@ class UserAccountWithdrawGuardTest {
     @Test
     @DisplayName("在途占用后仍够用 → 放行并落「处理中」流水")
     void pendingWithdrawLeavesEnoughBalance_allowed() {
-        boundUserWithPendingWithdraw(new BigDecimal("600.00"));
+        boundUserWithPending(new BigDecimal("600.00"), new BigDecimal("1000.00"));
         when(bankAccountSyncService.getBankBalance(USER_ID)).thenReturn(new BigDecimal("1000.00"));
 
         // 可用 = 400，本次提 400（刚好够）
@@ -147,9 +152,8 @@ class UserAccountWithdrawGuardTest {
     @Test
     @DisplayName("在途提现为空（SUM 返回 null）→ 按 0 处理，不得 NPE")
     void nullPendingSum_treatedAsZero() {
-        // 不 stub sumAmount → Mockito 默认返回 null，覆盖"聚合结果为 null 时按 0 处理"
-        boundUserWithPendingWithdraw(null);
-        when(bankAccountSyncService.getBankBalance(USER_ID)).thenReturn(new BigDecimal("1000.00"));
+        // 在途为 0 的语义由统一入口给出：可用额 = 余额
+        boundUserWithPending(BigDecimal.ZERO, new BigDecimal("1000.00"));
 
         assertNotNull(userAccountService.buildWithdrawForm(USER_ID, new BigDecimal("1000.00")));
         verify(transFlowMapper, times(1)).insert(any(TransFlow.class));
@@ -158,7 +162,7 @@ class UserAccountWithdrawGuardTest {
     @Test
     @DisplayName("纯粹余额不足（无在途）→ 走统一闸门文案，含「还差」金额")
     void noPendingWithdraw_insufficientBalance_usesBalanceGuardWording() {
-        boundUserWithPendingWithdraw(BigDecimal.ZERO);
+        boundUserWithPending(BigDecimal.ZERO, new BigDecimal("1000.00"));
         when(bankAccountSyncService.getBankBalance(USER_ID)).thenReturn(new BigDecimal("1000.00"));
 
         BusinessException ex = assertThrows(BusinessException.class,
@@ -172,22 +176,23 @@ class UserAccountWithdrawGuardTest {
     }
 
     @Test
-    @DisplayName("在途提现的统计口径必须限定 本人 + 提现类型 + 处理中状态")
-    void pendingWithdrawQuery_scopedToUserTypeAndStatus() {
-        boundUserWithPendingWithdraw(BigDecimal.ZERO);
-        when(bankAccountSyncService.getBankBalance(USER_ID)).thenReturn(new BigDecimal("1000.00"));
+    @DisplayName("提现必须走「统一可用额」入口，不得再直接用裸银行余额（P0-1）")
+    void withdrawMustUseUnifiedAvailableBalance() {
+        boundUserWithPending(BigDecimal.ZERO, new BigDecimal("1000.00"));
 
         userAccountService.buildWithdrawForm(USER_ID, new BigDecimal("100.00"));
 
-        // 只统计「本人 + 提现(2) + 处理中(0)」：漏掉任一条件都会让占用算错
-        verify(transFlowMapper).sumAmount(eq(USER_ID), eq(WITHDRAW), eq(PROCESSING));
+        // 银行扣款不校验余额，三个动钱入口必须共用同一个可用额函数，
+        // 否则"提现自己扣在途、投标/还款用裸余额"的旧口径会让资金被重复占用。
+        verify(bankAccountSyncService).getAvailableBalance(USER_ID);
+        verify(bankAccountSyncService).getPendingDebitAmount(USER_ID);
     }
 
     @Test
     @DisplayName("金额非法（0 / 负 / 超两位小数）在进入余额计算前就被拒")
     void illegalAmount_rejectedBeforeBalanceLookup() {
-        // 不 stub sumAmount / getBankBalance：这两个查询压根不该被执行（strict stubs 会兜住）
-        boundUserWithPendingWithdraw(null);
+        // 不 stub 余额相关查询：金额非法应在进入余额计算前就被拒（strict stubs 会兜住）
+        boundUserWithPending(null, null);
 
         BusinessException zero = assertThrows(BusinessException.class,
                 () -> userAccountService.buildWithdrawForm(USER_ID, BigDecimal.ZERO));
@@ -197,7 +202,7 @@ class UserAccountWithdrawGuardTest {
                 () -> userAccountService.buildWithdrawForm(USER_ID, new BigDecimal("10.123")));
         assertTrue(precision.getMessage().contains("最多保留两位小数"), "实际：" + precision.getMessage());
 
-        verify(bankAccountSyncService, never()).getBankBalance(any());
-        verify(transFlowMapper, never()).sumAmount(any(), any(), any());
+        verify(bankAccountSyncService, never()).getAvailableBalance(any());
+        verify(transFlowMapper, never()).insert(any(TransFlow.class));
     }
 }

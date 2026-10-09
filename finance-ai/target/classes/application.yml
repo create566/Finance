@@ -1,5 +1,17 @@
 server:
   port: 8081 # AI服务端口
+  # 访问日志：按天滚动落到 logs/access/（同样是绝对路径，避免落到 Tomcat 临时 base dir）
+  tomcat:
+    accesslog:
+      enabled: true
+      directory: '${LOG_HOME:D:/桌面/实训/demo/logs}/access'
+      prefix: ai-access.
+      suffix: .log
+      file-date-format: yyyy-MM-dd
+      rotate: true
+      buffered: false
+      max-days: 30
+      pattern: '%{yyyy-MM-dd HH:mm:ss.SSS}t %a "%r" %s %b %D'
 
 spring:
   # MongoDB 会话历史存储（本地已装 MongoDB）

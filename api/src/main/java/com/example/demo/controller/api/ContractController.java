@@ -5,7 +5,7 @@ import com.example.demo.entity.Contract;
 import com.example.demo.enums.ContractBizTypeEnum;
 import com.example.demo.enums.ContractTypeEnum;
 import com.example.demo.service.ContractService;
-import com.example.demo.utils.LoginUserContext;
+import com.wwfinance.common.utils.LoginUserContext;
 import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.wwfinance.common.result.PccAjaxResult;
 import io.swagger.annotations.Api;
@@ -39,7 +39,7 @@ public class ContractController {
     @ApiOperation("我的合同列表")
     @GetMapping("/auth/list")
     public PccAjaxResult list(
-            @ApiParam("合同类型 LOAN/INVEST/PAYMENT") @RequestParam(required = false) String contractType,
+            @ApiParam("合同类型 LOAN/INVEST/PAYMENT/SERVICE/DEPOSIT") @RequestParam(required = false) String contractType,
             @ApiParam("状态 0待签署 1已签署 2已作废") @RequestParam(required = false) Integer status,
             @ApiParam("当前页码") @RequestParam(defaultValue = "1") Integer pageNum,
             @ApiParam("每页记录数") @RequestParam(defaultValue = "10") Integer pageSize) {
@@ -102,6 +102,21 @@ public class ContractController {
         try {
             return new PccAjaxResult(200, "获取合同详情成功",
                     contractService.detail(contractId, userId.longValue()));
+        } catch (ResourceNotFoundException e) {
+            return new PccAjaxResult(e.getCode(), e.getMsg());
+        }
+    }
+
+    @ApiOperation("导出合同正文（返回 fileName + content，由前端生成下载文件）")
+    @GetMapping("/auth/export/{contractId}")
+    public PccAjaxResult export(@PathVariable Long contractId) {
+        Integer userId = LoginUserContext.getUserid();
+        if (userId == null) {
+            return new PccAjaxResult(401, "请先登录");
+        }
+        try {
+            return new PccAjaxResult(200, "导出成功",
+                    contractService.exportFile(contractId, userId.longValue()));
         } catch (ResourceNotFoundException e) {
             return new PccAjaxResult(e.getCode(), e.getMsg());
         }

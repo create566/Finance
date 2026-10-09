@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, ref, onMounted } from 'vue'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { getUserInfo, updateProfile } from '@/api/user'
 import { getBindStatus, bindDirect } from '@/api/bind'
 
+const router = useRouter()
 const formRef = ref<FormInstance>()
 const bindFormRef = ref<FormInstance>()
 const loading = ref(false)
@@ -74,7 +76,22 @@ function handleBindDirect() {
       await bindDirect(bindFormData)
       ElMessage.success('绑卡成功')
       fetchUserInfo()
-    } catch {} finally {
+    } catch (e: any) {
+      // 【P9-61】绑卡即开立资金存管账户，未签《资金存管协议》会被后端拦下。
+      // 这里给一条"能照做"的路径，而不是让用户只看到一个失败提示。
+      const msg = e?.msg || e?.message || ''
+      if (typeof msg === 'string' && msg.includes('资金存管协议')) {
+        ElMessageBox.confirm(
+          `${msg}\n\n是否现在前往「我的合同」签署？`,
+          '请先签署《资金存管协议》',
+          { confirmButtonText: '去签署', cancelButtonText: '稍后', type: 'warning' },
+        )
+          .then(() => router.push('/contract/my'))
+          .catch(() => {})
+      } else {
+        ElMessage.error(msg || '绑卡失败，请稍后重试')
+      }
+    } finally {
       bindLoading.value = false
     }
   })

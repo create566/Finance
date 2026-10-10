@@ -149,7 +149,7 @@ public class UserBindServiceImpl extends ServiceImpl<UserBindMapper, UserBind> i
         paramMap.put("personalName", user.getName());
         paramMap.put("mobile", user.getMobile());
         paramMap.put("idCard", user.getIdCard());
-        paramMap.put("returnUrl", HfbConst.USERBIND_RETURN_URL);
+        paramMap.put("returnUrl", HfbConst.returnUrl());
         paramMap.put("notifyUrl", HfbConst.USERBIND_NOTIFY_URL);
         paramMap.put("timestamp", new Date().getTime());
         paramMap.put("sign", BankSignUtil.getSign(paramMap));

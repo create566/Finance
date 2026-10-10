@@ -241,7 +241,7 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         paramMap.put("agentProjectCode", lendId);
         paramMap.put("agentProjectName", lend.getTitle());
         paramMap.put("projectAmt", lend.getAmount().toString());
-        paramMap.put("returnUrl", HfbConst.INVEST_RETURN_URL);
+        paramMap.put("returnUrl", HfbConst.returnUrl());
         paramMap.put("notifyUrl", HfbConst.INVEST_NOTIFY_URL);
         paramMap.put("timestamp", new Date().getTime());
         paramMap.put("sign", BankSignUtil.getSign(paramMap));
@@ -299,11 +299,13 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         }
 
         // 5. 幂等：同一银行流水号不重复入账
-        //    ⚠️ 必须用 existsSettledByTransNo（只认终态），不能用 existsByTransNo。
+        //    ⚠️ 必须用 existsSucceededByTransNo（只认"成功"），不能用 existsByTransNo。
         //    【P0-1】投标时已按同一 agentBillNo 落了一条「处理中」流水占位，
         //    若这里把处理中也算作"已入账"，回调会被误判成重复通知直接吞掉 ——
         //    那笔投标永远停在处理中，投资记录也永远不生成。
-        if (transNo != null && transFlowService.existsSettledByTransNo(transNo)) {
+        //    也不能把"失败"算作已入账：超时兜底（expireStalePending）会先把占位置为失败，
+        //    此时迟到的成功回调仍须能被结算入账。
+        if (transNo != null && transFlowService.existsSucceededByTransNo(transNo)) {
             log.info("投标回调重复通知，直接确认，transNo={}", transNo);
             return true;
         }

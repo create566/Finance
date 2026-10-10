@@ -40,13 +40,18 @@ public interface TransFlowService extends IService<TransFlow> {
     boolean existsByTransNo(String bankTransNo);
 
     /**
-     * 判断某单号是否已有「终态」流水（成功/失败）。
+     * 判断某单号是否已「成功入账」（回调幂等用）。
      *
-     * 与 {@link #existsByTransNo} 的区别：充值/提现在用户发起时就已落了一条
-     * 「处理中」流水，如果幂等判断把处理中的也算作"已入账"，
-     * 银行回调会被误判成重复通知而直接吞掉 —— 那笔钱永远停在处理中。
+     * <p>只认 {@code SUCCESS} 一条终态，"处理中 / 失败"都不算已入账：</p>
+     * <ul>
+     *   <li>充值/提现/投标/还款在用户发起时就落了一条「处理中」占位流水，
+     *       若把处理中也算作已入账，银行回调会被误判成重复通知直接吞掉 —— 那笔钱永远停在处理中
+     *       （与 {@link #existsByTransNo} 的区别就在这里）；</li>
+     *   <li>「失败」同样不能算：{@link #expireStalePending} 会把超时的占位置成失败，
+     *       此时银行回调若迟到，仍须能被正常结算入账，否则会「银行扣了钱、平台不入账」。</li>
+     * </ul>
      */
-    boolean existsSettledByTransNo(String transNo);
+    boolean existsSucceededByTransNo(String transNo);
 
     /**
      * 【P0-1】落一条「处理中」的在途流水，占用该用户的可用余额。
@@ -69,6 +74,32 @@ public interface TransFlowService extends IService<TransFlow> {
      * @param success true=银行已成功扣款（置"成功"）；false=银行失败/用户撤销（置"失败"，释放占用）
      */
     void settlePending(String transNo, boolean success);
+
+    /**
+     * 【P0-1 兜底】释放「超时未收到银行回调」的在途流水占额。
+     *
+     * <p>发起侧的占位（{@link #savePending}）是并发保护，本来只该存活到银行回调到达为止。
+     * 但现实里有两种情形会让它永远等不到回调：</p>
+     * <ol>
+     *   <li>用户在前端点了投标/还款后，浏览器被跳到银行收银台，<b>用户没有在那页完成操作就返回了</b>
+     *       —— 银行侧既没记账也没回调；</li>
+     *   <li>银行回调因网络/验签等原因始终没能送达。</li>
+     * </ol>
+     * <p>无论哪种，用户看到的都是「银行里明明有钱，却提示可用余额不足」，而且自己没有任何办法解开。
+     * 本方法把超过 {@code timeoutMinutes} 仍停在 PROCESSING 的<b>扣款类</b>流水
+     * （提现 / 投标 / 还款，即 {@code BankAccountSyncServiceImpl.DEBIT_TRANS_TYPES}）
+     * 置为「失败」，从而释放占额。</p>
+     *
+     * <p><b>为什么置「失败」是安全的</b>：可用额的真源始终是银行账户余额，
+     * 占位只是"这笔还在路上、别重复花"的预留。若钱其实已经在银行被冻结/划走，
+     * 银行余额本身就已经扣掉了；若没被划走，那这笔预留本就该放开。
+     * 另因 {@link #existsSucceededByTransNo} 只认「成功」为终态，
+     * 万一银行回调迟到，仍会把这条失败流水翻回成功并正常入账。</p>
+     *
+     * @param timeoutMinutes 超过多少分钟仍未结算即视为放弃（建议 10 分钟；&lt;1 按 1 处理）
+     * @return 本次释放的流水条数
+     */
+    int expireStalePending(int timeoutMinutes);
 
     /**
      * 处理银行充值异步回调：验签 → 校验状态/金额/用户 → 幂等判断 → 入账

@@ -109,7 +109,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         savePendingFlow(userId, TransTypeEnum.RECHARGE, amount, "用户充值（待银行处理）", transNo);
 
         Map<String, Object> paramMap = buildBankParams(userBind, amount, "chargeAmt", transNo,
-                HfbConst.RECHARGE_RETURN_URL, HfbConst.RECHARGE_NOTIFY_URL);
+                HfbConst.returnUrl(), HfbConst.RECHARGE_NOTIFY_URL);
         return FormHelper.buildForm(HfbConst.RECHARGE_URL, paramMap);
     }
 
@@ -156,7 +156,7 @@ public class UserAccountServiceImpl implements UserAccountService {
         savePendingFlow(userId, TransTypeEnum.WITHDRAW, amount, "用户提现（待银行处理）", transNo);
 
         Map<String, Object> paramMap = buildBankParams(userBind, amount, "fetchAmt", transNo,
-                HfbConst.WITHDRAW_RETURN_URL, HfbConst.WITHDRAW_NOTIFY_URL);
+                HfbConst.returnUrl(), HfbConst.WITHDRAW_NOTIFY_URL);
         return FormHelper.buildForm(HfbConst.WITHDRAW_URL, paramMap);
     }
 

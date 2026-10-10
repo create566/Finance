@@ -42,9 +42,7 @@ spring:
       # 而注册/发现走的是免鉴权的 v1 OpenAPI，本身就正常 —— 所以 auth 关闭时
       # 「不配凭据」才是唯一正确写法。（以上结论已用 curl 直连登录接口验证。）
       discovery:
-        server-addr: localhost:8848
-        enabled: true
-        register-enabled: true
+        server-addr: 127.0.0.1:8848
     sentinel:
       enabled: false
   autoconfigure:
@@ -112,6 +110,10 @@ ai:
 job:
   distributed-lock:
     enabled: ${JOB_DISTRIBUTED_LOCK_ENABLED:true}
+  pending-flow:
+    # 投标/还款/提现的「处理中」占位流水超过多少分钟仍未收到银行回调，即自动释放占额。
+    # 正常银行收银台交互是秒级的；阈值太短会误伤慢操作的用户，太长则用户被占住后干等。
+    timeout-minutes: ${JOB_PENDING_FLOW_TIMEOUT_MINUTES:10}
 
 # 银行对接地址（2026-10-06 新增，原为 HfbConst 中的 localhost 硬编码）
 # ⚠ 部署到非本机环境必须显式覆盖这三项，否则所有动钱接口会指向自己、银行回调也永远收不到。

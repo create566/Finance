@@ -1,7 +1,0 @@
-﻿
-LocalAddress                        LocalPort RemoteAddress                    
-------------                        --------- -------------                    
-::1                                 6379      ::                               
-::                                  6379      ::                               
-
-

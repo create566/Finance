@@ -74,8 +74,25 @@ public class ContractController {
             Long bizId = Long.valueOf(body.get("bizId").toString());
             BigDecimal amount = body.get("amount") == null ? null : new BigDecimal(body.get("amount").toString());
 
-            // 出借协议以当前登录投资人为主体；借款/放款合同主体是借款人，由 Service 按标的主键归属
-            Contract c = contractService.getOrCreate(bizType, bizId, type, userId, amount);
+            // 用户级协议（《居间服务协议》《资金存管协议》）不挂在标的上：
+            // biz_type=USER、biz_id=userId、amount=0，必须走 getOrCreateUserAgreement。
+            // 若误走 getOrCreate，其首行 lendMapper.selectById(bizId) 会以 userId 查标的
+            // 而抛「标的不存在，无法生成合同」—— 前端因此拿不到 contractId，签署入口直接断掉
+            // （实测：投资人 42 的 SERVICE 合同 27 一直停在 status=0）。
+            Contract c;
+            if (bizType == ContractBizTypeEnum.USER) {
+                if (type != ContractTypeEnum.SERVICE && type != ContractTypeEnum.DEPOSIT) {
+                    return new PccAjaxResult(400, "参数错误：用户级协议仅支持 SERVICE / DEPOSIT");
+                }
+                c = contractService.getOrCreateUserAgreement(type, userId);
+                if (c == null) {
+                    // 模板缺失时 getOrCreateUserAgreement 降级返回 null（不阻断业务）
+                    return new PccAjaxResult(200, "用户级协议模板未配置，无需签署", null);
+                }
+            } else {
+                // 出借协议以当前登录投资人为主体；借款/放款合同主体是借款人，由 Service 按标的主键归属
+                c = contractService.getOrCreate(bizType, bizId, type, userId, amount);
+            }
             if (!userId.equals(c.getPartyAId()) && !userId.equals(c.getPartyBId())) {
                 return new PccAjaxResult(403, "您不是该合同的签署方");
             }

@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAccount, recharge, withdraw } from '@/api/account'
+import { openBankForm } from '@/utils/bankForm'
 
 const router = useRouter()
 
@@ -26,19 +27,14 @@ function balance(): number {
 
 /**
  * 提交银行表单：后端返回的是一整页 HTML，里面有自动提交的 form。
- * 若返回的不是表单（说明业务校验失败），拦截器已经弹过错误提示，这里不再重复。
+ *
+ * 统一走 {@link openBankForm} —— **新窗口**提交，账户总览本页留在原地、登录态不丢。
+ * 被拦时 openBankForm 内部已提示放行方式，这里不能再说"申请已提交"。
+ * 若返回的不是表单（说明业务校验失败），axios 拦截器已经弹过错误提示，这里不再重复。
  */
-function submitBankForm(htmlForm: string, successTip: string) {
-  if (htmlForm && typeof htmlForm === 'string' && htmlForm.includes('<form')) {
-    const newWindow = window.open('', '_blank')
-    if (newWindow) {
-      newWindow.document.write(htmlForm)
-      newWindow.document.close()
-    } else {
-      ElMessage.warning('请允许弹出窗口以完成操作')
-    }
-    return
-  }
+function submitBankForm(htmlForm: unknown, successTip: string) {
+  const openResult = openBankForm(htmlForm, { onClosed: fetchAccount })
+  if (openResult === 'opened' || openResult === 'blocked') return
   ElMessage.success(successTip)
   fetchAccount()
 }

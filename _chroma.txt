@@ -1,2 +1,0 @@
-﻿NAMES STATUS PORTS
-ww_chroma Up 10 minutes 0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp

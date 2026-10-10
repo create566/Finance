@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getMyBorrowList, repay, type MyBorrowItem } from '@/api/lendReturn'
 import { getAccount } from '@/api/account'
+import { openBankForm } from '@/utils/bankForm'
 
 const route = useRoute()
 const router = useRouter()
@@ -58,22 +59,18 @@ async function handleRepay(row: MyBorrowItem) {
     return
   }
   ElMessageBox.confirm(
-    `确认归还第 ${row.currentPeriod} 期，金额 ¥${payableOf(row).toFixed(2)}？将跳转银行完成扣款。`,
+    `确认归还第 ${row.currentPeriod} 期，金额 ¥${payableOf(row).toFixed(2)}？将在新窗口打开银行收银台完成扣款。`,
     '还款确认',
     { confirmButtonText: '确认还款', cancelButtonText: '取消', type: 'warning' },
   )
     .then(async () => {
       try {
         const result = await repay(row.id)
-        if (typeof result === 'string' && result.includes('<form')) {
-          const div = document.createElement('div')
-          div.innerHTML = result
-          document.body.appendChild(div)
-          const form = div.querySelector('form') as HTMLFormElement
-          if (form) {
-            form.submit()
-            return
-          }
+        // 银行扣款表单开新窗口提交：本页留在还款计划、登录态不丢，
+        // 用户付完关掉新窗口后自动刷新本页（而不是整页跳走后掉到登录页）。
+        const openResult = openBankForm(result, { onClosed: fetchData })
+        if (openResult === 'opened' || openResult === 'blocked') {
+          return
         }
         ElMessage.success('还款请求已提交')
         fetchData()

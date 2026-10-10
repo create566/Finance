@@ -215,6 +215,14 @@
                     <classifier>exec</classifier>
                     <jvmArguments>-Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8</jvmArguments>
                 </configuration>
+                <!-- 没用 SB parent，需显式绑 repackage 才能产出可执行 jar -->
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

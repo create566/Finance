@@ -22,6 +22,33 @@
         <dependency>
             <groupId>org.example</groupId>
             <artifactId>finance-base</artifactId>
+            <!--
+              瘦身：finance-base 是「api 专用全家桶」，本服务只用到它的 3 个配置类
+              （WebMvcConfig / RedisConfig / OpenFeignConfig，靠 @ComponentScan 捡到）。
+              以下传递依赖对本服务完全无用，排除以缩减 fat jar：
+                · swagger/knife4j 的 UI 静态资源（API 文档页只有 api 才提供）
+                · Sentinel 熔断限流（本服务无任何 Sentinel 注解 / 规则 / 配置）
+              注意：springfox-swagger2 本身不能排 —— finance-base 的 Swagger2Config
+              是被组件扫描加载的，缺 Docket 类会导致启动失败。
+            -->
+            <exclusions>
+                <exclusion>
+                    <groupId>io.springfox</groupId>
+                    <artifactId>springfox-swagger-ui</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.github.xiaoymin</groupId>
+                    <artifactId>swagger-bootstrap-ui</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.github.xiaoymin</groupId>
+                    <artifactId>knife4j-spring-boot-starter</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.alibaba.cloud</groupId>
+                    <artifactId>spring-cloud-starter-alibaba-sentinel</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>
@@ -76,7 +103,23 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
                     <classifier>exec</classifier>
+                    <!-- lombok 只在编译期做注解处理，运行时完全不需要，不该进 fat jar
+                         （与 api/pom.xml 的写法保持一致） -->
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
                 </configuration>
+                <!-- 没用 SB parent，需显式绑 repackage 才能产出可执行 jar -->
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

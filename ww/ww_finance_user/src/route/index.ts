@@ -1,7 +1,14 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import Layout from '@/layout/index.vue'
 
-const whiteList = ['/login', '/register']
+/**
+ * 免登录白名单。
+ *
+ * ⚠ `/bank/return` 必须在里面：它是**银行回跳的落地页**，而银行回跳是一次全新的整页加载，
+ * 登录态 cookie 按 host 存，回跳 host 与实际访问 host 不一致时（127.0.0.1 vs localhost）
+ * 根本带不过来。若这个页面还需要登录，用户付完款就会看到"掉登录页"。
+ */
+const whiteList = ['/login', '/register', '/bank/return']
 
 function getToken(): string | null {
   const match = document.cookie.match(/(?:^|;\s*)user_token=([^;]*)/)
@@ -20,6 +27,14 @@ const routes: RouteRecordRaw[] = [
     name: 'Register',
     component: () => import('@/views/login/register.vue'),
     meta: { title: '注册', public: true },
+  },
+  {
+    // 银行回跳落地页：独立于 Layout（不拉用户信息、不需要登录态），
+    // 后端 HfbConst 的 6 个 *_RETURN_URL 都指向这里。
+    path: '/bank/return',
+    name: 'BankReturn',
+    component: () => import('@/views/bank/return.vue'),
+    meta: { title: '操作结果', public: true },
   },
   {
     path: '/',

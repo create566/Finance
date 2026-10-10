@@ -10,6 +10,7 @@ import com.example.demo.service.ContractService;
 import com.example.demo.service.LendReturnService;
 import com.example.demo.service.LendService;
 import com.example.demo.service.ReconciliationService;
+import com.example.demo.service.TransFlowService;
 import com.example.demo.utils.RedisDistributedLock;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.extern.slf4j.Slf4j;
@@ -53,6 +54,16 @@ public class FinanceJobHandler {
 
     @Autowired
     private RedisDistributedLock redisDistributedLock;
+
+    @Autowired
+    private TransFlowService transFlowService;
+
+    /**
+     * 在途流水（投标/还款/提现的占位）超过多少分钟仍未收到银行回调，即视为该单已被放弃、自动释放占额。
+     * 默认 10 分钟：正常银行收银台交互是秒级的，10 分钟足够宽松，又能让用户不必干等一天。
+     */
+    @Value("${job.pending-flow.timeout-minutes:10}")
+    private int pendingFlowTimeoutMinutes;
 
     /**
      * 分布式锁总开关。本地单实例开发可置 false 关闭（跳过抢锁，行为与改造前一致）。
@@ -222,6 +233,41 @@ public class FinanceJobHandler {
                 log.info("【定时任务】超期未签确认书扫描结束，自动退款 {} 个标的", count);
             } catch (Exception e) {
                 log.error("【定时任务】超期未签确认书扫描异常", e);
+            }
+        });
+    }
+
+    /**
+     * 释放「超时未收到银行回调」的在途流水占额：每 5 分钟执行一次。
+     *
+     * <p>投标 / 还款 / 提现都是在「生成银行收银台表单」的那一刻就落一条「处理中」占位流水
+     * （P0-1 机制），先把该用户的可用额占住，防止并发重复扣款。占位本该由银行异步回调结算释放，
+     * 但有两种情形会让它永远等不到回调：</p>
+     * <ol>
+     *   <li><b>用户在前端点了投标后，浏览器被跳到银行收银台，用户没在那页完成操作就返回了</b>
+     *       —— 银行侧既没记账也没回调；</li>
+     *   <li>银行回调因网络 / 验签等原因始终没能送达。</li>
+     * </ol>
+     * <p>后果就是「银行里明明有钱，投标却提示可用余额不足」，而用户自己没有任何办法解开。
+     * 实测有用户被两条废弃占位占住 ¥11000，账户里 13000 却一分钱投不出去。</p>
+     *
+     * <p>本任务把超过 {@code job.pending-flow.timeout-minutes}（默认 10 分钟）仍停在「处理中」的
+     * <b>扣款类</b>流水（提现/投标/还款）置为「失败」以释放占额。置失败是安全的：可用额的真源
+     * 始终是银行账户余额，占位只是"这笔还在路上、别重复花"的预留；且幂等判据只认「成功」
+     * （{@code existsSucceededByTransNo}），迟到的成功回调仍会把它翻回成功并正常入账。</p>
+     */
+    @Scheduled(cron = "0 */5 * * * ?")
+    public void releaseStalePendingFlows() {
+        // 锁 300 秒 > 任务最长耗时；多实例部署时只允许一个实例执行
+        runWithLock("releaseStalePendingFlows", 300, () -> {
+            try {
+                int released = transFlowService.expireStalePending(pendingFlowTimeoutMinutes);
+                if (released > 0) {
+                    log.warn("【定时任务】释放超时在途占位 {} 条（阈值 {} 分钟）",
+                            released, pendingFlowTimeoutMinutes);
+                }
+            } catch (Exception e) {
+                log.error("【定时任务】释放超时在途占位异常", e);
             }
         });
     }

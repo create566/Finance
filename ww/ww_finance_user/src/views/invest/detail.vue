@@ -11,6 +11,7 @@ import {
 } from '@/api/lend'
 import { prepareContract } from '@/api/contract'
 import { LEND_STATUS_MAP, enumTag } from '@/utils/enumText'
+import { openBankForm } from '@/utils/bankForm'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,12 +27,82 @@ const similar = ref<RecommendLend[]>([])
 const similarLoading = ref(false)
 
 /**
- * 未签《出借协议》被拦下时，把金额暂存起来；
+ * 未签协议被拦下时，把金额暂存起来；
  * 用户签完回到本页会读到它并自动继续下单，避免"签完还要重新输金额"。
  */
 const PENDING_KEY = `pendingInvestAmount:${lendId}`
 
 const hasPendingSign = ref(false)
+
+/**
+ * 待签署提示文案。后端 buildInvestForm 有两道关口，顺序是
+ * ① 《出借协议》INVEST（每笔投资一份，金额不同即是另一份）
+ * ② 《居间服务协议》SERVICE（用户级，首次投标签一次即可）
+ * 只引导第一道会把用户卡在第二道上（"去签署"→签完回来→仍被 SERVICE 拦），
+ * 所以这里要按后端同一顺序把两道都走完。
+ */
+const pendingSignHint = ref('请先完成手写签名，签署成功后将自动继续本次投资。')
+
+/**
+ * 确保两道关口都已签署。
+ * @returns true = 全部已签，可以继续下单；false = 已把用户引导到签署页，请终止本次下单。
+ */
+async function ensureAgreementsSigned(amount: number): Promise<boolean> {
+  // ① 《出借协议》：按 (标的, 金额) 一份。
+  const invest = await prepareContract({
+    bizType: 'LEND',
+    contractType: 'INVEST',
+    bizId: lendId,
+    amount,
+  })
+  if (!invest.signed) {
+    sessionStorage.setItem(PENDING_KEY, String(amount))
+    hasPendingSign.value = true
+    pendingSignHint.value = '投资前须先签署《出借协议》。签署完成后将自动返回本页并继续本次投资。'
+    try {
+      await ElMessageBox.confirm(
+        '投资前须先签署《出借协议》。签署完成后将自动返回本页并继续本次投资。',
+        '请先签署《出借协议》',
+        { confirmButtonText: '去签署', cancelButtonText: '取消', type: 'warning' },
+      )
+    } catch {
+      sessionStorage.removeItem(PENDING_KEY)
+      hasPendingSign.value = false
+      return false
+    }
+    router.push({ path: `/contract/detail/${invest.contract.id}`, query: { sign: '1' } })
+    return false
+  }
+
+  // ② 《居间服务协议》：用户级一次性协议，biz_type=USER。
+  //    后端对 USER 类型不看 bizId（直接取登录态 userId），这里传 0 占位即可。
+  //    模板未配置时后端降级返回 data=null（不阻断业务），此时视为无需签署。
+  const service = await prepareContract({
+    bizType: 'USER',
+    contractType: 'SERVICE',
+    bizId: 0,
+  })
+  if (service && !service.signed) {
+    sessionStorage.setItem(PENDING_KEY, String(amount))
+    hasPendingSign.value = true
+    pendingSignHint.value = '投资前须先签署《居间服务协议》。签署完成后将自动返回本页并继续本次投资。'
+    try {
+      await ElMessageBox.confirm(
+        '投资前还须签署《居间服务协议》（平台与你之间的撮合服务协议）。签署完成后将自动返回本页并继续本次投资。',
+        '请先签署《居间服务协议》',
+        { confirmButtonText: '去签署', cancelButtonText: '取消', type: 'warning' },
+      )
+    } catch {
+      sessionStorage.removeItem(PENDING_KEY)
+      hasPendingSign.value = false
+      return false
+    }
+    router.push({ path: `/contract/detail/${service.contract.id}`, query: { sign: '1' } })
+    return false
+  }
+
+  return true
+}
 
 async function fetchDetail() {
   loading.value = true
@@ -78,21 +149,26 @@ const returnMethodMap: Record<number, string> = {
   4: '一次还本付息',
 }
 
-/** 真正发起下单：返回银行支付表单 HTML 时直接提交跳转 */
+/**
+ * 真正发起下单。
+ *
+ * 后端返回银行支付表单 HTML 时**开新窗口**提交，而不是把当前标签页整页跳走：
+ * 本页（标的详情）留在原地、登录态不丢；用户在新窗口付完款关掉它，本页自动刷新进度。
+ * 之所以必须这样，是因为银行回跳是一次全新的整页加载，登录态 cookie 按 host 存，
+ * 回跳 host 与实际访问 host 不一致时（127.0.0.1 vs localhost）就会掉到登录页。
+ */
 async function submitInvest(amount: number) {
   const result = await investLend(lendId, { amount })
-  if (typeof result === 'string' && result.includes('<form')) {
-    const div = document.createElement('div')
-    div.innerHTML = result
-    document.body.appendChild(div)
-    const form = div.querySelector('form') as HTMLFormElement
-    if (form) {
-      form.submit()
-      return
-    }
+  const openResult = openBankForm(result, { onClosed: fetchDetail })
+  if (openResult === 'opened' || openResult === 'blocked') {
+    // opened ：已在新窗口打开，等用户去银行完成付款后关闭该窗口。
+    // blocked：是银行表单但新窗口被拦（多见于"签完协议自动续投"这类没有用户手势的场景），
+    //          里面已经提示了放行方式；此时**绝不能谎报成交**，让用户手动再点一次即可。
+    return openResult
   }
   ElMessage.success('投资成功')
   router.push('/invest/list')
+  return 'not-form' as const
 }
 
 /**
@@ -112,32 +188,12 @@ async function handleInvest() {
 
   submitting.value = true
   try {
-    const prepared = await prepareContract({
-      bizType: 'LEND',
-      contractType: 'INVEST',
-      bizId: lendId,
-      amount: investAmount.value,
-    })
-
-    if (!prepared.signed) {
+    // 两道关口（《出借协议》→《居间服务协议》）都要过；缺哪道就引导签哪道。
+    const ok = await ensureAgreementsSigned(investAmount.value)
+    if (!ok) {
       submitting.value = false
-      sessionStorage.setItem(PENDING_KEY, String(investAmount.value))
-      hasPendingSign.value = true
-      try {
-        await ElMessageBox.confirm(
-          '投资前须先签署《出借协议》。签署完成后将自动返回本页并继续本次投资。',
-          '请先签署《出借协议》',
-          { confirmButtonText: '去签署', cancelButtonText: '取消', type: 'warning' },
-        )
-      } catch {
-        sessionStorage.removeItem(PENDING_KEY)
-        hasPendingSign.value = false
-        return
-      }
-      router.push({ path: `/contract/detail/${prepared.contract.id}`, query: { sign: '1' } })
       return
     }
-
     await submitInvest(investAmount.value)
   } catch {
     submitting.value = false
@@ -156,19 +212,25 @@ async function resumePendingInvest() {
     return
   }
   try {
-    const prepared = await prepareContract({
-      bizType: 'LEND',
-      contractType: 'INVEST',
-      bizId: lendId,
-      amount,
-    })
-    if (prepared.signed) {
+    // 回来时可能刚签完《出借协议》、但《居间服务协议》还没签，
+    // 所以仍走同一套双关口判定，而不是只看 INVEST。
+    const ok = await ensureAgreementsSigned(amount)
+    if (ok) {
       sessionStorage.removeItem(PENDING_KEY)
       hasPendingSign.value = false
       investAmount.value = amount
       submitting.value = true
-      ElMessage.success('《出借协议》已签署，继续本次投资')
-      await submitInvest(amount)
+      ElMessage.success('协议已签署，继续本次投资')
+      const openResult = await submitInvest(amount)
+      if (openResult === 'blocked') {
+        // 「签完协议自动续投」这条链路没有用户手势，新窗口多半会被浏览器拦截。
+        // 金额已经填好，把引导改成交互式的：用户点一次「确认投资」就能走完。
+        hasPendingSign.value = true
+        pendingSignHint.value = '协议已签署、投资金额已填好。浏览器拦截了新窗口，请点击「确认投资」重新发起。'
+        submitting.value = false
+      }
+    } else {
+      submitting.value = false
     }
   } catch {
     submitting.value = false
@@ -198,8 +260,8 @@ onMounted(async () => {
       show-icon
       :closable="false"
       class="pending-alert"
-      title="《出借协议》尚未签署"
-      description="请先完成手写签名，签署成功后将自动继续本次投资。"
+      title="协议尚未签署"
+      :description="pendingSignHint"
     />
 
     <el-card shadow="never" v-loading="loading">

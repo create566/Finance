@@ -125,13 +125,18 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
     }
 
     @Override
-    public boolean existsSettledByTransNo(String transNo) {
+    public boolean existsSucceededByTransNo(String transNo) {
         if (transNo == null || transNo.isEmpty()) {
             return false;
         }
+        // 【P0-1】只把「成功」当作已入账。
+        // 不能用早先的"非处理中"：那会把「失败」也算成已结算，于是
+        //   ① 银行先报失败、稍后重试成功（或"超时自动释放"把占位置成了失败）时，
+        //      迟到的成功回调会被误判成重复通知而直接吞掉 ⇒ 钱扣了、平台不入账；
+        //   ② 这正是 expireStalePending 能安全置 FAILED 的前提。
         return this.count(new LambdaQueryWrapper<TransFlow>()
                 .eq(TransFlow::getTransNo, transNo)
-                .ne(TransFlow::getStatus, TransStatusEnum.PROCESSING.getCode())) > 0;
+                .eq(TransFlow::getStatus, TransStatusEnum.SUCCESS.getCode())) > 0;
     }
 
     @Override
@@ -212,6 +217,42 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
     }
 
     /**
+     * 会占用可用余额的三种扣款类交易，口径与
+     * {@code BankAccountSyncServiceImpl.DEBIT_TRANS_TYPES} 保持一致。
+     */
+    private static final List<Integer> DEBIT_TRANS_TYPES = java.util.Arrays.asList(
+            TransTypeEnum.WITHDRAW.getCode(),
+            TransTypeEnum.INVEST.getCode(),
+            TransTypeEnum.REPAY.getCode());
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int expireStalePending(int timeoutMinutes) {
+        LocalDateTime deadline = LocalDateTime.now()
+                .minusMinutes(Math.max(1, timeoutMinutes));
+        List<TransFlow> stale = this.list(new LambdaQueryWrapper<TransFlow>()
+                .eq(TransFlow::getStatus, TransStatusEnum.PROCESSING.getCode())
+                .in(TransFlow::getTransType, DEBIT_TRANS_TYPES)
+                .lt(TransFlow::getCreateTime, deadline));
+        if (stale.isEmpty()) {
+            return 0;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        for (TransFlow f : stale) {
+            f.setStatus(TransStatusEnum.FAILED.getCode());
+            f.setMemo((f.getMemo() == null ? "" : f.getMemo()) + "（超时未收到银行回调，自动释放占额）");
+            f.setUpdateTime(now);
+            this.updateById(f);
+            log.warn("释放超时在途占位：id={}, userId={}, type={}, amount={}, transNo={}, 已挂起 {} 分钟",
+                    f.getId(), f.getUserId(), f.getTransTypeName(), f.getTransAmount(),
+                    f.getTransNo(),
+                    java.time.temporal.ChronoUnit.MINUTES.between(f.getCreateTime(), now));
+        }
+        log.warn("超时在途流水释放完成，共 {} 条（阈值 {} 分钟）", stale.size(), timeoutMinutes);
+        return stale.size();
+    }
+
+    /**
      * 取本次回调对应的业务单号。
      *
      * 充值/提现必须优先用平台自生成的 agentBillNo —— 用户在页面上点"充值"时，
@@ -264,7 +305,7 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
         }
         // 幂等只看「终态」：发起充值时就落的那条处理中流水不算已入账，
         // 否则回调会被当成重复通知吞掉，那笔钱永远停在处理中
-        if (existsSettledByTransNo(transNo)) {
+        if (existsSucceededByTransNo(transNo)) {
             log.info("充值回调重复通知，直接确认，transNo={}", transNo);
             return true;
         }
@@ -313,7 +354,7 @@ public class TransFlowServiceImpl extends ServiceImpl<TransFlowMapper, TransFlow
             return false;
         }
         // 幂等：同上，处理中不算已入账
-        if (existsSettledByTransNo(transNo)) {
+        if (existsSucceededByTransNo(transNo)) {
             log.info("提现回调重复通知，直接确认，transNo={}", transNo);
             return true;
         }

@@ -74,7 +74,10 @@ function mapLendToLoanProject(lend: any): any {
     borrowerId: lend.userId,
     amount: amount,
     rate: Number(lend.lendYearRate) || 0, // 后端字段: lendYearRate → 前端: rate
-    term: lend.period || 30,              // 后端字段: period → 前端: term
+    // ⚠️ 后端 period = 投资期数（单位：月/期），不是天数！展示时要拼"个月"。
+    //    别和后端 Investment.term（= 按 lendStartDate/lendEndDate 算出的募资窗口"天数"）搞混——
+    //    两者在各自接口里都叫 term，同名不同义。
+    term: lend.period || 30,              // 后端字段: period → 前端: term（月）
     riskLevel: 1,                        // 后端无此字段，默认低风险
     progress: progress,                  // 计算得出：investAmount/amount*100
     raisedAmount: investAmount,

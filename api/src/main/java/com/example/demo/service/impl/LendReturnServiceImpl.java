@@ -198,7 +198,9 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         // 商户手续费：银行侧 new BigDecimal(mchFee) 无判空，必须显式传 "0"（平台当前不收服务费）
         paramMap.put("mchFee", BigDecimal.ZERO.toPlainString());
         paramMap.put("agentBillNo", buildMakeLoanBillNo(lendId));
-        paramMap.put("returnUrl", HfbConst.MAKE_LOAD_RETURN_URL);
+        // 放款走服务端同步 JSON（AdminLendController#makeLoan → makeLoanSync），
+        // 银行不会拿 returnUrl 做浏览器跳转，此处仅保持与其他 5 条链路一致。
+        paramMap.put("returnUrl", HfbConst.returnUrl());
         paramMap.put("notifyUrl", HfbConst.MAKE_LOAD_NOTIFY_URL);
         paramMap.put("timestamp", new Date().getTime());
         paramMap.put("sign", BankSignUtil.getSign(paramMap));
@@ -690,7 +692,7 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         paramMap.put("agentBatchNo", repayBatchNo);
         paramMap.put("agentGoodsName", lend.getTitle());
         paramMap.put("data", com.alibaba.fastjson.JSON.toJSONString(detailList));
-        paramMap.put("returnUrl", HfbConst.BORROW_RETURN_RETURN_URL);
+        paramMap.put("returnUrl", HfbConst.returnUrl());
         paramMap.put("notifyUrl", HfbConst.BORROW_RETURN_NOTIFY_URL);
         paramMap.put("timestamp", new Date().getTime());
         paramMap.put("sign", BankSignUtil.getSign(paramMap));

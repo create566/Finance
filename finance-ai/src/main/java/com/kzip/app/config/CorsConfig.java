@@ -42,7 +42,14 @@ public class CorsConfig implements WebMvcConfigurer {
             "http://localhost:5174",
             "http://127.0.0.1:5174",
             "http://localhost:8081",
-            "http://127.0.0.1:8081"
+            "http://127.0.0.1:8081",
+            // 2026-10-12 新增：公网入口。前端经 frp 暴露到云服务器后，浏览器发出的
+            // Origin 是下面的公网地址（而非 localhost），若缺席，所有非 GET 请求
+            // （DELETE/POST/PUT，浏览器即使同源也会带 Origin 头）会被本类直接
+            // 403 "Invalid CORS request"——表现就是"本机 localhost 能删，别人电脑删不了"。
+            // 生产换域名时，把真实域名追加到这里（网关 CorsConfig 里的公网来源与此保持一致）。
+            "http://120.26.132.5",     // 用户端入口 :80
+            "http://120.26.132.5:81"   // 管理端入口 :81
     );
 
     @Override

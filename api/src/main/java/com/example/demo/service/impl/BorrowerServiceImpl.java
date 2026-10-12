@@ -7,7 +7,6 @@ import com.example.demo.entity.BorrowerAttach;
 import com.example.demo.entity.User;
 import com.example.demo.entity.dto.BorrowerAuthDto;
 import com.example.demo.enums.BorrowerAuthStatusEnum;
-import com.example.demo.enums.UserTypeEnum;
 import com.example.demo.exception.BusinessException;
 import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.example.demo.mapper.BorrowerAttachMapper;

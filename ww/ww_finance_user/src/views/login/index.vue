@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { Iphone, Lock } from '@element-plus/icons-vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { login } from '@/api/user'
+import { grantEntry } from '@/utils/entryGuard'
+import AuthIntroPanel from '@/components/AuthIntroPanel.vue'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
@@ -25,6 +27,15 @@ const formRules: FormRules = {
   ],
 }
 
+const slogan = ['专业金融科技平台', '让借贷与投资更简单']
+const introDesc =
+  '旺旺信贷打通借款申请、智能风控、标的撮合与到期回款全流程，资金由存管银行独立保管，平台不触碰资金。'
+const steps = [
+  { title: '借款人发标，透明披露', desc: '申请经风控审核后上架，金额、利率、期限全量可见' },
+  { title: '投资人自主投标', desc: '按标的利率与期限出借，资金直达存管银行账户' },
+  { title: '满标放款，按期回款', desc: '系统按还款计划自动结算，本息到期自动到账' },
+]
+
 function setTokenCookie(token: string) {
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString()
   document.cookie = `user_token=${encodeURIComponent(token)}; expires=${expires}; path=/`
@@ -38,6 +49,8 @@ function handleLogin() {
     try {
       const token = await login({ mobile: formData.mobile, password: formData.password })
       setTokenCookie(token)
+      // 发放本标签页的入口通行证：这是进入项目的唯一途径
+      grantEntry()
       ElMessage.success('登录成功')
       router.push('/')
     } catch {
@@ -49,128 +62,113 @@ function handleLogin() {
 </script>
 
 <template>
-  <div class="login-container">
-    <div class="login-box">
-      <div class="login-header">
-        <div class="logo-icon">旺</div>
-        <h1>旺旺信贷</h1>
-        <p>用户端</p>
-      </div>
+  <div class="auth-page">
+    <div class="intro-side">
+      <AuthIntroPanel :slogan="slogan" :desc="introDesc" :steps="steps" />
+    </div>
 
-      <el-form
-        ref="formRef"
-        :model="formData"
-        :rules="formRules"
-        size="large"
-        @keyup.enter="handleLogin"
-      >
-        <el-form-item prop="mobile">
-          <el-input
-            v-model="formData.mobile"
-            placeholder="请输入手机号"
-            :prefix-icon="Iphone"
-            clearable
-          />
-        </el-form-item>
-        <el-form-item prop="password">
-          <el-input
-            v-model="formData.password"
-            type="password"
-            placeholder="请输入密码"
-            :prefix-icon="Lock"
-            show-password
-          />
-        </el-form-item>
-        <el-button
-          type="primary"
-          :loading="loading"
-          class="login-btn"
-          @click="handleLogin"
+    <div class="form-side">
+      <div class="form-box">
+        <div class="login-header">
+          <h1>账号登录</h1>
+          <p>欢迎回来，请使用手机号登录</p>
+        </div>
+
+        <el-form
+          ref="formRef"
+          :model="formData"
+          :rules="formRules"
+          size="large"
+          @keyup.enter="handleLogin"
         >
-          登 录
-        </el-button>
-      </el-form>
+          <el-form-item prop="mobile">
+            <el-input
+              v-model="formData.mobile"
+              placeholder="请输入手机号"
+              :prefix-icon="Iphone"
+              clearable
+            />
+          </el-form-item>
+          <el-form-item prop="password">
+            <el-input
+              v-model="formData.password"
+              type="password"
+              placeholder="请输入密码"
+              :prefix-icon="Lock"
+              show-password
+            />
+          </el-form-item>
+          <el-button
+            type="primary"
+            :loading="loading"
+            class="login-btn"
+            @click="handleLogin"
+          >
+            登 录
+          </el-button>
+        </el-form>
 
-      <div class="login-footer">
-        还没有账号？<router-link to="/register" class="link">立即注册</router-link>
+        <div class="login-footer">
+          还没有账号？<router-link to="/register" class="link">立即注册</router-link>
+        </div>
+
+        <p class="copyright">© 2026 旺旺信贷 · 安全借贷 · 理性投资</p>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.login-container {
+/* 满屏分栏：左侧介绍铺满左半屏，右侧表单铺满右半屏，无外边距、无卡片留白 */
+.auth-page {
+  display: flex;
   width: 100vw;
   height: 100vh;
-  background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%);
+  overflow: hidden;
+  background: #fff;
+}
+.intro-side {
+  flex: 0 0 58%;
+  height: 100%;
+  min-width: 0;
+}
+.form-side {
+  flex: 1 1 42%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  overflow: hidden;
+  padding: 48px 64px;
+  overflow-y: auto;
 }
-.login-container::before,
-.login-container::after {
-  content: '';
-  position: absolute;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-}
-.login-container::before {
-  width: 500px;
-  height: 500px;
-  top: -200px;
-  left: -150px;
-}
-.login-container::after {
-  width: 400px;
-  height: 400px;
-  bottom: -180px;
-  right: -120px;
-}
-.login-box {
-  width: 400px;
-  padding: 40px 36px 32px;
-  background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-  position: relative;
-  z-index: 1;
+.form-box {
+  width: 100%;
+  max-width: 396px;
 }
 .login-header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-.logo-icon {
-  width: 56px;
-  height: 56px;
-  line-height: 56px;
-  margin: 0 auto 12px;
-  background: linear-gradient(135deg, #36d1dc, #5b86e5);
-  color: #fff;
-  font-size: 26px;
-  font-weight: bold;
-  border-radius: 12px;
+  margin-bottom: 36px;
 }
 .login-header h1 {
-  font-size: 22px;
-  font-weight: 600;
+  font-size: 28px;
+  font-weight: 700;
   color: #1f2937;
-  margin: 0 0 4px;
+  margin: 0 0 10px;
+  letter-spacing: 1px;
 }
 .login-header p {
-  font-size: 13px;
+  font-size: 14px;
   color: #9ca3af;
   margin: 0;
 }
 .login-btn {
   width: 100%;
-  height: 44px;
+  height: 46px;
   font-size: 16px;
-  letter-spacing: 4px;
+  letter-spacing: 6px;
+  margin-top: 8px;
 }
 .login-footer {
-  margin-top: 16px;
+  margin-top: 22px;
   text-align: center;
   font-size: 13px;
   color: #9ca3af;
@@ -181,5 +179,28 @@ function handleLogin() {
 }
 .link:hover {
   text-decoration: underline;
+}
+.copyright {
+  margin: 32px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: #a8b3c1;
+}
+@media (max-width: 900px) {
+  .auth-page {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  .intro-side {
+    flex: none;
+    height: auto;
+  }
+  .form-side {
+    flex: none;
+    height: auto;
+    padding: 36px 24px 56px;
+  }
 }
 </style>

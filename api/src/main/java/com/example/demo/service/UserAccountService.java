@@ -14,22 +14,6 @@ import java.math.BigDecimal;
 public interface UserAccountService {
 
     /**
-     * 从银行获取用户真实可用余额（平台不存储余额）
-     *
-     * @param userId 用户ID
-     * @return 银行实际余额
-     */
-    BigDecimal getBalance(Long userId);
-
-    /**
-     * 从银行获取用户真实冻结金额
-     *
-     * @param userId 用户ID
-     * @return 银行实际冻结金额
-     */
-    BigDecimal getFreezeAmount(Long userId);
-
-    /**
      * 查询用户完整账户信息（全部来自银行）
      *
      * @param userId 用户ID

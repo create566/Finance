@@ -158,7 +158,6 @@ public class AdminLendController {
             BigDecimal rate = new BigDecimal(params.get("rate").toString());
             Integer term = (Integer) params.get("term");
             String purpose = (String) params.get("purpose");
-            Integer riskLevel = (Integer) params.getOrDefault("riskLevel", 1);
 
             if (title == null || title.trim().isEmpty()) {
                 return new PccAjaxResult(400, "标的名称不能为空", null);

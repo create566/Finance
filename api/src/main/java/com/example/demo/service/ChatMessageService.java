@@ -10,6 +10,4 @@ public interface ChatMessageService extends IService<ChatMessage> {
     List<ChatMessage> listBySessionId(Long sessionId);
 
     ChatMessage saveMessage(ChatMessage message);
-
-    boolean deleteBySessionId(Long sessionId);
 }

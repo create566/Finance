@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ww_finance 数据模型与表关系总览</title>
+<style>
+  :root{
+    --bg:#f7f7f5; --card:#ffffff; --line:#e3e2dd; --ink:#2c2c2a; --ink2:#5f5e5a; --ink3:#888780;
+    --blue:#185fa5; --blueBg:#e6f1fb; --teal:#0f6e56; --tealBg:#e1f5ee; --amber:#854f0b; --amberBg:#faeeda;
+    --red:#a32d2d; --redBg:#fcebeb; --purple:#534ab7; --purpleBg:#eeedfe; --coral:#993c1d; --coralBg:#faece7;
+    --green:#3b6d11; --greenBg:#eaf3de; --gray:#5f5e5a; --grayBg:#f1efe8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"Segoe UI","Microsoft YaHei",Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px;line-height:1.7;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:40px 28px 80px}
+  h1{font-size:26px;font-weight:600;margin:0 0 6px;letter-spacing:-.2px}
+  .sub{color:var(--ink2);font-size:13px;margin-bottom:28px}
+  h2{font-size:19px;font-weight:600;margin:44px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:15px;font-weight:600;margin:26px 0 10px;color:var(--ink)}
+  h4{font-size:13.5px;font-weight:600;margin:18px 0 8px;color:var(--ink2)}
+  p{margin:8px 0}
+  code{font-family:"Cascadia Code",Consolas,"Courier New",monospace;font-size:12.5px;
+    background:var(--grayBg);padding:1px 5px;border-radius:4px;color:#3c3489}
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0 6px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card .n{font-size:22px;font-weight:600;letter-spacing:-.5px}
+  .card .t{font-size:12.5px;font-weight:600;margin-top:2px}
+  .card .d{font-size:12px;color:var(--ink3);margin-top:4px;line-height:1.5}
+  .b-blue .n{color:var(--blue)} .b-teal .n{color:var(--teal)} .b-amber .n{color:var(--amber)} .b-purple .n{color:var(--purple)}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);
+    border-radius:12px;overflow:hidden;font-size:12.5px;margin:12px 0}
+  th{background:var(--grayBg);text-align:left;padding:9px 12px;font-weight:600;
+    border-bottom:1px solid var(--line);white-space:nowrap;font-size:12px;color:var(--ink2)}
+  td{padding:9px 12px;border-bottom:1px solid #f0efec;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td.mono{font-family:"Cascadia Code",Consolas,monospace;font-size:12px;color:#3c3489;white-space:nowrap}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:20px;font-weight:600;
+    border:1px solid transparent;white-space:nowrap}
+  .t-core{background:var(--blueBg);color:var(--blue);border-color:#b5d4f4}
+  .t-money{background:var(--tealBg);color:var(--teal);border-color:#9fe1cb}
+  .t-ai{background:var(--purpleBg);color:var(--purple);border-color:#cecbf6}
+  .t-dead{background:var(--redBg);color:var(--red);border-color:#f7c1c1}
+  .t-legacy{background:var(--amberBg);color:var(--amber);border-color:#fac775}
+  .t-ok{background:var(--greenBg);color:var(--green);border-color:#c0dd97}
+  .note{border-left:3px solid var(--blue);background:var(--blueBg);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:12.5px}
+  .warn{border-left:3px solid var(--amber);background:var(--amberBg);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:12.5px}
+  .bad{border-left:3px solid var(--red);background:var(--redBg);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:12.5px}
+  .note b,.warn b,.bad b{font-weight:600}
+  .mermaid{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0;overflow-x:auto}
+  ul{margin:8px 0;padding-left:22px} li{margin:4px 0}
+  .toc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 20px;margin:20px 0}
+  .toc a{color:var(--blue);text-decoration:none;font-size:13px}
+  .toc ol{margin:0;padding-left:20px;columns:2;column-gap:32px}
+  .foot{margin-top:50px;padding-top:16px;border-top:1px solid var(--line);color:var(--ink3);font-size:12px}
+  .legend{font-size:12px;color:var(--ink3);margin:6px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ww_finance 数据模型与表关系总览</h1>
+<div class="sub">P2P 网络借贷实训平台 · 四套数据存储的权威结构与关联关系 · 全量数据取自 2026-10-08 实库核对</div>
+
+<div class="cards">
+  <div class="card b-blue"><div class="n">34</div><div class="t">平台业务表</div>
+    <div class="d">MySQL <code>ww_finance</code> @ localhost:3306<br>业务主库（唯一可写业务真相）</div></div>
+  <div class="card b-teal"><div class="n">5</div><div class="t">银行账本表</div>
+    <div class="d">MySQL <code>ww_bank</code> @ 阿里云 RDS<br><b>资金余额真源</b></div></div>
+  <div class="card b-amber"><div class="n">2</div><div class="t">MongoDB 集合</div>
+    <div class="d"><code>ww_finance_ai</code> @ localhost:27017<br>智能客服会话与消息</div></div>
+  <div class="card b-purple"><div class="n">1</div><div class="t">Chroma 集合</div>
+    <div class="d"><code>pdf_rag_collection</code> @ :8000<br>RAG 向量索引（18 向量）</div></div>
+</div>
+
+<div class="note"><b>一句话结论：</b>平台 MySQL 记录「业务与单据」，银行 RDS 记录「钱在谁手里」，MongoDB 记录「客服对话」，Chroma 记录「知识切片向量」。四者靠 <code>user.bind_code ↔ bank.user_account.user_code</code>、<code>chat_session.id</code>、<code>knowledge_doc.id ↔ docId</code> 三组键串联。</div>
+
+<div class="toc">
+  <ol>
+    <li><a href="#topo">存储拓扑与职责边界</a></li>
+    <li><a href="#mysql">平台 MySQL：34 张表分组目录</a></li>
+    <li><a href="#er">核心业务 ER 关系图</a></li>
+    <li><a href="#bank">银行库：5 张表的账本语义</a></li>
+    <li><a href="#cross">跨库关联键总表</a></li>
+    <li><a href="#mongo">MongoDB 集合与 MySQL 的关系</a></li>
+    <li><a href="#chroma">Chroma 集合与知识库的关系</a></li>
+    <li><a href="#ai">AI 配置域：谁生效、谁被覆盖</a></li>
+    <li><a href="#status">数据现状与已知缺口</a></li>
+    <li><a href="#legacy">遗留库与死表清单</a></li>
+  </ol>
+</div>
+
+<h2 id="topo">1. 存储拓扑与职责边界</h2>
+
+<div class="mermaid">
+flowchart TB
+  FE["前端<br/>admin 5173 / user 5174"]
+  FE -->|"/api/** /admin/**"| API["api 8990<br/>service-core"]
+  FE -->|"/ai/**"| AI["finance-ai 8081"]
+
+  API -->|"业务单据读写"| MYSQL[("MySQL ww_finance<br/>34 表 · 业务主库")]
+  API -->|"bankJdbcTemplate<br/>余额·流水·记账"| BANK[("MySQL ww_bank<br/>5 表 · 资金真源<br/>阿里云 RDS")]
+  API -->|"表单提交 + 异步回调"| BJAR["ww_bank-1.0.0.jar :9090<br/>旺旺银行（无源码）"]
+  BJAR --- BANK
+  AI -->|"会话与消息"| MONGO[("MongoDB ww_finance_ai<br/>chat_session / chat_message")]
+  AI -->|"LLM 上下文记忆"| CMM[("MySQL chat_memory<br/>conversationId = session-N")]
+  AI -->|"相似度检索 /api/v2"| CHROMA[("Chroma :8000<br/>pdf_rag_collection")]
+</div>
+<div class="legend">注：<code>chat_memory</code> 虽属 MySQL，但由 finance-ai 独占读写，与 Mongo 会话一一对应。</div>
+
+<table>
+<thead><tr><th>存储</th><th>定位</th><th>写方</th><th>读方</th><th>可否重建</th></tr></thead>
+<tbody>
+<tr><td class="mono">ww_finance (MySQL)</td><td>业务单据唯一真相：用户、标的、投资、还款计划、合同、消息</td><td>api / finance-ai</td><td>api / finance-ai / 两个前端</td><td>可（有 DDL 脚本）</td></tr>
+<tr><td class="mono">ww_bank (MySQL·RDS)</td><td><b>资金余额唯一真相</b>；平台的 <code>user_account.amount</code> 只是镜像</td><td>银行 jar（充值/投标/还款回调）</td><td>api 只读查询 + 记账调用</td><td class="t-dead">不可（外部系统）</td></tr>
+<tr><td class="mono">ww_finance_ai (MongoDB)</td><td>客服会话与逐条消息（面向「一次会话多次问答」的文档型结构）</td><td>finance-ai</td><td>finance-ai</td><td>可（可丢，无资金语义）</td></tr>
+<tr><td class="mono">chroma (Chroma)</td><td>知识切片向量索引，只能靠重新嵌入重建</td><td>finance-ai 入库任务</td><td>finance-ai RAG 检索</td><td class="t-legacy">代价高（需重新走 LLM 嵌入）</td></tr>
+</tbody>
+</table>
+
+<h2 id="mysql">2. 平台 MySQL：34 张表分组目录</h2>
+<p class="legend">行数为 2026-10-08 精确 <code>COUNT(*)</code>。<span class="tag t-core">核心</span> 参与主流程 · <span class="tag t-ai">AI</span> 智能客服域 · <span class="tag t-dead">死表</span> 零代码引用</p>
+
+<h3>A. 用户与实名档案（7 张）</h3>
+<table>
+<thead><tr><th>表</th><th>中文名</th><th>行数</th><th>关键字段</th><th>作用与关系</th></tr></thead>
+<tbody>
+<tr><td class="mono">user</td><td>用户基本信息</td><td class="num">45</td><td class="mono">mobile(UK 语义), bind_code, borrow_auth_status, invest_auth_status</td><td>统一用户主体，借款人与投资人不分表；<b><code>bind_code</code> 是连向银行库的钥匙</b></td></tr>
+<tr><td class="mono">user_account</td><td>用户账户（镜像）</td><td class="num">24</td><td class="mono">user_id(UNI), amount, freeze_amount, version</td><td>与 <code>user</code> 一对一；<b>只是银行余额的本地副本</b>，银行库取不到时降级读它</td></tr>
+<tr><td class="mono">user_bind</td><td>用户绑定表（银行卡）</td><td class="num">10</td><td class="mono">user_id(UNI), bind_code, bank_no, id_card</td><td>与 <code>user</code> 一对一；<code>bind_code</code> 对应银行 <code>user_bind.bind_code</code></td></tr>
+<tr><td class="mono">borrower</td><td>借款人档案</td><td class="num">5</td><td class="mono">user_id(UNI), status</td><td>实名认证资料；与 <code>user</code> 一对一，仅借款人侧有行</td></tr>
+<tr><td class="mono">borrower_attach</td><td>借款人附件</td><td class="num">6</td><td class="mono">borrower_id, image_type</td><td>身份证/房产/车产照片，挂 <code>borrower.id</code>（非 user.id）</td></tr>
+<tr><td class="mono">investor</td><td>投资人档案</td><td class="num">1</td><td class="mono">user_id, status</td><td>与 <code>user</code> 一对一；注意实际是普通索引 <code>MUL</code> 而非唯一索引</td></tr>
+<tr><td class="mono">investor_attach</td><td>投资人附件</td><td class="num">2</td><td class="mono">investor_id, image_type</td><td>挂 <code>investor.id</code></td></tr>
+</tbody>
+</table>
+
+<h3>B. 借贷核心链路（6 张）——「发标 → 投标 → 满标放款 → 分期还款」</h3>
+<table>
+<thead><tr><th>表</th><th>中文名</th><th>行数</th><th>关键字段</th><th>作用与关系</th></tr></thead>
+<tbody>
+<tr><td class="mono">borrow_info</td><td>借款申请</td><td class="num">10</td><td class="mono">user_id, status, check_admin_id</td><td>借款人发起的资金需求；<code>lend.borrow_info_id</code> 指回本表</td></tr>
+<tr><td class="mono">lend</td><td>标的</td><td class="num">18</td><td class="mono">lend_no(UK), user_id, borrow_info_id, invest_amount, invest_num, complete_time</td><td><b>撮合主体</b>；<code>status</code> 8 态（0待发布/1募资中/2满标待放款/3逾期/4下架/5还款中/6完结/7流标）；<code>complete_time</code> 是 3 日签署宽限期的起算点</td></tr>
+<tr><td class="mono">lend_item</td><td>投资记录</td><td class="num">29</td><td class="mono">lend_item_no(UK), lend_id, invest_user_id, invest_amount</td><td>一个标的 N 条；<code>status</code> 0已投标/1已撤标/2已满标</td></tr>
+<tr><td class="mono">lend_return</td><td>还款计划</td><td class="num">48</td><td class="mono">lend_id, borrow_info_id, user_id(借款人), current_period, principal/interest/total, fee</td><td>借款人视角分期账单；<b><code>fee</code> 恒为 0（平台服务费实际未落账）</b></td></tr>
+<tr><td class="mono">lend_item_return</td><td>投资人收益计划</td><td class="num">72</td><td class="mono">lend_return_id, lend_item_id, invest_user_id, total</td><td>把 <code>lend_return</code> 的一期按出资比例拆到每个投资人；<b>链路汇聚点</b></td></tr>
+<tr><td class="mono">lend_settle_record</td><td>标的结清凭证</td><td class="num">0</td><td class="mono">lend_id, total_principal/interest/penalty</td><td>结清时固化本金/利息/罚息合计；当前无 <code>status=6</code> 标的，故为空表</td></tr>
+</tbody>
+</table>
+
+<h3>C. 电子合同（3 张）</h3>
+<table>
+<thead><tr><th>表</th><th>中文名</th><th>行数</th><th>关键字段</th><th>作用与关系</th></tr></thead>
+<tbody>
+<tr><td class="mono">contract_template</td><td>合同模板</td><td class="num">5</td><td class="mono">template_no, contract_type, version, status</td><td>LOAN 借款合同 / INVEST 出借协议 / PAYMENT 放款确认书；改版须版本化，运行时取 <code>status=1 ORDER BY version DESC LIMIT 1</code></td></tr>
+<tr><td class="mono">contract</td><td>合同实例</td><td class="num">18</td><td class="mono">contract_no(UK), biz_type+biz_id, contract_type, party_a_id, party_b_id, status</td><td>多态外键（<code>biz_type='LEND'</code>+<code>biz_id=lendId</code>）；靠 <code>contract_type</code>+<code>party_b_id</code> 区分同一标的三类合同；<code>status</code> 0待签/1已签/2已作废</td></tr>
+<tr><td class="mono">contract_sign_record</td><td>签署存证</td><td class="num">5</td><td class="mono">contract_id, signer_id, signer_role, content_hash, sign_ip</td><td>一次手写签名一行；<code>uk_contract_signer(contract_id, signer_id)</code> 保证同一人同一合同只签一次；<code>content_hash</code> 防事后篡改</td></tr>
+</tbody>
+</table>
+
+<h3>D. 资金流水与对账（2 张）</h3>
+<table>
+<thead><tr><th>表</th><th>中文名</th><th>行数</th><th>关键字段</th><th>作用与关系</th></tr></thead>
+<tbody>
+<tr><td class="mono">trans_flow</td><td>交易流水</td><td class="num">48</td><td class="mono">trans_no(UK), user_id, trans_type, status</td><td>平台侧资金动作台账；<code>trans_type</code> 1充值/2提现/3投标/4回款/5放款/6还款；<code>status</code> 0处理中/1成功/2失败，<b>幂等只认终态</b></td></tr>
+<tr><td class="mono">reconciliation_record</td><td>对账差异</td><td class="num">0</td><td class="mono">trans_no, user_id, bank_trans_no, status</td><td>每日 03:30 对账任务的差异落库口（1本地缺失 / 2金额不一致）；<b>从未跑出过数据</b></td></tr>
+</tbody>
+</table>
+
+<h3>E. 消息、日志与积分（3 张）</h3>
+<table>
+<thead><tr><th>表</th><th>中文名</th><th>行数</th><th>关键字段</th><th>作用与关系</th></tr></thead>
+<tbody>
+<tr><td class="mono">message</td><td>站内消息</td><td class="num">64</td><td class="mono">user_id, message_type, is_read</td><td>31 种消息类型（<code>MessageTypeEnum</code>）；新增类型须同改 Java 枚举 + 前端 <code>MESSAGE_TYPE_META</code> + 统计 SQL</td></tr>
+<tr><td class="mono">user_login_record</td><td>登录日志</td><td class="num">29</td><td class="mono">user_id, ip, login_result, login_type</td><td>登录成功/失败与方式留痕，与 <code>user</code> 多对一</td></tr>
+<tr><td class="mono">user_integral</td><td>积分明细</td><td class="num">16</td><td class="mono">user_id, integral（正加负减）</td><td>积分变动流水；累计值冗余在 <code>user.integral</code></td></tr>
+</tbody>
+</table>
+
+<h3>F. 基础支撑（3 张）</h3>
+<table>
+<thead><tr><th>表</th><th>中文名</th><th>行数</th><th>关键字段</th><th>作用与关系</th></tr></thead>
+<tbody>
+<tr><td class="mono">sys_admin</td><td>管理员</td><td class="num">1</td><td class="mono">username(UK), password(BCrypt)</td><td>后台登录；<b>无角色字段</b> → 任何 admin 权限等同超管（已有安全缺口）</td></tr>
+<tr><td class="mono">dict</td><td>数据字典</td><td class="num">54</td><td class="mono">parent_id, dict_code, value</td><td>自引用两级树：分类节点存 <code>dict_code</code>，选项节点 <code>parent_id</code> 指向分类</td></tr>
+<tr><td class="mono">integral_grade</td><td>积分等级</td><td class="num">8</td><td class="mono">integral_start/end, borrow_amount</td><td>积分区间 → 可借额度映射</td></tr>
+</tbody>
+</table>
+
+<h3>G. AI 与知识库域（9 张）<span class="tag t-ai">AI</span></h3>
+<table>
+<thead><tr><th>表</th><th>中文名</th><th>行数</th><th>关键字段</th><th>作用与关系</th></tr></thead>
+<tbody>
+<tr><td class="mono">ai_model_config</td><td>大模型配置</td><td class="num">9</td><td class="mono">provider, model_name, api_key(掩码), test_status, status</td><td>模型底座池；被 <code>ai_chat_model_binding.model_id</code> 引用</td></tr>
+<tr><td class="mono">ai_chat_model_binding</td><td>场景-模型绑定</td><td class="num">7</td><td class="mono">scene(UK), model_name, prompt_key, kb_name, enabled</td><td><b>覆盖层</b>：按 <code>scene</code>（intent/chat/rag 生效）指定模型+提示词+知识库</td></tr>
+<tr><td class="mono">prompt_config</td><td>提示词配置</td><td class="num">9</td><td class="mono">prompt_key(UK), scene, content_type, is_default, status</td><td><b>默认层</b>：被绑定覆盖时失效；<code>content_type='keywords'</code> 存关键词表（UNSAFE_KEYWORDS / HANDOFF_KEYWORDS）</td></tr>
+<tr><td class="mono">knowledge_base</td><td>知识库</td><td class="num">6</td><td class="mono">name, doc_count, chunk_count, embedding_model</td><td>知识库主体；<code>doc_count/chunk_count</code> 是冗余统计，<b>不可当真</b></td></tr>
+<tr><td class="mono">knowledge_doc</td><td>知识文档</td><td class="num">22</td><td class="mono">kb_id, title, source(pdf/text), chunk_count, status</td><td>一篇文档一行；<b>其 <code>id</code> 就是 Chroma 里的 <code>docId</code></b>。存在大量重复导入（使用手册一份占 8 行）</td></tr>
+<tr><td class="mono">knowledge_chunk</td><td>知识切片元数据</td><td class="num">0</td><td class="mono">doc_id, kb_id, chunk_index</td><td>代码里有实体与 Mapper，但<b>从未写入</b>——切片实际只存在于 Chroma，本表空置</td></tr>
+<tr><td class="mono">chat_session</td><td>客服会话（旧实现）</td><td class="num">54</td><td class="mono">user_id, title, message_count, status</td><td>迁移前旧实现，与 MongoDB 同名集合并存；数据停在 2026-09-24 ~ 09-28</td></tr>
+<tr><td class="mono">chat_message</td><td>客服消息（旧实现）</td><td class="num">111</td><td class="mono">session_id, role, content, chunk_ids</td><td>旧实现在 MySQL 里多存了 <code>chunk_ids</code>（RAG 引用溯源），Mongo 版没有这个字段</td></tr>
+<tr><td class="mono">chat_memory</td><td>LLM 上下文记忆</td><td class="num">176</td><td class="mono">conversation_id, message_type, content, seq</td><td>Spring AI 的 <code>ChatMemory</code> 落库；<code>conversation_id = "session-&lt;id&gt;"</code>，删除会话时须同步清理</td></tr>
+</tbody>
+</table>
+
+<h2 id="er">3. 核心业务 ER 关系图</h2>
+
+<h4>3.1 借贷主链路</h4>
+<div class="mermaid">
+erDiagram
+    user ||--o| user_account : "1:1 余额镜像"
+    user ||--o| user_bind : "1:1 绑卡"
+    user ||--o| borrower : "1:1 借款人档案"
+    user ||--o| investor : "1:1 投资人档案"
+    user ||--o{ borrow_info : "发起申请"
+    user ||--o{ lend : "作为借款人"
+    user ||--o{ lend_item : "作为投资人"
+    user ||--o{ message : "接收"
+    borrower ||--o{ borrower_attach : "上传附件"
+    investor ||--o{ investor_attach : "上传附件"
+    borrow_info ||--o{ lend : "borrow_info_id"
+    lend ||--o{ lend_item : "lend_id"
+    lend ||--o{ lend_return : "lend_id"
+    lend ||--o| lend_settle_record : "lend_id"
+    lend_return ||--o{ lend_item_return : "lend_return_id"
+    lend_item ||--o{ lend_item_return : "lend_item_id"
+</div>
+
+<h4>3.2 合同域（多态外键）</h4>
+<div class="mermaid">
+erDiagram
+    contract_template ||--o{ contract : "template_id + template_version"
+    contract ||--o{ contract_sign_record : "contract_id"
+    lend ||--o{ contract : "biz_type=LEND + biz_id"
+    user ||--o{ contract : "party_a_id 甲方"
+    user ||--o{ contract : "party_b_id 乙方"
+    user ||--o{ contract_sign_record : "signer_id"
+</div>
+<p class="legend">同一标的会生成 3 类合同：<b>LOAN</b>（借款人单方，上架前签）、<b>INVEST</b>（每个投资人一份，投标时签）、<b>PAYMENT</b>（放款确认书，放款前签）。</p>
+
+<h4>3.3 资金域（平台 ↔ 银行）</h4>
+<div class="mermaid">
+erDiagram
+    user ||--o{ trans_flow : "user_id"
+    lend ||--o{ trans_flow : "投标/放款/回款单据"
+    lend_return ||--o{ trans_flow : "还款单据"
+    trans_flow ||--o| reconciliation_record : "trans_no 对账"
+    user_account ||--o{ reconciliation_record : "user_id"
+</div>
+<p class="legend">银行侧 5 表的关联见 <a href="#bank">第 4 节</a>；<b>平台 <code>trans_flow.trans_no</code> 与银行 <code>user_invest.agent_bill_no</code> / <code>user_return.agent_batch_no</code> 是跨库对账锚点</b>。</p>
+
+<h2 id="bank">4. 银行库：5 张表的账本语义</h2>
+<p class="legend">库 <code>ww_bank</code> @ 阿里云 RDS <code>rm-uf6ry261ghx3995253o</code>，由 <code>ww_bank-1.0.0.jar</code>（端口 9090，无源码）持有。api 通过独立的 <code>bankJdbcTemplate</code> 访问。</p>
+
+<div class="mermaid">
+erDiagram
+    user_bind ||--o| user_account : "bind_code = user_code"
+    user_bind ||--o{ user_invest : "vote_bind_code 投标人"
+    user_bind ||--o{ user_invest : "benefit_bind_code 借款人"
+    user_invest ||--o{ user_item_return : "投标单 -> 逐笔回款"
+    user_return ||--o{ user_item_return : "user_return_id"
+    user_bind ||--o{ user_return : "from_bind_code 扣款方"
+    user_bind ||--o{ user_item_return : "to_bind_code 收款方"
+</div>
+
+<table>
+<thead><tr><th>表</th><th>行数</th><th>作用</th><th>关键字段</th></tr></thead>
+<tbody>
+<tr><td class="mono">user_account</td><td class="num">139</td><td><b>余额真源</b>。<code>user_code</code> = 平台 <code>user.bind_code</code></td><td class="mono">user_code, amount, freeze_amount</td></tr>
+<tr><td class="mono">user_bind</td><td class="num">139</td><td>银行侧绑卡档案与协议号</td><td class="mono">agent_id, agent_user_id, bind_code, bank_no, status</td></tr>
+<tr><td class="mono">user_invest</td><td class="num">71</td><td>投标单：谁投给谁、多少钱、服务费留痕</td><td class="mono">vote_bind_code, benefit_bind_code, vote_amt, vote_fee_amt, project_amt, status</td></tr>
+<tr><td class="mono">user_return</td><td class="num">62</td><td>还款批次：一次还款一行，<code>data</code> 存明细 JSON</td><td class="mono">from_bind_code, total_amt, vote_fee_amt, data(json)</td></tr>
+<tr><td class="mono">user_item_return</td><td class="num">125</td><td>逐笔回款：一笔还款拆到每个投资人</td><td class="mono">user_return_id, to_bind_code, transit_amt, benifit_amt, fee_amt</td></tr>
+</tbody>
+</table>
+
+<div class="warn"><b>服务费只留痕不划转：</b>银行库<b>没有平台账户表</b>，服务费仅落在 <code>user_return.vote_fee_amt</code> / <code>user_invest.vote_fee_amt</code> / <code>user_item_return.fee_amt</code> 三个字段上。平台侧 <code>lend_return.fee</code> / <code>lend_item_return.fee</code> 硬编码为 0，且 <code>lend.service_rate</code> 全项目零引用——<b>平台当前一分服务费都没收到</b>。</div>
+
+<div class="bad"><b>银行 <code>transferAccounts</code> 扣款不校验余额</b>，已产生 3 个负余额账户（-100.00 / -650.60 / -1,308,223.87）。平台的 <code>BalanceGuard</code> 只在提交表单前读一次余额，挡不住并发与重复回调。</div>
+
+<h2 id="cross">5. 跨库关联键总表</h2>
+<table>
+<thead><tr><th>源</th><th>目标</th><th>关联键</th><th>语义 / 注意</th></tr></thead>
+<tbody>
+<tr><td class="mono">ww_finance.user.bind_code</td><td class="mono">ww_bank.user_account.user_code</td><td>字符串等值</td><td>查余额、发起任何动钱操作的主键；平台侧 <code>user_bind</code> 仅 10 行，<b>多个投资人查不到 bind_code → 回调反查用户失败</b></td></tr>
+<tr><td class="mono">ww_finance.user.bind_code</td><td class="mono">ww_bank.user_bind.bind_code</td><td>字符串等值</td><td>银行绑卡档案</td></tr>
+<tr><td class="mono">ww_finance.lend.lend_no</td><td class="mono">ww_bank.user_invest.agent_project_code</td><td>业务编码</td><td>标的 ↔ 银行投标单</td></tr>
+<tr><td class="mono">ww_finance.trans_flow.trans_no</td><td class="mono">ww_bank.user_return.agent_batch_no</td><td>业务编号</td><td>对账锚点（03:30 任务比对金额）</td></tr>
+<tr><td class="mono">ww_finance.chat_session.id</td><td class="mono">ww_finance.chat_memory.conversation_id</td><td class="mono">"session-" + id</td><td>LLM 上下文记忆键；删会话须同步清</td></tr>
+<tr><td class="mono">ww_finance.chat_session.id</td><td class="mono">mongo.chat_message.sessionId</td><td>Long</td><td>Mongo 侧靠 <code>sessionId</code> 关联会话，无外键约束</td></tr>
+<tr><td class="mono">ww_finance.knowledge_doc.id</td><td class="mono">mongo/chroma metadata.docId</td><td>Long</td><td>Chroma 每片向量的 <code>docId</code> 元数据；删文档须同步删向量</td></tr>
+<tr><td class="mono">ww_finance.contract.biz_id</td><td class="mono">ww_finance.lend.id</td><td>多态 + biz_type</td><td><code>biz_type='LEND'</code></td></tr>
+</tbody>
+</table>
+
+<h2 id="mongo">6. MongoDB 集合与 MySQL 的关系</h2>
+<p class="legend">库 <code>ww_finance_ai</code> @ <code>mongodb://localhost:27017</code>，由 finance-ai 独占读写。<b>当前有效实现在 Mongo 这一侧</b>；MySQL 的同名两表是迁移前的旧实现，前端零引用。</p>
+<table>
+<thead><tr><th>集合</th><th>文档数</th><th>字段</th><th>作用</th></tr></thead>
+<tbody>
+<tr><td class="mono">chat_session</td><td class="num">21</td><td class="mono">_id(Long 手写自增), userId, userPhone, userName, title, messageCount, modelName, kbName, status, createTime, updateTime, _class</td><td>一个客服会话一行；<code>_id</code> 采用 Long 而非 ObjectId，由手写 <code>AtomicLong</code> 自增</td></tr>
+<tr><td class="mono">chat_message</td><td class="num">56</td><td class="mono">_id(ObjectId), sessionId, userId, role, content, createTime, _class</td><td>逐条问答；<code>role</code> 分布 user 28 / assistant 28；靠 <code>sessionId</code> 关联，<b>无 <code>chunk_ids</code> 字段</b></td></tr>
+</tbody>
+</table>
+<div class="warn">两套客服实现的取舍：<b>改客服功能请改 Mongo 那条链路。</b>删除会话的级联（删 <code>chat_message</code> + <code>chat_session</code> + 清 <code>chat_memory</code> 两条 key）已收敛在 <code>MongoSessionHistoryService.deleteSession(id)</code>。用户端删除先做归属校验，<b>管理端删除无归属校验</b>。</div>
+
+<h2 id="chroma">7. Chroma 集合与知识库的关系</h2>
+<table>
+<thead><tr><th>项</th><th>值</th></tr></thead>
+<tbody>
+<tr><td>容器 / 镜像</td><td class="mono">ww_chroma · ghcr.io/chroma-core/chroma:1.0.0 · :8000 · volume → /data</td></tr>
+<tr><td>API 版本</td><td>必须 <code>/api/v2</code>（v1 已 Unimplemented，0.6.x 不可用）</td></tr>
+<tr><td>租户 / 数据库</td><td class="mono">SpringAiTenant / SpringAiDatabase（代码硬编码）——<span class="tag t-legacy">查默认租户会得到空结果</span></td></tr>
+<tr><td>集合</td><td class="mono">pdf_rag_collection · dim=1024 · cosine</td></tr>
+<tr><td>向量数</td><td class="num">18（+1 条探针）</td></tr>
+<tr><td>元数据键</td><td class="mono">docId, knowledgeBaseId, parent_document_id, chunk_index, total_chunks, contentHash, source, taskId, chroma:document</td></tr>
+<tr><td>实际归属</td><td><b>18 条全部属 docId=22</b>（旺旺信贷平台用户使用手册）→ <span class="tag t-dead">RAG 目前只能命中这一份文档</span></td></tr>
+</tbody>
+</table>
+<div class="note"><b>关系：</b><code>knowledge_doc.id</code> → Chroma 元数据 <code>docId</code> → 若干条向量切片。<code>knowledge_doc.chunk_count</code> 是入库时写的期望值，<code>knowledge_chunk</code> 表为空——<b>切片级真相只在 Chroma</b>。MySQL 里 12–21 号文档的 <code>chunk_count</code> 是历史遗留，实际没有对应向量。</div>
+
+<h2 id="ai">8. AI 配置域：谁生效、谁被覆盖</h2>
+<table>
+<thead><tr><th>表 / 字段</th><th>实际生效范围</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td class="mono">ai_chat_model_binding.scene</td><td class="mono">intent / chat / rag</td><td><b>生效</b>的覆盖层：<code>enabled=1</code> 的 4 条（intent、answer、chat、rag）</td></tr>
+<tr><td class="mono">ai_chat_model_binding.scene</td><td class="mono">chitchat / summary / safety</td><td>已归档，<code>enabled=0</code></td></tr>
+<tr><td class="mono">prompt_config.scene</td><td class="mono">chat / intent / rag</td><td><b>默认层</b>，仅在未被绑定覆盖时使用</td></tr>
+<tr><td class="mono">prompt_config.prompt_key</td><td class="mono">UNSAFE_KEYWORDS / HANDOFF_KEYWORDS</td><td>前置拦截关键词表，<b>在用，禁删禁停</b></td></tr>
+<tr><td class="mono">prompt_config.scene = risk / audit / summary</td><td>—</td><td>不参与场景选择（<code>SUMMARY_SYSTEM_PROMPT</code> 已 <code>status=0</code>）</td></tr>
+<tr><td class="mono">ai_model_config</td><td class="mono">model_type=chat + test_status=1 + status=1</td><td>只有通过连通性测试的模型才被选用</td></tr>
+</tbody>
+</table>
+<p class="legend">取值优先级：<b>绑定（覆盖层）→ prompt_config（默认层）</b>。查当前生效组合：<code>GET /ai/admin/chat/model/effective</code>，真源方法 <code>PromptSelector.pickEffectiveByScene()</code>。</p>
+
+<h2 id="status">9. 数据现状与已知缺口</h2>
+<table>
+<thead><tr><th>#</th><th>现象</th><th>影响</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>银行 <code>user_account</code> 3 个负余额</td><td>账面资金不平衡；根因是扣款不校验余额</td></tr>
+<tr><td>2</td><td>6–8 条 <code>trans_flow.status=0</code> 悬挂</td><td>永久占用「提现可用额」（可用额 = 银行余额 − status=0 提现之和）</td></tr>
+<tr><td>3</td><td>平台 45 用户，仅 24 个 <code>user_account</code>、10 条 <code>user_bind</code></td><td>镜像账户缺失 + 回调按 bindCode 反查用户会失败</td></tr>
+<tr><td>4</td><td><code>reconciliation_record</code> 0 行</td><td>对账任务未产出过差异记录，链路未验证</td></tr>
+<tr><td>5</td><td><code>lend_item</code> 27 条仍为 <code>status=0</code></td><td>还款中标的下投资记录未按满标置 2</td></tr>
+<tr><td>6</td><td>下架标的仍留未退资 <code>lend_item</code></td><td>资金悬停</td></tr>
+<tr><td>7</td><td>Chroma 仅 18 向量 / 1 文档；<code>knowledge_chunk</code> 空</td><td>RAG 覆盖面极小，且切片元数据不可查</td></tr>
+<tr><td>8</td><td>MySQL <code>chat_session</code>/<code>chat_message</code> 与 Mongo 双写历史并存</td><td>易改错链路；建议尽早清理旧 SQL 实现</td></tr>
+<tr><td>9</td><td><code>sys_admin</code> 无角色字段</td><td>管理端无权限分级，任何 admin 可放款/下架/作废合同</td></tr>
+</tbody>
+</table>
+
+<h2 id="legacy">10. 遗留库与死表清单</h2>
+<table>
+<thead><tr><th>对象</th><th>状态</th><th>处理建议</th></tr></thead>
+<tbody>
+<tr><td class="mono">www_finance (MySQL)</td><td><span class="tag t-legacy">遗留</span> 仅 6 表：user / user_account / user_bind / borrow_info / message / sys_admin</td><td>早期命名的旁支库，与 <code>ww_finance</code> 同名不同库，勿混用</td></tr>
+<tr><td class="mono">investment_list</td><td><span class="tag t-dead">死表</span> 0 行，Java/XML 零引用</td><td>可安全删除</td></tr>
+<tr><td class="mono">knowledge_chunk</td><td>有实体与 Mapper，0 行</td><td>要么补写入，要么明确以 Chroma 为准</td></tr>
+<tr><td class="mono">lend_settle_record</td><td>0 行（无 <code>status=6</code> 标的）</td><td>属正常空置，非缺陷</td></tr>
+<tr><td class="mono">investment_list / demo_*</td><td>—</td><td>—</td></tr>
+</tbody>
+</table>
+
+<div class="foot">
+生成时间：2026-10-08 · 数据来源：<code>ww_finance</code>(localhost:3306) 实库 information_schema 与逐表 COUNT(*) · <code>ww_bank</code>(阿里云 RDS) · mongosh 2.7.0 实查 · Chroma <code>/api/v2</code> 实查 · 源码枚举 <code>MessageTypeEnum</code> / <code>LendStatusEnum</code>
+</div>
+
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      fontFamily: '-apple-system,"Segoe UI","Microsoft YaHei",sans-serif',
+      fontSize: '13px',
+      primaryColor: '#e6f1fb',
+      primaryTextColor: '#2c2c2a',
+      primaryBorderColor: '#85b7eb',
+      lineColor: '#888780',
+      secondaryColor: '#e1f5ee',
+      tertiaryColor: '#f1efe8'
+    },
+    er: { useMaxWidth: true, entityPadding: 12 },
+    flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' }
+  });
+</script>
+</body>
+</html>

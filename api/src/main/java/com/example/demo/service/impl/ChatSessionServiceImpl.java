@@ -2,7 +2,6 @@ package com.example.demo.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo.entity.ChatSession;
 import com.example.demo.mapper.ChatSessionMapper;
@@ -53,10 +52,5 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionMapper, ChatS
     @Override
     public boolean closeSession(Long id) {
         return this.baseMapper.closeSession(id) > 0;
-    }
-
-    @Override
-    public boolean removeSession(Long id) {
-        return this.removeById(id);
     }
 }

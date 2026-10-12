@@ -32,7 +32,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -98,15 +97,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper,User>  implements Us
                 .eq(adminUserQuery.getStatus() != null, User::getStatus, adminUserQuery.getStatus())
                 .eq(adminUserQuery.getUserType() != null, User::getUserType, adminUserQuery.getUserType());
         return baseMapper.selectPage(pageParam, userQueryWrapper);
-    }
-
-    @Override
-    public List<User> selectByCondition(String name, String mobile) {
-        LambdaQueryWrapper<User> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.like(StringUtils.isNotBlank(name), User::getName, name)
-                .eq(StringUtils.isNotBlank(mobile), User::getMobile, mobile)
-                .orderByDesc(User::getId);
-        return baseMapper.selectList(queryWrapper);
     }
 
     @Override

@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios'
+import { revokeEntry } from '@/utils/entryGuard'
 
 // 从 cookie 读取用户登录 token（与 src/utils/request.ts 同一份数据）
 function getUserToken(): string | null {
@@ -25,8 +26,9 @@ aiRequest.interceptors.response.use(
   (response) => {
     const res = response.data
     if (res && res.code === 401) {
-      // 未登录/登录过期：清 token 回登录页（与 utils/request.ts 行为一致）
+      // 未登录/登录过期：清 token、吊销入口通行证，回登录页（与 utils/request.ts 行为一致）
       document.cookie = 'user_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+      revokeEntry()
       if (!window.location.pathname.startsWith('/login')) {
         window.location.href = '/login'
       }

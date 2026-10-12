@@ -12,7 +12,6 @@ import com.example.demo.entity.dto.BorrowInfoDto;
 import com.example.demo.enums.BindStatusEnum;
 import com.example.demo.enums.BorrowInfoStatusEnum;
 import com.example.demo.enums.BorrowerAuthStatusEnum;
-import com.example.demo.enums.UserTypeEnum;
 import com.example.demo.mapper.BorrowInfoMapper;
 import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.example.demo.service.BorrowInfoService;

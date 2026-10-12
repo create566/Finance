@@ -10,7 +10,6 @@ import com.example.demo.enums.TransStatusEnum;
 import com.example.demo.enums.TransTypeEnum;
 import com.example.demo.mapper.UserAccountMapper;
 import com.example.demo.service.BankAccountSyncService;
-import com.example.demo.service.UserAccountService;
 import com.example.demo.service.UserService;
 import com.wwfinance.common.utils.HttpUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -33,9 +32,6 @@ public class BankAccountSyncServiceImpl extends ServiceImpl<UserAccountMapper, U
 
     @Autowired
     private UserService userService;
-
-    @Autowired
-    private UserAccountService userAccountService;
 
     @Autowired
     @Qualifier("bankJdbcTemplate")

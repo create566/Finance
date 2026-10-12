@@ -71,16 +71,6 @@ public interface LendReturnService extends IService<LendReturn> {
     boolean handleRepayNotify(Map<String, Object> params);
 
     /**
-     * 借款人偿还某一期：
-     * 扣借款人余额 → 按收益计划给各投资人入账 → 更新计划状态 → 判断是否结清
-     *
-     * @deprecated 此方法直接扣账户余额，绕过银行存管，仅用于单元测试。
-     *             生产环境请走 {@link #handleRepayNotify(Map)} 银行回调入口。
-     */
-    @Deprecated
-    void repay(Long lendReturnId, Long userId);
-
-    /**
      * 借款人查询自己的还款计划
      */
     List<LendReturn> listByBorrower(Long userId);

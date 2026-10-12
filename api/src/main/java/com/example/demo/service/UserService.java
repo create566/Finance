@@ -7,18 +7,11 @@ import com.example.demo.entity.User;
 import com.example.demo.entity.dto.AdminUserQuery;
 import com.example.demo.entity.dto.UserDto;
 
-import java.util.List;
-
 public interface UserService  extends IService<User> {
 
     IPage<User> listPage(Page<User> pageParam, AdminUserQuery adminUserQuery);
 
     User getUserById(Long id);
-
-    /**
-     * 按条件查询用户：姓名模糊 + 手机号精确，按 id 倒序
-     */
-    List<User> selectByCondition(String name, String mobile);
 
     User getByMobile(String mobile);
 

@@ -1,6 +1,5 @@
 package com.example.demo.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.demo.entity.ChatMessage;
 import com.example.demo.mapper.ChatMessageMapper;
@@ -32,12 +31,5 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageMapper, ChatM
         }
         this.save(message);
         return message;
-    }
-
-    @Override
-    public boolean deleteBySessionId(Long sessionId) {
-        LambdaQueryWrapper<ChatMessage> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(ChatMessage::getSessionId, sessionId);
-        return this.remove(wrapper);
     }
 }

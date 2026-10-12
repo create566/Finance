@@ -1,14 +1,18 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import Layout from '@/layout/index.vue'
+import { grantEntry, hasEntry } from '@/utils/entryGuard'
 
+/** 唯一入口：只能从这里进项目 */
+const LOGIN_PATH = '/login'
+/** 注册页：只允许从登录页点「立即注册」进入 */
+const REGISTER_PATH = '/register'
 /**
- * 免登录白名单。
- *
- * ⚠ `/bank/return` 必须在里面：它是**银行回跳的落地页**，而银行回跳是一次全新的整页加载，
- * 登录态 cookie 按 host 存，回跳 host 与实际访问 host 不一致时（127.0.0.1 vs localhost）
- * 根本带不过来。若这个页面还需要登录，用户付完款就会看到"掉登录页"。
+ * 银行回跳落地页：**必须免登录**。
+ * 银行走完流程会按 `returnUrl` 做一次整页跳转，而 `user_token` 是**按 host 存**的 cookie，
+ * 回跳 host 若与应用访问 host 不一致（127.0.0.1 vs localhost、或换 IP/域名）就带不过来；
+ * 此前 returnUrl 直指 `/home`，用户付完款反而被丢到登录页，观感是"付完款就退登了"。
  */
-const whiteList = ['/login', '/register', '/bank/return']
+const BANK_RETURN_PATH = '/bank/return'
 
 function getToken(): string | null {
   const match = document.cookie.match(/(?:^|;\s*)user_token=([^;]*)/)
@@ -151,7 +155,7 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
-  { path: '/:pathMatch(.*)*', redirect: '/home' },
+  { path: '/:pathMatch(.*)*', redirect: LOGIN_PATH },
 ]
 
 const router = createRouter({
@@ -159,20 +163,50 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to, _from, next) => {
+/**
+ * 全局守卫：**唯一入口是 `/login`**。
+ *
+ * 通行证 `hasEntry()` 是按标签页隔离的会话标记（见 `@/utils/entryGuard`）：
+ * 只有在本标签页真正登录过才发放，因此即使浏览器里还留着 7 天有效的 `user_token` cookie，
+ * 直接敲 `/home`、`/invest/list` 等深链（或用 IP 根路径打开）也会回到登录页。
+ */
+router.beforeEach((to, from, next) => {
   const token = getToken()
-  if (token) {
-    if (to.path === '/login' || to.path === '/register') {
-      next('/')
+
+  // 1) 登录页：本标签页登录过才能直接进应用，否则停在登录页等用户登录
+  if (to.path === LOGIN_PATH) {
+    if (token && hasEntry()) {
+      next({ path: '/' })
     } else {
       next()
     }
+    return
+  }
+
+  // 2) 银行回跳落地页：放行；同浏览器已有登录态时补发通行证，避免付款后被抛回登录页
+  if (to.path === BANK_RETURN_PATH) {
+    if (token) {
+      grantEntry()
+    }
+    next()
+    return
+  }
+
+  // 3) 注册页：只允许从登录页点「立即注册」进来（含已登录态下的标签页内跳转）
+  if (to.path === REGISTER_PATH) {
+    if (hasEntry() || from.path === LOGIN_PATH) {
+      next()
+    } else {
+      next({ path: LOGIN_PATH })
+    }
+    return
+  }
+
+  // 4) 其余全部页面（/home、业务页、未知路径）：必须"本标签页从登录页登录过"
+  if (token && hasEntry()) {
+    next()
   } else {
-    if (whiteList.includes(to.path)) {
-      next()
-    } else {
-      next('/login')
-    }
+    next({ path: LOGIN_PATH })
   }
 })
 

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  api 服务（8990）日志落盘配置
+  - CONSOLE：照常输出到终端，IDEA 里直接看
+  - FILE：按天 + 单文件 50MB 滚动写入 logs/api/api.log
+          当天写 api.log，历史归档为 api.2026-10-08.0.log（同日超 50MB 递增 .1 .2）
+  - 日志根目录默认写死项目绝对路径 D:/桌面/实训/demo/logs，可用环境变量 LOG_HOME 覆盖
+    （为什么不用相对路径：见下方 LOG_HOME 处的注释）
+-->
+<configuration>
+
+    <!-- 日志根目录默认写项目绝对路径：IDEA 运行配置的工作目录是项目根，而 mvn spring-boot:run
+         的工作目录是模块目录（api/），相对路径会让日志目录随启动方式漂移。
+         换目录/换机器时设置环境变量 LOG_HOME 即可，不必改本文件。 -->
+    <property name="LOG_HOME" value="${LOG_HOME:-D:/桌面/实训/demo/logs}"/>
+    <property name="MODULE" value="api"/>
+    <property name="APP_NAME" value="api"/>
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{40} - %msg%n"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_HOME}/${MODULE}/${APP_NAME}.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_HOME}/${MODULE}/${APP_NAME}.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>3GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- 银行往来流水（对账专用），单独落 logs/bank-trade/bank-trade.log。
+         与业务日志分开的原因：对账要按"平台发起 ↔ 银行回调 ↔ 对账结论"逐笔拉出一条时间线，
+         混在 api.log 里会被业务日志淹没。保留 90 天，覆盖跨月回溯对账的窗口。 -->
+    <appender name="BANK_TRADE_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_HOME}/bank-trade/bank-trade.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_HOME}/bank-trade/bank-trade.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>90</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- 想看 SQL / 业务细节把下面这行改成 DEBUG -->
+    <logger name="com.example.demo" level="INFO"/>
+
+    <!-- additivity=false：银行往来流水不重复写入 api.log，避免两份不一致的对账依据 -->
+    <logger name="BANK_TRADE" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="BANK_TRADE_FILE"/>
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+</configuration>

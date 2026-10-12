@@ -1,7 +1,6 @@
 package com.example.demo.Bank;
 
 import com.alibaba.fastjson.JSONObject;
-import com.wwfinance.common.utils.HttpUtils;
 import com.wwfinance.common.utils.MD5;
 import lombok.extern.slf4j.Slf4j;
 
@@ -12,8 +11,6 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Date;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -42,73 +39,11 @@ public class RequestHelper {
     }
 
     /**
-     * Map转换
-     * @param paramMap
-     * @return
-     */
-    public static Map<String, Object> switchMap(Map<String, String[]> paramMap) {
-        Map<String, Object> resultMap = new HashMap<>();
-        for (Map.Entry<String, String[]> param : paramMap.entrySet()) {
-            resultMap.put(param.getKey(), param.getValue()[0]);
-        }
-        return resultMap;
-    }
-
-    /**
-     *  签名校验
-     * @param paramMap
-     * @return
-     */
-    public static boolean isSignEquals(Map<String, Object> paramMap) {
-        String sign = (String)paramMap.get("sign");
-        String md5Str = getSign(paramMap);
-        if(!sign.equals(md5Str)) {
-            return false;
-        }
-        return true;
-    }
-
-    /**
-     * 获取时间戳
-     * @return
-     */
-    public static long getTimestamp() {
-        return new Date().getTime();
-    }
-
-    /**
-     * 封装同步请求
-     * @param paramMap
-     * @param url
-     * @return
-     */
-    public static JSONObject sendRequest(Map<String, Object> paramMap, String url){
-        String result = "";
-        try {
-            //封装post参数
-            StringBuilder postdata = new StringBuilder();
-            for (Map.Entry<String, Object> param : paramMap.entrySet()) {
-                postdata.append(param.getKey()).append("=")
-                        .append(param.getValue()).append("&");
-            }
-            log.info(String.format("--> 发送请求到旺旺银行：post data %1s", postdata));
-            byte[] reqData = postdata.toString().getBytes("utf-8");
-            byte[] respdata = HttpUtils.doPost(url,reqData);
-            result = new String(respdata);
-            log.info(String.format("--> 旺旺银行应答结果：result data %1s", result));
-        } catch (Exception ex) {
-            log.error("请求旺旺银行失败", ex);
-        }
-        return JSONObject.parseObject(result);
-    }
-
-    /**
      * 封装同步请求（表单编码版）。
      *
-     * <p><b>为什么要另写一个：</b>{@link #sendRequest(Map, String)} 是把参数裸拼成
-     * {@code k=v&k=v&} 后直接写字节，既不 URL 编码也不声明 Content-Type。
-     * 放款/还款参数里带中文（标的标题 agentProjectName），裸拼会产生
-     * ①非 ASCII 字节被 Servlet 解析成乱码；②Tomcat 在缺少
+     * <p><b>为什么要用表单编码：</b>把参数裸拼成 {@code k=v&k=v&} 后直接写字节，
+     * 既不 URL 编码也不声明 Content-Type。放款/还款参数里带中文（标的标题 agentProjectName），
+     * 裸拼会产生 ①非 ASCII 字节被 Servlet 解析成乱码；②Tomcat 在缺少
      * {@code application/x-www-form-urlencoded} 时不解析请求体，
      * 银行侧 {@code request.getParameterMap()} 拿不到参数 → 验签直接失败。
      *
@@ -181,13 +116,5 @@ public class RequestHelper {
         } catch (Exception e) {
             return s;
         }
-    }
-
-
-    public static void main(String[] args) {
-        Map map = new HashMap();
-        map.put("name","zs");
-        map.put("age",20);
-        String sign = RequestHelper.getSign(map);
     }
 }

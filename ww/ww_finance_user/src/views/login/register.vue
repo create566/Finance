@@ -4,12 +4,15 @@ import { useRouter } from 'vue-router'
 import { Iphone, Lock, Message } from '@element-plus/icons-vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { sendCode, register } from '@/api/user'
+import AuthIntroPanel from '@/components/AuthIntroPanel.vue'
+import SliderCaptcha from '@/components/SliderCaptcha.vue'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 const codeSending = ref(false)
 const codeCountdown = ref(0)
+const captchaVisible = ref(false)
 
 const formData = reactive({
   mobile: '',
@@ -32,25 +35,43 @@ const formRules: FormRules = {
   passwordto: [{ required: true, message: '请确认密码', trigger: 'blur' }],
 }
 
+const slogan = ['注册旺旺信贷', '开启借贷与投资之旅']
+const introDesc =
+  '注册即享资金存管、智能风控、透明借贷一体化服务，投资与借款在同一账号内完成。'
+const features = [
+  { title: '手机号快速注册', desc: '短信验证码校验，30 秒完成' },
+  { title: '投资人 / 借款人双角色', desc: '注册后可按需完成双向认证' },
+  { title: '银行存管账户', desc: '绑卡后资金由存管银行独立管理' },
+]
+
 let countdownTimer: ReturnType<typeof setInterval> | null = null
 
+function startCountdown() {
+  codeCountdown.value = 60
+  countdownTimer = setInterval(() => {
+    codeCountdown.value--
+    if (codeCountdown.value <= 0) {
+      clearInterval(countdownTimer!)
+      countdownTimer = null
+    }
+  }, 1000)
+}
+
+/** 点「获取验证码」先起人机验证，通过后才真正发短信 */
 function handleSendCode() {
   if (!formData.mobile || !/^1[3-9]\d{9}$/.test(formData.mobile)) {
     ElMessage.warning('请输入正确的手机号')
     return
   }
+  captchaVisible.value = true
+}
+
+function onCaptchaSuccess() {
   codeSending.value = true
   sendCode({ mobile: formData.mobile })
     .then(() => {
       ElMessage.success('验证码已发送')
-      codeCountdown.value = 60
-      countdownTimer = setInterval(() => {
-        codeCountdown.value--
-        if (codeCountdown.value <= 0) {
-          clearInterval(countdownTimer!)
-          countdownTimer = null
-        }
-      }, 1000)
+      startCountdown()
     })
     .catch(() => {})
     .finally(() => {
@@ -86,110 +107,116 @@ function handleRegister() {
 </script>
 
 <template>
-  <div class="register-container">
-    <div class="register-box">
-      <div class="register-header">
-        <div class="logo-icon">旺</div>
-        <h1>旺旺信贷</h1>
-        <p>用户注册</p>
-      </div>
+  <div class="auth-page">
+    <div class="intro-side">
+      <AuthIntroPanel :slogan="slogan" :desc="introDesc" :features="features" />
+    </div>
 
-      <el-form
-        ref="formRef"
-        :model="formData"
-        :rules="formRules"
-        size="large"
-      >
-        <el-form-item prop="mobile">
-          <el-input v-model="formData.mobile" placeholder="请输入手机号" :prefix-icon="Iphone" clearable />
-        </el-form-item>
-        <el-form-item prop="code">
-          <div style="display: flex; gap: 8px; width: 100%">
-            <el-input v-model="formData.code" placeholder="请输入验证码" :prefix-icon="Message" style="flex: 1" />
-            <el-button
-              :loading="codeSending"
-              :disabled="codeCountdown > 0"
-              @click="handleSendCode"
-              style="width: 120px"
-            >
-              {{ codeCountdown > 0 ? `${codeCountdown}s` : '获取验证码' }}
-            </el-button>
-          </div>
-        </el-form-item>
-        <el-form-item prop="password">
-          <el-input v-model="formData.password" type="password" placeholder="请输入密码" :prefix-icon="Lock" show-password />
-        </el-form-item>
-        <el-form-item prop="passwordto">
-          <el-input v-model="formData.passwordto" type="password" placeholder="请确认密码" :prefix-icon="Lock" show-password />
-        </el-form-item>
-        <el-form-item>
-          <el-radio-group v-model="formData.userType" style="width: 100%">
-            <el-radio :value="1" size="large">投资人</el-radio>
-            <el-radio :value="2" size="large">借款人</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-button type="primary" :loading="loading" class="register-btn" @click="handleRegister">
-          注 册
-        </el-button>
-      </el-form>
+    <div class="form-side">
+      <div class="form-box">
+        <div class="register-header">
+          <h1>用户注册</h1>
+          <p>已有账号？<router-link to="/login" class="link">直接登录</router-link></p>
+        </div>
 
-      <div class="register-footer">
-        已有账号？<router-link to="/login" class="link">立即登录</router-link>
+        <el-form ref="formRef" :model="formData" :rules="formRules" size="large">
+          <el-form-item prop="mobile">
+            <el-input
+              v-model="formData.mobile"
+              placeholder="请输入手机号"
+              :prefix-icon="Iphone"
+              clearable
+            />
+          </el-form-item>
+          <el-form-item prop="code">
+            <div style="display: flex; gap: 8px; width: 100%">
+              <el-input
+                v-model="formData.code"
+                placeholder="请输入验证码"
+                :prefix-icon="Message"
+                style="flex: 1"
+              />
+              <el-button
+                :loading="codeSending"
+                :disabled="codeCountdown > 0"
+                @click="handleSendCode"
+                style="width: 120px"
+              >
+                {{ codeCountdown > 0 ? `${codeCountdown}s` : '获取验证码' }}
+              </el-button>
+            </div>
+          </el-form-item>
+          <el-form-item prop="password">
+            <el-input
+              v-model="formData.password"
+              type="password"
+              placeholder="请输入密码"
+              :prefix-icon="Lock"
+              show-password
+            />
+          </el-form-item>
+          <el-form-item prop="passwordto">
+            <el-input
+              v-model="formData.passwordto"
+              type="password"
+              placeholder="请确认密码"
+              :prefix-icon="Lock"
+              show-password
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-radio-group v-model="formData.userType" style="width: 100%">
+              <el-radio :value="1" size="large">投资人</el-radio>
+              <el-radio :value="2" size="large">借款人</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-button type="primary" :loading="loading" class="register-btn" @click="handleRegister">
+            注 册
+          </el-button>
+        </el-form>
+
+        <p class="copyright">© 2026 旺旺信贷 · 安全借贷 · 理性投资</p>
       </div>
     </div>
+
+    <SliderCaptcha v-model:visible="captchaVisible" @success="onCaptchaSuccess" />
   </div>
 </template>
 
 <style scoped>
-.register-container {
+.auth-page {
+  display: flex;
   width: 100vw;
   height: 100vh;
-  background: linear-gradient(135deg, #36d1dc 0%, #5b86e5 100%);
+  overflow: hidden;
+  background: #fff;
+}
+.intro-side {
+  flex: 0 0 46%;
+  height: 100%;
+  min-width: 0;
+}
+.form-side {
+  flex: 1 1 54%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  overflow: hidden;
+  padding: 32px 56px;
+  overflow-y: auto;
 }
-.register-container::before {
-  content: '';
-  position: absolute;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  width: 500px;
-  height: 500px;
-  top: -200px;
-  left: -150px;
-}
-.register-box {
-  width: 400px;
-  padding: 40px 36px 32px;
-  background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-  position: relative;
-  z-index: 1;
+.form-box {
+  width: 100%;
+  max-width: 420px;
 }
 .register-header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-.logo-icon {
-  width: 56px;
-  height: 56px;
-  line-height: 56px;
-  margin: 0 auto 12px;
-  background: linear-gradient(135deg, #36d1dc, #5b86e5);
-  color: #fff;
-  font-size: 26px;
-  font-weight: bold;
-  border-radius: 12px;
+  margin-bottom: 22px;
 }
 .register-header h1 {
-  font-size: 22px;
-  font-weight: 600;
+  font-size: 26px;
+  font-weight: 700;
   color: #1f2937;
-  margin: 0 0 4px;
+  margin: 0 0 8px;
 }
 .register-header p {
   font-size: 13px;
@@ -201,12 +228,13 @@ function handleRegister() {
   height: 44px;
   font-size: 16px;
   letter-spacing: 4px;
+  margin-top: 4px;
 }
-.register-footer {
-  margin-top: 16px;
+.copyright {
+  margin: 26px 0 0;
   text-align: center;
-  font-size: 13px;
-  color: #9ca3af;
+  font-size: 12px;
+  color: #a8b3c1;
 }
 .link {
   color: #5b86e5;
@@ -214,5 +242,22 @@ function handleRegister() {
 }
 .link:hover {
   text-decoration: underline;
+}
+@media (max-width: 900px) {
+  .auth-page {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  .intro-side {
+    flex: none;
+    height: auto;
+  }
+  .form-side {
+    flex: none;
+    height: auto;
+    padding: 32px 24px 48px;
+  }
 }
 </style>

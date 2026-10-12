@@ -1,7 +1,6 @@
 package com.example.demo.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.example.demo.entity.User;
 import com.example.demo.entity.UserIntegral;
 import com.example.demo.exception.BusinessException;
 import com.wwfinance.common.exception.ResourceNotFoundException;

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  finance-gateway（8088，Spring Cloud Gateway / Netty）日志落盘配置
+  - 注意：网关走 WebFlux，没有 Tomcat，因此没有 server.tomcat.accesslog 访问日志
+  - FILE：按天 + 单文件 50MB 滚动写入 logs/gateway/finance-gateway.log
+  - 日志根目录默认 <项目根>/logs，可用环境变量 LOG_HOME 覆盖
+-->
+<configuration>
+
+    <!-- 日志根目录默认写项目绝对路径：IDEA 运行配置的工作目录是项目根，而 mvn spring-boot:run
+         的工作目录是模块目录（finance-gateway/），相对路径会让日志目录随启动方式漂移。
+         换目录/换机器时设置环境变量 LOG_HOME 即可，不必改本文件。 -->
+    <property name="LOG_HOME" value="${LOG_HOME:-D:/桌面/实训/demo/logs}"/>
+    <property name="MODULE" value="gateway"/>
+    <property name="APP_NAME" value="finance-gateway"/>
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{40} - %msg%n"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_HOME}/${MODULE}/${APP_NAME}.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_HOME}/${MODULE}/${APP_NAME}.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>3GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <logger name="com.wwfinance.gateway" level="INFO"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+</configuration>

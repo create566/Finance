@@ -1,0 +1,4695 @@
+{
+  "info": {
+    "_postman_id": "ww-finance-api-collection",
+    "name": "ww_finance 接口测试（token 全自动）",
+    "description": "ww_finance 实训项目接口集合，覆盖 api 模块全部 103 个 HTTP 接口。\n\n【token 全自动 —— 本集合的核心特性】\n集合级 Pre-request 会在 token 缺失【或 JWT 已过期】时自动调登录接口续签，\n所以只要把账号密码填对，之后点任意请求都能直接跑，完全不用手工复制 token。\n三套身份各自独立自动维护：\n  · adminToken    ← 管理员（请求头 token）\n  · userToken     ← 借款人（请求头 Authorization）\n  · investorToken ← 投资人（请求头 Authorization + X-Api-Scope: investor）\n遇到 401 还会自动清空 token 并【重放一次】该请求（自愈），无需人工干预。\n\n【使用前只需确认这 4 个变量】（集合 → Variables 标签页）\n  adminUsername / adminPassword  → 默认 admin / 123456\n  userMobile    / userPassword   → 默认 18538313405 / 123456（借款人，已绑卡）\n  investorMobile/investorPassword→ 默认 14725836945 / 123456（投资人，已绑卡）\n  baseUrl → 默认 http://localhost:8990\n⚠️ 库里不少账号的密码列是 6 位明文 '123456'，无法通过 BCrypt 校验，\n   登录会返回「密码错误」—— 这是存量脏数据，换成上面这三个账号即可。\n\n【运行前置】\n  api(8990) 已启动，Redis(6379) 可达（登录态存 Redis，不通则全部 401）。\n  充值/提现/绑卡/还款额外依赖银行模拟服务(9090)。\n\n【返回值说明】\n统一封装 PccAjaxResult：{ code, msg, data }。\n但充值/提现/还款/投标/放款成功时返回【银行 HTML 表单】，不是 JSON，\n故集合级只断言 HTTP 200 与耗时，不解析 body。\n\n【建议运行顺序】先跑「0. 鉴权」确认三套 token 都能拿到，再按编号往下跑。\n标「⚠️ 写入数据」的请求会改库，回归测试可只跑读接口。\n",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. 鉴权与环境自检",
+      "item": [
+        {
+          "name": "① 管理员登录（写入 adminToken）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/login",
+            "description": "【预期】code=200，data 是带 '5grcs ' 前缀的 JWT。\n成功后自动写入集合变量 adminToken —— 后续所有 /admin/** 请求无需再管 token。\n【失败排查】code=500「密码错误」→ 改集合变量 adminPassword。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('登录成功：code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code === 200 && j.data) {",
+                  "  pm.collectionVariables.set('adminToken', j.data);",
+                  "  pm.test('已写入 adminToken', function () {",
+                  "    pm.expect(j.data).to.be.a('string');",
+                  "    pm.expect(j.data).to.match(/^5grcs /);",
+                  "  });",
+                  "} else {",
+                  "  pm.test('登录失败，请检查账号密码变量', function () {",
+                  "    pm.expect.fail(j.msg || ('code=' + j.code));",
+                  "  });",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "② 借款人登录（写入 userToken）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/login",
+            "description": "【预期】code=200。写入 userToken，供 /api/** 使用。\n默认账号 18538313405（借款人、borrow_auth=2、已绑卡）。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"{{userMobile}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('登录成功：code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code === 200 && j.data) {",
+                  "  pm.collectionVariables.set('userToken', j.data);",
+                  "  pm.test('已写入 userToken', function () {",
+                  "    pm.expect(j.data).to.be.a('string');",
+                  "    pm.expect(j.data).to.match(/^5grcs /);",
+                  "  });",
+                  "} else {",
+                  "  pm.test('登录失败，请检查账号密码变量', function () {",
+                  "    pm.expect.fail(j.msg || ('code=' + j.code));",
+                  "  });",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "③ 投资人登录（写入 investorToken）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/login",
+            "description": "【预期】code=200。写入 investorToken，供投资类接口使用。\n默认账号 14725836945（invest_auth=2、已绑卡）。\n⚠️ 库里大量账号密码列是 6 位明文 '123456'，无法通过 BCrypt 校验，\n   登录会返回「密码错误」—— 那是存量脏数据，换 BCrypt 账号即可。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"{{investorMobile}}\",\n  \"password\": \"{{investorPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('登录成功：code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code === 200 && j.data) {",
+                  "  pm.collectionVariables.set('investorToken', j.data);",
+                  "  pm.test('已写入 investorToken', function () {",
+                  "    pm.expect(j.data).to.be.a('string');",
+                  "    pm.expect(j.data).to.match(/^5grcs /);",
+                  "  });",
+                  "} else {",
+                  "  pm.test('登录失败，请检查账号密码变量', function () {",
+                  "    pm.expect.fail(j.msg || ('code=' + j.code));",
+                  "  });",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "验证码登录",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/loginByCode",
+            "description": "【预期】话机收到验证码后填 smsCode，code=200。\n依赖 finance-message(8120)；未启动时返回「短信服务不可用」。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"{{userMobile}}\",\n  \"code\": \"{{smsCode}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('登录成功：code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code === 200 && j.data) {",
+                  "  pm.collectionVariables.set('userToken', j.data);",
+                  "  pm.test('已写入 userToken', function () {",
+                  "    pm.expect(j.data).to.be.a('string');",
+                  "    pm.expect(j.data).to.match(/^5grcs /);",
+                  "  });",
+                  "} else {",
+                  "  pm.test('登录失败，请检查账号密码变量', function () {",
+                  "    pm.expect.fail(j.msg || ('code=' + j.code));",
+                  "  });",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "发送验证码",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/sendCode?mobile={{userMobile}}",
+            "description": "【预期】code=200。走 finance-message(8120) 真实下发。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "用户注册（造测试数据）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/register",
+            "description": "【预期】code=200。手机号请先改 newUserMobile，重复注册会失败。\n【注意】新注册账号密码是 BCrypt，可正常登录；\n   但需投资人/借款人认证 + 绑卡后才能投/借款。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile\": \"{{newUserMobile}}\",\n  \"password\": \"123456\",\n  \"passwordto\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "当前管理员信息",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/userInfo",
+            "description": "【预期】code=200，返回 admin 信息。用于验证 adminToken 生效。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "我的资料",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/info",
+            "description": "【预期】code=200，返回当前登录用户。用于验证 userToken 生效。\n【安全用例】换成 adminToken 打本接口应返回 403（角色不匹配）。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "更新资料",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/profile",
+            "description": "【预期】code=200。写入非关键字段，避免污染。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nickName\": \"Postman 测试昵称\",\n  \"email\": \"pm@test.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "用户登出",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/logout",
+            "description": "【预期】code=200。会清理 Redis 登录态，跑完本请求需重新登录（集合会自动重登）。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "管理员登出",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/logout",
+            "description": "【预期】code=200。同上，会清 Redis 的 admin 登录态。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "手机号占用检查",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/user/checkMobile/{{userMobile}}",
+            "description": "【预期】code=200，返回该手机号是否已注册。\n【安全用例 P2-13】本接口在白名单内，未登录即可枚举手机号 —— 这是已知缺口。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "用户信息（按 id 查自己）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/{{userId}}",
+            "description": "【预期】code=200。\n【越权用例】把 userId 改成别人的 id，应返回 code=403「无权查看他人信息」\n（后端已做「路径参数必须等于当前登录用户」的校验）。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "服务健康检查",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/hello",
+            "description": "【预期】code=200。用于确认 api(8990) 已启动。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "先跑这里确认三套 token 都能拿到。之后所有请求的 token 都会自动维护。"
+    },
+    {
+      "name": "1. 管理端-标的与放款",
+      "item": [
+        {
+          "name": "标的列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/loan/project/page?pageNum=1&pageSize=10",
+            "description": "【预期】code=200，返回分页标的。自动把第一条 id 写入 lendId 供后续复用。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('lendId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 lendId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "标的投资记录",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/loan/project/{{lendId}}/investments",
+            "description": "【预期】code=200，返回该标的的全部投标记录。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "标的还款计划",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/loan/project/{{lendId}}/returns",
+            "description": "【预期】code=200，返回该标的的应还计划。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "发布标的（待发布→募资中）",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/loan/project/{{lendId}}/publish",
+            "description": "【预期】code=200。状态 0 → 1。\n【前置】借款人须已签《借款合同》（签署关口一），否则 code=500「请先签署《借款合同》」。\n【幂等】状态非 0 时会被拒。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "下架标的（含退资）",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/loan/project/{{lendId}}/offline",
+            "description": "【预期】code=200。准入状态仅 0/1/2（待发布/募资中/已满标）。\n会退还投资人资金、作废待签合同、给双方发站内信，并把操作人写入 lend.offline_admin_id。\n【安全用例】操作人识别不到时直接拒绝（不允许 null）。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "放款",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/loan/project/{{fullLendId}}/makeLoan",
+            "description": "【预期】code=200，但返回的是【银行 HTML 表单】而非 JSON。\n【前置】① 标的已满标（status=2）② 借款人已签《放款确认书》③ 借款人已绑卡。\n【关键】走服务端同步调用银行，resultCode=0000 即成功。\n⚠️ fullLendId 默认 106（满标待放款）；用非 status=2 的标会 500「标的不是满标待放款状态」。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "逾期检查",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/loan/project/overdueCheck",
+            "description": "【预期】code=200，触发一次逾期标记扫描。\n⚠️ 原 Postman 集合这里写成 GET，实际是 POST（本版已订正）。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "标的列表会把第一条 id 写入 lendId。publish/offline/makeLoan 会改业务状态。"
+    },
+    {
+      "name": "2. 管理端-审核",
+      "item": [
+        {
+          "name": "借款申请列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/borrow/record/page?pageNum=1&pageSize=10",
+            "description": "【预期】code=200。自动写入 borrowInfoId。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('borrowInfoId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 borrowInfoId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "借款申请审核",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/borrow/record/{{borrowInfoId}}/audit",
+            "description": "【预期】code=200。status=2 通过，其它值驳回。\n⚠️ 会改变业务数据，非回归测试勿随意执行。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "借款人列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/borrower/page?pageNum=1&pageSize=10",
+            "description": "【预期】code=200。自动写入 borrowerId。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('borrowerId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 borrowerId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "借款人认证审核",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/borrower/{{borrowerId}}/audit",
+            "description": "【预期】code=200。审核通过后 borrow_auth_status=2（借款能力判据）。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "投资人列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/investor/page?pageNum=1&pageSize=10",
+            "description": "【预期】code=200。自动写入 investorId。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('investorId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 investorId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "投资人认证审核",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/investor/{{investorId}}/audit",
+            "description": "【预期】code=200。审核通过后 invest_auth_status=2。\n【规则】投资能力 = user_type==1 或 invest_auth_status==2，满足其一即可投标。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "列表接口自动写入 borrowInfoId / borrowerId / investorId 供审核复用。"
+    },
+    {
+      "name": "3. 管理端-合同与模板",
+      "item": [
+        {
+          "name": "合同列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/contract/page?pageNum=1&pageSize=10",
+            "description": "【预期】code=200。自动写入 contractId。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('contractId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 contractId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "合同详情",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/contract/{{contractId}}",
+            "description": "【预期】code=200，含正文快照与签署存证。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "合同作废",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/contract/{{contractId}}/revoke",
+            "description": "【预期】code=200。只能作废「待签署」合同；已签署/已作废会 code=500。\n【校验】reason 为空会被拒（必填）。\n⚠️ 原 Postman 集合这里写成 PUT，实际是 POST（本版已订正）。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Postman 功能测试作废\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "合同模板列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/contract/template/page?pageNum=1&pageSize=10",
+            "description": "【预期】code=200。自动写入 templateId。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('templateId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 templateId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "合同模板类型字典",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/contract/template/types",
+            "description": "【预期】code=200，返回 5 类：LOAN/INVEST/PAYMENT/SERVICE/DEPOSIT。\n真源是后端 ContractTypeEnum.values() —— 加枚举自动出现在这里。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "合同模板详情",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/contract/template/{{templateId}}",
+            "description": "【预期】code=200，返回模板正文。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "合同模板保存（升版）",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/contract/template/{{templateId}}",
+            "description": "【预期】code=200。⚠️ 会改动模板正文，非必要不执行。\n模板版本化规则：新版本 status=1、旧版置 0；运行时取 version 最大的启用版。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"借款合同\",\n  \"contentTpl\": \"（Postman 测试，请勿提交）\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "合同模板启停",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/contract/template/{{templateId}}/status?status=1",
+            "description": "【预期】code=200。\n⚠️ status 是 **query 参数**（@RequestParam），放 body 里会 500「系统内部错误」。\n⚠️ 停用模板会导致对应业务闸门降级放行。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "注意 revoke 是 POST 不是 PUT。"
+    },
+    {
+      "name": "4. 管理端-会员/资金/字典/积分",
+      "item": [
+        {
+          "name": "会员列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/member/page?pageNum=1&pageSize=10",
+            "description": "【预期】code=200。自动写入 memberId。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('memberId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 memberId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "会员启用/禁用",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/member/{{memberId}}/status",
+            "description": "【预期】code=200。⚠️ status=0 会让该用户无法登录，注意别把自己禁了。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "会员登录日志",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/member/loginLog/page?pageNum=1&pageSize=10",
+            "description": "【预期】code=200。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "管理员登录日志",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/loginLog/page?pageNum=1&pageSize=10",
+            "description": "【预期】code=200。自动写入 loginLogId。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('loginLogId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 loginLogId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "管理员登录日志详情",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/loginLog/{{loginLogId}}",
+            "description": "【预期】code=200。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "交易流水列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/transFlow/page?pageNum=1&pageSize=10",
+            "description": "【预期】code=200。trans_type：1充值/2提现/3投标/4回款/5放款/6还款。\nstatus：0处理中/1成功/2失败。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "积分等级-分页",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/integralGrade/page?pageNum=1&pageSize=10",
+            "description": "【预期】code=200。自动写入 gradeId。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('gradeId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 gradeId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "积分等级-全量",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/integralGrade/list",
+            "description": "【预期】code=200。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "积分等级-详情",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/integralGrade/{{gradeId}}",
+            "description": "【预期】code=200。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "积分等级-新增",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/integralGrade/save",
+            "description": "【预期】code=200，返回新建等级（自动写入 gradeId，供「修改/删除」使用，避免误改业务等级）。\n⚠️ 实体字段是 integralStart/integralEnd（不是 minAmount/maxAmount，也没有 gradeName）。\n⚠️ 区间不能和已有等级重叠，否则 400「积分区间与已有等级重叠」。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"integralStart\": 10001,\n  \"integralEnd\": 20000,\n  \"borrowAmount\": 50000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('gradeId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 gradeId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "积分等级-分页（取新建项）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/integralGrade/page?pageNum=1&pageSize=100",
+            "description": "【为什么多这一步】「新增」接口返回的是 data=true（布尔），拿不到新 id；\n这里回查一次列表、取 id 最大的一条写入 gradeId，后续「修改/删除」才打得到刚建的行，\n否则会拿默认的 gradeId=1 去改/删**业务等级**。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "let hit = null;",
+                  "(list || []).forEach(function (r) { if (r.id != null && (!hit || r.id > hit.id)) hit = r; });",
+                  "if (hit) {",
+                  "  pm.collectionVariables.set('gradeId', hit.id);",
+                  "  console.log('已把最大 id=' + hit.id + ' 写入 gradeId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "积分等级-修改",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/integralGrade/update",
+            "description": "【预期】code=200。⚠️ 修改的是上一步新建的等级。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{gradeId}}\",\n  \"integralStart\": 10001,\n  \"integralEnd\": 20000,\n  \"borrowAmount\": 60000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "积分等级-删除",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/integralGrade/remove/{{gradeId}}",
+            "description": "【预期】code=200。⚠️ 会删除 gradeId 指向的等级，注意别删到业务数据。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "字典-分类列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/dict/categories",
+            "description": "【预期】code=200。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "字典-新增分类",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/dict/category",
+            "description": "【预期】code=200，返回新建分类（自动写入 dictId）。\n⚠️ 后端取的是 body 里的 **dictCode**（不是 code）；传 code 会建出 dict_code=NULL 的脏分类。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dictCode\": \"pm_test_cat\",\n  \"name\": \"Postman测试分类\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('dictId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 dictId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "字典-按 code 查询",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/dict/listByCode?dictCode=education",
+            "description": "【预期】code=200。\n⚠️ 参数名是 dictCode（不是 code）；缺失/写错会 500「系统内部错误」。\n可用值：education/industry/income/relation/returnMethod/returnSource/moneyUse/borrowStatus/SchoolStatus。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "字典-新增字典项",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/dict/option",
+            "description": "【预期】code=200。⚠️ value 是 **Integer**，传字符串会「请求数据格式错误」。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parentId\": \"{{dictId}}\",\n  \"name\": \"选项A\",\n  \"value\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "字典-修改",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/dict/update",
+            "description": "【预期】code=200。⚠️ 改的是本组新建的 pm_test_cat，不动业务字典。\n⚠️ 不要给分类传 value：dict 有唯一键 uk_parent_id_value(parent_id,value)，\n   分类 parentId 改成自身 id 再带 value 会撞子项，返回 500 通用错误。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{dictId}}\",\n  \"parentId\": 1,\n  \"dictCode\": \"pm_test_cat\",\n  \"name\": \"Postman测试分类-改\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "字典-删除",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/core/dict/remove/{{dictId}}",
+            "description": "【预期】code=200。⚠️ 删除数据。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "会员启停、字典与积分等级的写操作会改库。"
+    },
+    {
+      "name": "5. 用户端-标的与投资",
+      "item": [
+        {
+          "name": "标的列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lend/list?pageNum=1&pageSize=10",
+            "description": "【预期】code=200。自动写入 lendId。\n【性能基线】本接口是压测主力（纯读、无锁）。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('lendId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 lendId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "标的详情",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lend/{{lendId}}",
+            "description": "【预期】code=200。\n【安全用例 P2-14】响应里含借款人 userId，属已知信息泄露缺口。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "标的投资记录",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lend/{{lendId}}/investments",
+            "description": "【预期】code=200。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "相似标的推荐",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lend/{{lendId}}/similar",
+            "description": "【预期】code=200。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "推荐标的（首页）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lend/auth/recommend",
+            "description": "【预期】code=200。需登录。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "我的投资",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{investorToken}}"
+              },
+              {
+                "key": "X-Api-Scope",
+                "value": "investor"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lend/myInvestments",
+            "description": "【预期】code=200。以投资人身份（investorToken）查看。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "投标下单",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{investorToken}}"
+              },
+              {
+                "key": "X-Api-Scope",
+                "value": "investor"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lend/invest/{{lendId}}",
+            "description": "【预期】code=200，返回【银行 HTML 表单】（跳转输支付密码），非 JSON。\n【前置三道闸门】① 未签《出借协议》→500 ② 未签《居间服务协议》→500 ③ 未绑卡→500。\n【金额规则】必须 >0、≤2 位小数、≥最低起投、不超过剩余可投额。\n⚠️ 会真实冻结银行资金，非必要勿反复执行。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "投标调试（跳过银行）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{investorToken}}"
+              },
+              {
+                "key": "X-Api-Scope",
+                "value": "investor"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lend/investDebug/{{lendId}}",
+            "description": "【预期】code=200。调试用入口，不真正冻结资金。\n⚠️ 属调试接口，生产环境不应暴露。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "投标用 investorToken；read 接口用 userToken。"
+    },
+    {
+      "name": "6. 用户端-认证与借款申请",
+      "item": [
+        {
+          "name": "借款人认证-提交",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/borrower/auth/submit",
+            "description": "【预期】code=200。提交后状态变「认证中」，需管理端审核。\n⚠️ 会覆盖当前用户的认证资料。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"张三\",\n  \"idCard\": \"110101199001011234\",\n  \"mobile\": \"{{userMobile}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "借款人认证-状态",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/borrower/auth/status",
+            "description": "【预期】code=200。0未认证/1认证中/2已通过/-1失败。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "投资人认证-提交",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/investor/auth/submit",
+            "description": "【预期】code=200。⚠️ 同上。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"张三\",\n  \"idCard\": \"110101199001011234\",\n  \"mobile\": \"{{userMobile}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "投资人认证-状态",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/investor/auth/status",
+            "description": "【预期】code=200。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "借款申请-提交",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/borrowInfo/auth/submit",
+            "description": "【预期】code=200。\n【前置】须 borrow_auth_status=2（借款能力判据）。\n⚠️ 会新建一条借款申请，非回归勿反复提交。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10000,\n  \"period\": 12,\n  \"lendYearRate\": 8.5,\n  \"returnMethod\": 1,\n  \"lendInfo\": \"Postman 测试借款用途\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "借款申请-列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/borrowInfo/auth/list",
+            "description": "【预期】code=200，返回我的借款申请。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "借款申请-状态",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/borrowInfo/auth/status",
+            "description": "【预期】code=200。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "借款申请-删除草稿",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/borrowInfo/auth/draft",
+            "description": "【预期】code=200。删除未提交的草稿。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "提交类接口会覆盖认证资料 / 新建借款申请。"
+    },
+    {
+      "name": "7. 用户端-合同",
+      "item": [
+        {
+          "name": "我的合同列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/contract/auth/list",
+            "description": "【预期】code=200。自动写入 contractId。\n【可见性规则】① 我是甲/乙方 ② 我投资过的标的的《借款合同》《放款确认书》也能看到（只读）。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('contractId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 contractId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "合同详情",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/contract/auth/detail/{{contractId}}",
+            "description": "【预期】code=200。返回 content / signRecord / hashValid / signable。\nsignable=false 表示我是「只读可见」而非签署方（投资人看借款合同时为此态）。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "导出合同正文",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/contract/auth/export/{{contractId}}",
+            "description": "【预期】code=200，返回 {fileName, content} 供前端落地成文件。\n越权访问他人合同会 code=403。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "准备签署（取/生成合同）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/contract/auth/prepare",
+            "description": "【预期】code=200，返回合同与正文（对已存在的合同是幂等返回，不会重复插入）。\n⚠️ prepLendId 必须是【当前登录借款人本人】名下的标的（默认 5 号标，属借款人 18538313405）；\n   换成别人名下的标 → 唯一键 uk_biz 冲突 → 500 且 msg 里带出原始 SQL 异常（已记录为缺陷）。\n⚠️ 金额（amount）是合同身份的一部分：不传则取标的本金；传不同金额会新插一份合同。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bizType\": \"LEND\",\n  \"contractType\": \"LOAN\",\n  \"bizId\": \"{{prepLendId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "签署合同（手写签名）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/contract/auth/sign",
+            "description": "【预期】code=200。\n【前置】只能是甲/乙方；签名图必须能被 Base64 解码且非空，否则 code=400。\n【幂等】同一人重复签署不会重复写存证。\n⚠️ 会真实改变合同状态，需谨慎。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contractId\": \"{{contractId}}\",\n  \"signImgBase64\": \"{{signImgBase64}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "同步补建待签合同",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/contract/auth/sync",
+            "description": "【预期】code=200，返回 {created, processed, skipped, notes}。\n补建历史缺失的合同（含用户级 SERVICE/DEPOSIT 协议），幂等。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "覆盖 5 类合同与导出、同步补建。"
+    },
+    {
+      "name": "8. 用户端-资金",
+      "item": [
+        {
+          "name": "账户信息",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/account/auth/getAccount",
+            "description": "【预期】code=200。余额真源是银行库 ww_bank.user_account；\n银行库不可达时降级到平台 user_account（镜像）。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "绑卡状态",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/bindStatus",
+            "description": "【预期】code=200。未绑卡时返回 code=500「未绑定」。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "发起绑卡（跳银行页）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/bind?code={{smsCode}}",
+            "description": "【预期】code=200，返回【银行 HTML 表单】。\n【前置】① 已实名认证 ② 短信验证码正确 ③ 已签《资金存管协议》（新闸门）。\n未签存管协议时返回一张「请先签署协议」的 HTML 引导页（HTTP 仍 200）。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "直接绑卡（不跳银行）",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/bindDirect",
+            "description": "【预期】code=200「绑卡成功」。\n【前置】① 已实名 ② 已签《资金存管协议》。\n【安全用例】持卡人姓名/身份证一律取登录用户自身，请求体传的会被忽略。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bankNo\": \"6222021234567890123\",\n  \"bankType\": \"工商银行\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "充值",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/account/auth/recharge",
+            "description": "【预期】成功返回【银行 HTML 表单】；失败是 HTTP 200 + JSON {code:400}。\n【性能注意】充值/提现银行侧【无幂等去重】，重复提交会重复入账，压测禁用。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "提现",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/user/account/auth/withdraw",
+            "description": "【预期】同上返回银行表单。\n【可用额口径】银行余额 − 该用户 status=0 的提现金额之和，超额被 BalanceGuard 拦下。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "我的借款（待还列表）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lendReturn/myBorrowList",
+            "description": "【预期】code=200。自动写入 lendReturnId；并挑一条 **status=0（未还）** 的写入 repayId。\n⚠️ 若拿已还清的期号去还款，会返回「本期已还清，请勿重复还款」。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('lendReturnId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 lendReturnId');",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "const hit = (list || []).find(function (r) { return r.status === 0; });",
+                  "if (hit && hit.id != null) {",
+                  "  pm.collectionVariables.set('repayId', hit.id);",
+                  "  console.log('已把符合条件的 id=' + hit.id + ' 写入 repayId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "我的回款",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{investorToken}}"
+              },
+              {
+                "key": "X-Api-Scope",
+                "value": "investor"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lendReturn/myInvestList",
+            "description": "【预期】code=200。以投资人身份查看回款明细。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "还款",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lendReturn/repay/{{repayId}}",
+            "description": "【预期】返回【银行 HTML 表单】。\n【前置】该期未还、余额充足。\n【关键】银行侧强等式 voteFeeAmt + ΣtransitAmt == totalAmt，不等会返错误页。\n⚠️ repayId 由「我的借款」自动挑一条未还期（status=0）；写死已还期号会报「本期已还清」。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "还款计划明细",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lendReturn/itemReturns/{{lendReturnId}}",
+            "description": "【预期】code=200。返回该笔借款逐期应还明细。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "交易流水",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/transFlow/auth/list/{{pageNum}}/{{pageSize}}",
+            "description": "【预期】code=200。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "充值/提现/还款/投标返回银行 HTML 表单，不是 JSON。"
+    },
+    {
+      "name": "9. 用户端-消息与客服",
+      "item": [
+        {
+          "name": "消息列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/message/myList",
+            "description": "【预期】code=200。自动写入 messageId。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('messageId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 messageId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "未读数量",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/message/unreadCount",
+            "description": "【预期】code=200，返回未读条数。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "标记已读",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/message/read/{{messageId}}",
+            "description": "【预期】code=200。\n消息类型参考：29 标的已下架 / 30 满标待签确认书 / 31 超期未签已退款。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "客服-会话列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/chat/session/list",
+            "description": "【预期】code=200。自动把第一条会话 id 写入 chatSessionId，供后续「消息列表/发送/关闭」使用。\n⚠️ 若该用户一条会话都没有，chatSessionId 会保持旧值 → 后续 message/list 会 403「无权访问他人会话」\n   （这是越权修复后的正确行为）。先跑「客服-创建会话」即可。\n⚠️ api 侧 chat 是迁移前旧实现（MySQL），前端 0 引用，现役客服链路在 finance-ai + MongoDB。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  "",
+                  "const list = (j.data && j.data.list) ? j.data.list : (j.data || []);",
+                  "if (list.length > 0 && list[0].id != null) {",
+                  "  pm.collectionVariables.set('chatSessionId', list[0].id);",
+                  "  console.log('已把第一条的 id=' + list[0].id + ' 写入 chatSessionId');",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "客服-创建会话",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/chat/session/create",
+            "description": "【预期】code=200。⚠️ 写入数据。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Postman 测试会话\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "客服-关闭会话",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/chat/session/{{chatSessionId}}/close",
+            "description": "【预期】code=200。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "客服-消息列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/chat/message/list?sessionId={{chatSessionId}}",
+            "description": "【预期】code=200。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "客服-发送消息",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/chat/message/send",
+            "description": "【预期】code=200。⚠️ role 必填（user/assistant），缺了会 400「消息角色不能为空」。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{chatSessionId}}\",\n  \"role\": \"user\",\n  \"content\": \"Postman 测试消息\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "客服-回复消息",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/chat/message/reply",
+            "description": "【预期】code=200。⚠️ role 必填。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{chatSessionId}}\",\n  \"role\": \"assistant\",\n  \"content\": \"Postman 测试回复\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "客服走 api 侧旧实现（MySQL），现役链路在 finance-ai。"
+    },
+    {
+      "name": "10. 用户端-字典与积分",
+      "item": [
+        {
+          "name": "字典-分类列表",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/dict/categories",
+            "description": "【预期】code=200。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "字典-按 code 查询",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/dict/listByCode?dictCode=education",
+            "description": "【预期】code=200。⚠️ 参数名是 dictCode（不是 code）。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "我的借款额度（积分等级）",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{userToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/integralGrade/borrowAmount",
+            "description": "【预期】code=200，按积分等级返回可借额度。"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": ""
+    },
+    {
+      "name": "11. 银行回调（需验签）",
+      "item": [
+        {
+          "name": "绑卡回调",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/userBind/notify",
+            "description": "【预期】HTTP 200 + 文本 `fail`（签名非法被拒）。\n签名算法见 BankSignUtil（三方密钥须同为 9876543210）。\n【正确性用例】用真实密钥重算 sign 后应返回 success —— 需脚本配合，不做手工用例。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"999888\",\n  \"agentUserId\": \"13800000000\",\n  \"personalName\": \"张三\",\n  \"mobile\": \"13800000000\",\n  \"idCard\": \"110101199001011234\",\n  \"bindCode\": \"BIND_PM_TEST\",\n  \"status\": \"1\",\n  \"bankNo\": \"6222021234567890123\",\n  \"sign\": \"invalid\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "// 回调接口一律验签，用假签名只能验证\"服务可达 + 验签生效\"",
+                  "pm.test('HTTP 状态码 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.text();",
+                  "pm.test('验签拒绝非法回调（返回 fail）', function () {",
+                  "  pm.expect(body).to.contain('fail');",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "充值回调",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/userAccount/notify",
+            "description": "【预期】HTTP 200 + `fail`。⚠️ 银行侧 recharge 无幂等去重。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"999888\",\n  \"agentBillNo\": \"PM_TEST_001\",\n  \"sign\": \"invalid\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "提现回调",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/userAccount/notifyWithdraw",
+            "description": "【预期】HTTP 200 + `fail`。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"999888\",\n  \"agentBillNo\": \"PM_TEST_002\",\n  \"sign\": \"invalid\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "投标回调",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lendItem/notify",
+            "description": "【预期】HTTP 200 + `fail`。\n【幂等用例】同一 agentBillNo 重复投递只应入账一次。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"999888\",\n  \"agentBillNo\": \"PM_TEST_003\",\n  \"sign\": \"invalid\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "放款回调",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lend/notifyMakeLoan",
+            "description": "【预期】HTTP 200 + `fail`。\n【注意】银行 jar 的放款是服务端同步调用，不发回调 ⇒ 本接口不会被该银行触发。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"999888\",\n  \"agentBillNo\": \"PM_TEST_004\",\n  \"sign\": \"invalid\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "还款回调",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/core/lendReturn/notifyUrl",
+            "description": "【预期】HTTP 200 + `fail`。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"999888\",\n  \"agentBillNo\": \"PM_TEST_005\",\n  \"sign\": \"invalid\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const j = pm.response.json();",
+                  "pm.test('业务码 code=200', function () {",
+                  "  pm.expect(j.code).to.eql(200);",
+                  "});",
+                  "if (j.code !== 200) {",
+                  "  console.warn('接口返回非 200：' + (j.msg || ''));",
+                  "}",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "假签名只能验证「服务可达 + 验签生效」，正确性需脚本重算签名。"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "",
+          "const url = pm.request.url.toString();",
+          "// 登录/注册/验证码这类\"不需要带 token\"的请求直接跳过，避免自递归",
+          "if (/\\/login|\\/register|\\/sendCode/.test(url)) { return; }",
+          "",
+          "// ---- JWT 过期判断：登录返回的 data 形如 \"5grcs <jwt>\"，取 payload.exp ----",
+          "function jwtExp(token) {",
+          "  try {",
+          "    const seg = token.replace(/^5grcs\\s+/, '').split('.')[1];",
+          "    if (!seg) { return 0; }",
+          "    const b64 = seg.replace(/-/g, '+').replace(/_/g, '/');",
+          "    const raw = atob(b64 + '='.repeat((4 - b64.length % 4) % 4));",
+          "    // payload 里可能有中文（token_username），按 UTF-8 还原",
+          "    const txt = decodeURIComponent(raw.split('').map(function (c) {",
+          "      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);",
+          "    }).join(''));",
+          "    return JSON.parse(txt).exp || 0;",
+          "  } catch (e) {",
+          "    return 0;",
+          "  }",
+          "}",
+          "// 提前 60 秒视为过期，避免压着临界点跑",
+          "function needRefresh(token) {",
+          "  if (!token) { return true; }",
+          "  const exp = jwtExp(token);",
+          "  if (!exp) { return false; }   // 解析不出来就不当过期，避免\"解析失败->反复登录\"",
+          "  return exp * 1000 < Date.now() + 60000;",
+          "}",
+          "",
+          "function autoLogin(body, path, varName) {",
+          "  return new Promise(function (resolve) {",
+          "    pm.sendRequest({",
+          "      url: pm.collectionVariables.get('baseUrl') + path,",
+          "      method: 'POST',",
+          "      header: { 'Content-Type': 'application/json' },",
+          "      body: { mode: 'raw', raw: JSON.stringify(body) }",
+          "    }, function (err, res) {",
+          "      if (err || !res) {",
+          "        console.warn('[自动登录] ' + varName + ' 请求失败：' + (err || '无响应'));",
+          "        return resolve();",
+          "      }",
+          "      try {",
+          "        const j = res.json();",
+          "        if (j.code === 200 && j.data) {",
+          "          pm.collectionVariables.set(varName, j.data);",
+          "          console.log('[自动登录] ' + varName + ' 已写入（账号 ' +",
+          "            (body.username || body.mobile) + '）');",
+          "        } else {",
+          "          console.warn('[自动登录] ' + varName + ' 失败：' + (j.msg || '未知错误，请检查对应的账号密码变量'));",
+          "        }",
+          "      } catch (e) {",
+          "        console.warn('[自动登录] ' + varName + ' 响应不是 JSON，请检查 baseUrl 与服务是否启动');",
+          "      }",
+          "      resolve();",
+          "    });",
+          "  });",
+          "}",
+          "",
+          "const jobs = [];",
+          "const scope = (pm.request.headers.get('X-Api-Scope') || '').trim();",
+          "",
+          "if (url.indexOf('/admin/') >= 0) {",
+          "  // /admin/** 只能用管理员 token（拦截器校验 token_admin_role）",
+          "  if (needRefresh(pm.collectionVariables.get('adminToken'))) {",
+          "    jobs.push(autoLogin(",
+          "      { username: pm.collectionVariables.get('adminUsername'),",
+          "        password: pm.collectionVariables.get('adminPassword') },",
+          "      '/admin/core/login', 'adminToken'));",
+          "  }",
+          "} else if (url.indexOf('/api/') >= 0) {",
+          "  // /api/** 默认用借款人身份；标注 X-Api-Scope: investor 的用投资人身份",
+          "  if (scope === 'investor') {",
+          "    if (needRefresh(pm.collectionVariables.get('investorToken'))) {",
+          "      jobs.push(autoLogin(",
+          "        { mobile: pm.collectionVariables.get('investorMobile'),",
+          "          password: pm.collectionVariables.get('investorPassword') },",
+          "        '/api/user/login', 'investorToken'));",
+          "    }",
+          "  } else if (needRefresh(pm.collectionVariables.get('userToken'))) {",
+          "    jobs.push(autoLogin(",
+          "      { mobile: pm.collectionVariables.get('userMobile'),",
+          "        password: pm.collectionVariables.get('userPassword') },",
+          "      '/api/user/login', 'userToken'));",
+          "  }",
+          "}",
+          "return Promise.all(jobs);",
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "",
+          "pm.test('HTTP 状态码 200', function () {",
+          "  pm.response.to.have.status(200);",
+          "});",
+          "pm.test('响应时间 < 5000ms', function () {",
+          "  pm.expect(pm.response.responseTime).to.be.below(5000);",
+          "});",
+          "",
+          "// ---- 401 自愈：token 过期/被清空时，清空变量并重放一次该请求 ----",
+          "// 只用 401（缺 token / 登录态失效）；403 多为\"角色不匹配\"，重登也没用，不处理。",
+          "const reqName = pm.info.requestName;",
+          "const retryFlag = '_retried_' + reqName;",
+          "if (pm.response.code === 401) {",
+          "  const url = pm.request.url.toString();",
+          "  const scope = (pm.request.headers.get('X-Api-Scope') || '').trim();",
+          "  let varName = null;",
+          "  if (url.indexOf('/admin/') >= 0) { varName = 'adminToken'; }",
+          "  else if (scope === 'investor') { varName = 'investorToken'; }",
+          "  else if (url.indexOf('/api/') >= 0) { varName = 'userToken'; }",
+          "",
+          "  if (varName) {",
+          "    pm.collectionVariables.set(varName, '');",
+          "    if (!pm.collectionVariables.get(retryFlag)) {",
+          "      pm.collectionVariables.set(retryFlag, '1');",
+          "      console.warn('[token 自愈] ' + reqName + ' 返回 401，已清空 ' + varName + ' 并重放一次');",
+          "      postman.setNextRequest(reqName);",
+          "    } else {",
+          "      console.warn('[token 自愈] ' + reqName + ' 重放后仍 401，请检查账号密码变量与 Redis(6379)');",
+          "    }",
+          "  }",
+          "} else {",
+          "  // 跑通即清除重放标记，保证下次仍能自愈",
+          "  pm.collectionVariables.unset(retryFlag);",
+          "}",
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8990",
+      "type": "string"
+    },
+    {
+      "key": "adminUsername",
+      "value": "admin",
+      "type": "string"
+    },
+    {
+      "key": "adminPassword",
+      "value": "123456",
+      "type": "string"
+    },
+    {
+      "key": "userMobile",
+      "value": "18538313405",
+      "type": "string"
+    },
+    {
+      "key": "userPassword",
+      "value": "123456",
+      "type": "string"
+    },
+    {
+      "key": "investorMobile",
+      "value": "14725836945",
+      "type": "string"
+    },
+    {
+      "key": "investorPassword",
+      "value": "123456",
+      "type": "string"
+    },
+    {
+      "key": "newUserMobile",
+      "value": "13900001111",
+      "type": "string"
+    },
+    {
+      "key": "smsCode",
+      "value": "123456",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "investorToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "lendId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "prepLendId",
+      "value": "5",
+      "type": "string"
+    },
+    {
+      "key": "fullLendId",
+      "value": "106",
+      "type": "string"
+    },
+    {
+      "key": "borrowInfoId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "borrowerId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "investorId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "contractId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "templateId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "memberId",
+      "value": "3",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "30",
+      "type": "string"
+    },
+    {
+      "key": "loginLogId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "gradeId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "dictId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "lendReturnId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "repayId",
+      "value": "65",
+      "type": "string"
+    },
+    {
+      "key": "messageId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "chatSessionId",
+      "value": "55",
+      "type": "string"
+    },
+    {
+      "key": "pageNum",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "pageSize",
+      "value": "10",
+      "type": "string"
+    },
+    {
+      "key": "signImgBase64",
+      "type": "string",
+      "value": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    }
+  ]
+}

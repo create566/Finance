@@ -13,6 +13,4 @@ public interface ChatSessionService extends IService<ChatSession> {
     ChatSession createSession(ChatSession session);
 
     boolean closeSession(Long id);
-
-    boolean removeSession(Long id);
 }

@@ -1,0 +1,92 @@
+# ============================================================================
+# ww_finance 前端 nginx 配置样例
+# 说明：生产环境前端不用 Vite 代理，必须由 nginx 反代到网关 8088。
+# 用法：
+#   1) 把两个前端 dist 上传到 /opt/ww/user-dist 与 /opt/ww/admin-dist
+#   2) cp nginx.conf.sample /etc/nginx/conf.d/ww.conf
+#   3) 把下面的 server_name 换成你的域名/IP
+#   4) nginx -t && nginx -s reload
+# ============================================================================
+
+# ---------- 用户端 (ww_finance_user) ----------
+server {
+    listen       80;
+    server_name  user.your-domain.com;      # ← 改成你的域名或服务器IP
+
+    root  /opt/ww/user-dist;                # ← 用户端 dist 路径
+    index index.html;
+
+    # Vue Router history 模式：刷新/直达子路由时回退到 index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 后端 API 走网关
+    location /api/ {
+        proxy_pass         http://127.0.0.1:8088;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+
+    # AI 服务走网关（网关 /ai/** 直连 8081）
+    location /ai/ {
+        proxy_pass         http://127.0.0.1:8088;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        # AI 可能流式返回，关闭缓冲
+        proxy_buffering    off;
+        proxy_read_timeout 300s;
+    }
+
+    # 静态资源缓存
+    location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|map)$ {
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800";
+    }
+}
+
+# ---------- 管理端 (ww_finance_admin) ----------
+server {
+    listen       81;                        # ← 管理端换端口，或改用 server_name 区分
+    server_name  admin.your-domain.com;     # ← 改成管理端域名
+
+    root  /opt/ww/admin-dist;               # ← 管理端 dist 路径
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 管理端接口前缀是 /admin/
+    location /admin/ {
+        proxy_pass         http://127.0.0.1:8088;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+
+    # 管理端也可能调 /api/
+    location /api/ {
+        proxy_pass         http://127.0.0.1:8088;
+        proxy_set_header   Host              $host;
+    }
+
+    location /ai/ {
+        proxy_pass         http://127.0.0.1:8088;
+        proxy_set_header   Host              $host;
+        proxy_buffering    off;
+        proxy_read_timeout 300s;
+    }
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|map)$ {
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800";
+    }
+}

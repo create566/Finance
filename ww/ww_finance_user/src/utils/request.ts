@@ -1,5 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
+import { revokeEntry } from '@/utils/entryGuard'
 
 export interface ApiResult<T = unknown> {
   code: number
@@ -13,9 +14,11 @@ function getToken(): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
-/** 登录态失效：清 cookie 并跳登录页 */
+/** 登录态失效：清 cookie、吊销入口通行证，并跳登录页 */
 function redirectToLogin() {
   document.cookie = 'user_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+  // 通行证必须一起吊销：否则 token 过期后用户仍能凭旧通行证在页面间游走
+  revokeEntry()
   if (!window.location.pathname.startsWith('/login')) {
     window.location.href = '/login'
   }

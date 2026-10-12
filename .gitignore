@@ -48,3 +48,6 @@ chroma*.log
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# ===== WorkBuddy 临时工作区（含数据库导出，不入库） =====
+.workbuddy/tmp/

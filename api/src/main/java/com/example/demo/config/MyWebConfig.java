@@ -79,6 +79,8 @@ public class MyWebConfig implements WebMvcConfigurer {
                         "/api/core/lend/notifyMakeLoan",
                         "/api/core/lendReturn/notifyUrl",
                         "/api/core/user/checkMobile/**",
+                        // 登录 / 注册页的平台运营统计：未登录状态取数据，故放行（只读聚合，无个人信息）
+                        "/api/core/index/statistics",
                         "/api/oss/file/images/**",
                         "/api/knowledge/files/**",
                         "/admin/core/login",
@@ -97,7 +99,8 @@ public class MyWebConfig implements WebMvcConfigurer {
                         "/api/user/login",
                         "/api/user/register",
                         "/api/user/sendCode",
-                        "/api/user/loginByCode"
+                        "/api/user/loginByCode",
+                        "/api/core/index/statistics"
                 );
     }
 }

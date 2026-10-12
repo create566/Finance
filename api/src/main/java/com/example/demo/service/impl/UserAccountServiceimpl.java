@@ -54,19 +54,6 @@ public class UserAccountServiceImpl implements UserAccountService {
     @Autowired
     private TransFlowMapper transFlowMapper;
 
-    /**
-     * 平台不持有余额，全部从银行查询
-     */
-    @Override
-    public BigDecimal getBalance(Long userId) {
-        return bankAccountSyncService.getBankBalance(userId);
-    }
-
-    @Override
-    public BigDecimal getFreezeAmount(Long userId) {
-        return bankAccountSyncService.getBankFreezeAmount(userId);
-    }
-
     @Override
     public AccountInfoDto getAccountInfo(Long userId) {
         User user = userService.getById(userId);
@@ -158,18 +145,6 @@ public class UserAccountServiceImpl implements UserAccountService {
         Map<String, Object> paramMap = buildBankParams(userBind, amount, "fetchAmt", transNo,
                 HfbConst.returnUrl(), HfbConst.WITHDRAW_NOTIFY_URL);
         return FormHelper.buildForm(HfbConst.WITHDRAW_URL, paramMap);
-    }
-
-    /**
-     * 汇总该用户「处理中」状态的提现总额（已占用可用余额、但银行余额尚未扣减）。
-     *
-     * <p>只统计 {@code trans_type=提现(2)} 且 {@code status=处理中(0)} 的流水；
-     * 逻辑删除在 {@link TransFlowMapper#sumAmount} 的 SQL 里显式过滤。
-     */
-    private BigDecimal sumPendingWithdraw(Long userId) {
-        BigDecimal sum = transFlowMapper.sumAmount(
-                userId, TransTypeEnum.WITHDRAW.getCode(), TransStatusEnum.PROCESSING.getCode());
-        return sum != null ? sum : BigDecimal.ZERO;
     }
 
     /**

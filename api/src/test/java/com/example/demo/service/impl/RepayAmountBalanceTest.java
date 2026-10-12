@@ -33,6 +33,7 @@ import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
@@ -50,10 +51,11 @@ import static org.mockito.Mockito.when;
  *   <li><b>P0-4</b>：逾期时 totalAmt = 本息 + 罚息，而明细只摊本息、voteFeeAmt 恒为 0。</li>
  * </ol>
  *
- * <p>本类把两条兜底钉住：
+ * <p>本类把两条底线钉住：
  * <ul>
- *   <li>存量脏数据（Σ明细 ≠ 期供）在组装表单时被倒挤到最后一户 ⇒ 等式成立；</li>
- *   <li>逾期时罚息计入 voteFeeAmt ⇒ 等式成立。</li>
+ *   <li>明细与期供**差额为 0** 才允许发起（逾期时罚息计入 voteFeeAmt 使等式成立）；</li>
+ *   <li>差额不为 0 ⇒ <b>拒绝发起并留痕</b>，绝不静默倒挤（旧行为只改表单不落库，
+ *       会让银行实转、平台明细、资金流水三本账永久不一致）。</li>
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
@@ -172,9 +174,12 @@ class RepayAmountBalanceTest {
     }
 
     @Test
-    @DisplayName("【P4-53】多投资人分厘差：Σ明细比期供多1分时，倒挤到最后一户使等式成立")
-    void multiInvestorPennyGap_isBalancedIntoLastInvestor() {
-        // 期供 869.88，但两个投资人明细分别四舍五入后合计 869.89（+0.01）
+    @DisplayName("【资金闭环】多投资人分厘差：拒绝发起并留痕，不再静默倒挤到最后一户")
+    void multiInvestorPennyGap_isRejectedInsteadOfSilentlyRebalanced() {
+        // 期供 869.88，但两个投资人明细分别四舍五入后合计 869.89（+0.01）。
+        // 改造前这里会把 -0.01 悄悄补到最后一户的 transitAmt 上，**只改发给银行的表单、不落库**，
+        // 于是回调记录仍是 782.90 ⇒「银行实转 ≠ 平台明细 ≠ 资金流水」，三本账永久对不上。
+        // 现在必须直接拒绝，把数据缺陷暴露在"还款发起"这一步。
         LendReturn lr = lendReturn(new BigDecimal("803.22"), new BigDecimal("66.67"),
                 new BigDecimal("869.88"), false, null);
         List<LendItemReturn> items = new ArrayList<>(Arrays.asList(
@@ -182,17 +187,11 @@ class RepayAmountBalanceTest {
                 itemReturn(2L, 22L, new BigDecimal("722.90"), new BigDecimal("60.00"), new BigDecimal("782.90"))));
         stubCommon(lr, items, new BigDecimal("20000.00"));
 
-        String html = service.buildRepayForm(RETURN_ID, USER_ID);
-
-        BigDecimal totalAmt = new BigDecimal(field(html, "totalAmt"));
-        BigDecimal voteFeeAmt = new BigDecimal(field(html, "voteFeeAmt"));
-        BigDecimal sum = sumTransit(field(html, "data"));
-
-        assertEquals(0, voteFeeAmt.add(sum).compareTo(totalAmt),
-                "银行强等式 voteFeeAmt + ΣtransitAmt == totalAmt 必须成立，否则还款必被拒；"
-                        + " totalAmt=" + totalAmt + " voteFeeAmt=" + voteFeeAmt + " ΣtransitAmt=" + sum);
-        assertEquals(0, sum.compareTo(new BigDecimal("869.88")),
-                "倒挤后 ΣtransitAmt 应等于期供 869.88（第二户从 782.90 调整为 782.89）");
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+                () -> service.buildRepayForm(RETURN_ID, USER_ID),
+                "明细合计 869.89 ≠ 期供 869.88 时必须拒绝发起，不得把钱打错后再发现");
+        assertTrue(ex.getMessage().contains("差额"), "错误信息应带差额便于定位：" + ex.getMessage());
+        assertTrue(ex.getMessage().contains("0.01"), "差额应为 1 分：" + ex.getMessage());
     }
 
     @Test
@@ -234,9 +233,9 @@ class RepayAmountBalanceTest {
     }
 
     @Test
-    @DisplayName("倒挤会让投资人回款变负时，直接拒绝而不是把脏单子递给银行")
+    @DisplayName("差额大到会把投资人回款压成负数时，同样直接拒绝而不是把脏单子递给银行")
     void negativeAdjustment_isRejected() {
-        // 期供远小于明细合计，倒挤会把最后一户压成负数
+        // 期供远小于明细合计：无论按什么口径"补平"，都会把某一户压成负数
         LendReturn lr = lendReturn(new BigDecimal("100.00"), new BigDecimal("10.00"),
                 new BigDecimal("110.00"), false, null);
         List<LendItemReturn> items = new ArrayList<>(Arrays.asList(

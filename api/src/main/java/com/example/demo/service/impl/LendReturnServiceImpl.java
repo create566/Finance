@@ -30,6 +30,7 @@ import com.example.demo.service.TransFlowService;
 import com.example.demo.service.UserAccountService;
 import com.example.demo.service.UserBindService;
 import com.example.demo.service.UserService;
+import com.example.demo.utils.AllocationUtil;
 import com.example.demo.utils.BalanceGuard;
 import com.example.demo.utils.LendNoUtils;
 import com.example.demo.utils.ReturnPlanCalculator;
@@ -134,8 +135,6 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
     private static final BigDecimal HUNDRED = new BigDecimal("100");
     /** 罚息上限：不超过逾期本金的 100% */
     private static final BigDecimal PENALTY_CAP_RATIO = new BigDecimal("1.0");
-    /** 投资人占比的内部计算精度 */
-    private static final int RATIO_SCALE = 10;
 
     @Override
     public String buildMakeLoanForm(Long lendId, Long adminId) {
@@ -169,6 +168,20 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
                 .eq(LendReturn::getLendId, lendId));
         if (exists > 0) {
             throw new ResourceNotFoundException(500, "标的已放款，请勿重复操作");
+        }
+
+        // 2.2 【资金闭环】放款前份额一致性：银行按 voteAmt（= 标的金额）划转，
+        //     而还款计划按「Σ满标持有的投资份额」分摊。两者不等就必须**在请求银行之前**拦住 ——
+        //     一旦钱划出去，借款人已拿到全额，缺口只能靠人工冲正。
+        //     常见成因：撤标与满标竞态、下架处置留下悬挂记录、标的下架后又上架。
+        BigDecimal investShareSum = sumActiveInvestAmount(lendId);
+        BigDecimal lendAmount = nvl(lend.getAmount());
+        if (investShareSum.compareTo(lendAmount) != 0) {
+            log.error("【对账失败】放款前校验不通过：Σ满标投资份额={} ≠ 标的金额={}，lendId={}",
+                    investShareSum.toPlainString(), lendAmount.toPlainString(), lendId);
+            throw new ResourceNotFoundException(500,
+                    "投资份额合计（" + investShareSum.toPlainString() + "）与标的金额（"
+                            + lendAmount.toPlainString() + "）不一致，已拒绝放款");
         }
 
         // 2.5 签署关口三：借款人未签《放款确认书》不予放款。
@@ -227,6 +240,23 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
     private String buildMakeLoanBillNo(Long lendId) {
         String stamp = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
         return "MAKELoan" + stamp + String.format("%03d", lendId % 1000);
+    }
+
+    /**
+     * 该标的当前「满标持有(2)」的投资份额合计。
+     *
+     * <p>口径与放款分摊完全一致（{@code status = 2}，已撤标(1) 的记录不计入）；
+     * {@code is_deleted = 0} 由 {@link LendItem} 上的 {@code @TableLogic} 自动追加。</p>
+     */
+    private BigDecimal sumActiveInvestAmount(Long lendId) {
+        List<LendItem> items = lendItemService.list(new LambdaQueryWrapper<LendItem>()
+                .eq(LendItem::getLendId, lendId)
+                .eq(LendItem::getStatus, 2));
+        BigDecimal sum = BigDecimal.ZERO;
+        for (LendItem li : items) {
+            sum = sum.add(nvl(li.getInvestAmount()));
+        }
+        return sum;
     }
 
     @Override
@@ -357,6 +387,24 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
             return true;
         }
 
+        // 7.5 【资金闭环·恒等式⑦】银行**实到**金额必须与标的金额严格一致。
+        //     银行是按我们请求里的 voteAmt 划转的，但"请求发了多少"与"实际到账多少"
+        //     在银行侧是两个不同的概念（部分成功、手工改单、旧流水重放都可能让二者分叉）。
+        //     若照单落账，就会生成一份金额错误的还款计划：借款人账面多出/少掉本金，
+        //     投资人债权随之虚高或缩水 —— 而钱已经在借款人账上了，事后只能人工冲正。
+        //     宁可在落账这一步拒绝（@Transactional 保证平台侧零残留），
+        //     用 error 日志 + 银行流水号留下完整线索交人工处理。
+        BigDecimal lendAmountForCheck = nvl(lend.getAmount());
+        BigDecimal bankAmount = (voteAmt != null && voteAmt.signum() > 0) ? voteAmt : lendAmountForCheck;
+        if (bankAmount.compareTo(lendAmountForCheck) != 0) {
+            log.error("【对账失败】银行实到放款金额={} ≠ 标的金额={}，已中止落账：lendId={}, transNo={}",
+                    bankAmount.toPlainString(), lendAmountForCheck.toPlainString(), lendId, transNo);
+            throw new ResourceNotFoundException(500,
+                    "银行实到放款金额（" + bankAmount.toPlainString() + "）与标的金额（"
+                            + lendAmountForCheck.toPlainString()
+                            + "）不一致，已中止落账，请凭银行流水号人工核对处理");
+        }
+
         // 8. 幂等：已有还款计划则不重复放款
         long exists = this.count(new LambdaQueryWrapper<LendReturn>()
                 .eq(LendReturn::getLendId, lendId));
@@ -403,24 +451,55 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
 
         // 10. 为每个投资人生成收益计划
         //
-        // 【P4-53】分摊口径：**按投资占比切分期供**，不是"每个投资人独立跑一遍还款计划计算"。
-        // 独立计算看着更"精确"，实际有两个坑：
-        //   ① 各户四舍五入到分后加总，与整体算出的期供差 1 分（标的10：86.99+782.90=869.89 vs 869.88）；
-        //   ② 更严重的是**末期**——末期本金取"剩余本金"，前面的舍入误差会累积，
-        //      实测标的10 第12期偏差达 0.13 元，全倒挤给一户会让该投资人回款明显失真。
-        // 改为按占比分摊后，各期（含末期）偏差都被压到 ≤ 0.01×户数，再由
-        // balanceItemReturns() 倒挤补平，Σ 严格等于期供。
+        // 【资金闭环·恒等式③】每期分别用**最大余数法**把「该期本金 / 该期利息」切给各户。
+        //
+        // 历史两代实现都不对：
+        //   ① 「每户独立跑一遍 ReturnPlanCalculator」：各自四舍五入到分后加总，与整体算出的
+        //      期供差 1 分（标的10：86.99+782.90=869.89 vs 期供 869.88）；末期本金取"剩余本金"，
+        //      误差跨期累积，实测第 12 期偏差达 0.13 元。
+        //   ② 「按占比各自四舍五入 + 把整段残差倒挤给投资额最大的一户」：
+        //      残差上界 ≈ 0.005 × 户数（1000 户最坏 ±5 元/期，10 万户最坏 ±500 元/期），
+        //      而且**每期都压在同一户**身上、跨期累积；倒挤量还可能为负，
+        //      把该户的当期回款直接压成负数。
+        //
+        // 现在改为 AllocationUtil（Hamilton 最大余数法）：
+        //   · 以「分」做 long 整数运算，全流程零浮点；
+        //   · 各户先向下取整到分，剩余的分按小数部分从大到小 +1 分；
+        //   · 结果：Σ分摊 ≡ 该期期供（分位严格相等，非"近似"）、单户偏差 < 1 分、
+        //     且同一输入必得同一输出（并列时按权重降序、下标升序决定）。
+        //
+        // 【bug ③】只对「满标持有」的投资记录分摊。
+        // 改造前只按 lendId 取，把 status=1（已撤标、资金已退回投资人）的记录也算进了债权份额，
+        // 结果是 Σ投资人本金 > 标的本金 —— 平台凭空多分出一份不存在的债权，
+        // 银行侧按 ΣtransitAmt 打款却只收到标的金额，一分不少地垫付出去。
+        // is_deleted=0 由 LendItem 上的 @TableLogic 自动追加，无需手写。
         List<LendItem> items = lendItemService.list(new LambdaQueryWrapper<LendItem>()
-                .eq(LendItem::getLendId, lendId));
+                .eq(LendItem::getLendId, lendId)
+                .eq(LendItem::getStatus, 2));
         List<LendItemReturn> itemReturns = new ArrayList<>();
         BigDecimal lendAmount = nvl(lend.getAmount());
         if (!items.isEmpty() && lendAmount.signum() > 0) {
-            for (LendItem item : items) {
-                BigDecimal ratio = nvl(item.getInvestAmount())
-                        .divide(lendAmount, RATIO_SCALE, RoundingMode.HALF_UP);
-                for (LendReturn lr : returns) {
-                    BigDecimal p = money2(nvl(lr.getPrincipal()).multiply(ratio));
-                    BigDecimal i = money2(nvl(lr.getInterest()).multiply(ratio));
+            BigDecimal[] weights = new BigDecimal[items.size()];
+            BigDecimal weightSum = BigDecimal.ZERO;
+            for (int k = 0; k < items.size(); k++) {
+                weights[k] = nvl(items.get(k).getInvestAmount());
+                weightSum = weightSum.add(weights[k]);
+            }
+            // 分摊前提：Σ有效投资份额 必须严格等于标的金额。
+            // 不等就意味着「有一份债权没有主人」（或多出一个主人）——按比例切分只会把这个缺口
+            // 摊薄到所有人身上，谁都看不出来；不如在这里就拒绝，让问题停在放款之前。
+            if (weightSum.compareTo(lendAmount) != 0) {
+                log.error("【对账失败】放款分摊前提不成立：Σ有效投资份额={} ≠ 标的金额={}, lendId={}, 有效投资笔数={}",
+                        weightSum.toPlainString(), lendAmount.toPlainString(), lendId, items.size());
+                throw new ResourceNotFoundException(500,
+                        "投资份额合计（" + weightSum.toPlainString() + "）与标的金额（"
+                                + lendAmount.toPlainString() + "）不一致，已中止放款分摊");
+            }
+            for (LendReturn lr : returns) {
+                BigDecimal[] principals = AllocationUtil.allocate(nvl(lr.getPrincipal()), weights);
+                BigDecimal[] interests = AllocationUtil.allocate(nvl(lr.getInterest()), weights);
+                for (int k = 0; k < items.size(); k++) {
+                    LendItem item = items.get(k);
                     LendItemReturn lir = new LendItemReturn();
                     lir.setLendReturnId(lr.getId());
                     lir.setLendItemId(item.getId());
@@ -430,9 +509,10 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
                     lir.setCurrentPeriod(lr.getCurrentPeriod());
                     lir.setLendYearRate(item.getLendYearRate());
                     lir.setReturnMethod(lend.getReturnMethod());
-                    lir.setPrincipal(p);
-                    lir.setInterest(i);
-                    lir.setTotal(p.add(i));
+                    lir.setPrincipal(principals[k]);
+                    lir.setInterest(interests[k]);
+                    // total 由本金+利息相加得出，不独立舍入 —— 保证 Σtotal ≡ 期供总额
+                    lir.setTotal(principals[k].add(interests[k]));
                     lir.setFee(BigDecimal.ZERO);
                     lir.setReturnDate(lr.getReturnDate());
                     lir.setOverdue(false);
@@ -443,23 +523,33 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
                 }
             }
         }
-        // 10.5 【P4-53】投资人回款明细倒挤：保证 Σ明细 ≡ 该期期供。
-        //      明细是「每个投资人独立跑一遍 ReturnPlanCalculator」算出来的，
-        //      各自四舍五入到分之后加总，与整体算出来的期供会差 1 分
-        //      （实测标的10：86.99 + 782.90 = 869.89，而期供是 869.88）。
-        //      银行 returnCommit 有强等式 voteFeeAmt + ΣtransitAmt == totalAmt，
-        //      差 1 分就抛 RETURN_AMMOUNT_MORE_ERROR ⇒ 多投资人标的的还款必然失败。
-        balanceItemReturns(itemReturns, returns);
 
         if (!itemReturns.isEmpty()) {
             itemReturns.forEach(lir -> lendItemReturnMapper.insert(lir));
         }
 
+        // 10.6 【恒等式⑧】回款计划落库后，把每户的「预期收益」重算为「实际可收利息合计」。
+        //      投资发生的那一刻还没有还款计划，expect_amount 只能按 (金额,利率,期数,方式) 预估；
+        //      此刻计划已成事实，直接以明细利息之和为准 —— 让「页面显示预期收益 ≡ 投资人实际
+        //      能收到的利息」这条恒等式**由构造保证**，而不是依赖两套算法"碰巧算出同一个数"。
+        if (!itemReturns.isEmpty()) {
+            Map<Long, BigDecimal> expectByItem = new HashMap<>();
+            for (LendItemReturn lir : itemReturns) {
+                expectByItem.merge(lir.getLendItemId(), nvl(lir.getInterest()), BigDecimal::add);
+            }
+            for (Map.Entry<Long, BigDecimal> e : expectByItem.entrySet()) {
+                lendItemService.updateExpectAmount(e.getKey(), money2(e.getValue()));
+            }
+        }
+
         // 11. 借款人入账（放款，银行处理）
-        recordFlow(lend.getUserId(), TransTypeEnum.LOAN, lend.getAmount(),
+        // 流水金额记「银行实到」而不是「账上标的金额」：两者上面已校验相等，
+        // 但用实到值落账才能让对账脚本（恒等式⑦：Σ放款流水 ≡ Σ已放款标的金额）
+        // 在银行侧出现偏差时立刻变红，而不是被账上金额"抹平"。
+        recordFlow(lend.getUserId(), TransTypeEnum.LOAN, bankAmount,
                 "标的放款 " + lend.getLendNo(), now, transNo);
         log.info("放款流水已记录，借款人 {} 应收到 {}，由银行处理入账",
-                lend.getUserId(), lend.getAmount());
+                lend.getUserId(), bankAmount);
 
         // 11.1 借款成功累计积分（每借100元=1积分）
         int loanPoints = lend.getAmount().divide(new BigDecimal("100")).intValue();
@@ -484,90 +574,23 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
         return true;
     }
 
-    /**
-     * 【P4-53】投资人回款明细倒挤：让「Σ投资人明细」严格等于「该期期供」。
-     *
-     * <p>为什么需要倒挤：明细是给<b>每个投资人独立跑一遍</b>
-     * {@link ReturnPlanCalculator#calc} 算出来的（等额本息在数学上可加，
-     * 但各自四舍五入到分之后就不一定了）。实测标的 10：
-     * <pre>
-     *   期供（整体算）      = 869.88
-     *   明细（各自算）      = 86.99 + 782.90 = 869.89   ← 差 +0.01
-     * </pre>
-     * 银行 {@code returnCommit} 有强等式 {@code voteFeeAmt + ΣtransitAmt == totalAmt}，
-     * 差 1 分就抛 {@code RETURN_AMMOUNT_MORE_ERROR} ⇒
-     * <b>多投资人标的的还款必然失败，单投资人标的恰好不受影响</b>。
-     *
-     * <p>倒挤口径（与 {@link #buildRepayForm} 的兜底倒挤保持一致）：
-     * <ul>
-     *   <li>把本金差额、利息差额补到<b>投资金额最大</b>的那一户 —— 它的相对误差最小；</li>
-     *   <li>只调 principal / interest，<b>total 由二者相加得出</b>，不独立舍入；</li>
-     *   <li>倒挤后 Σprincipal ≡ 期供本金、Σinterest ≡ 期供利息、Σtotal ≡ 期供总额，三者同时成立。</li>
-     * </ul>
-     */
-    private void balanceItemReturns(List<LendItemReturn> itemReturns, List<LendReturn> returns) {
-        if (itemReturns == null || itemReturns.isEmpty() || returns == null || returns.isEmpty()) {
-            return;
-        }
-
-        Map<Long, LendReturn> periodMap = new HashMap<>();
-        for (LendReturn lr : returns) {
-            if (lr.getId() != null) {
-                periodMap.put(lr.getId(), lr);
-            }
-        }
-
-        Map<Long, List<LendItemReturn>> byPeriod = new HashMap<>();
-        for (LendItemReturn ir : itemReturns) {
-            if (ir.getLendReturnId() == null) {
-                continue;
-            }
-            byPeriod.computeIfAbsent(ir.getLendReturnId(), k -> new ArrayList<>()).add(ir);
-        }
-
-        for (Map.Entry<Long, List<LendItemReturn>> e : byPeriod.entrySet()) {
-            LendReturn lr = periodMap.get(e.getKey());
-            List<LendItemReturn> list = e.getValue();
-            if (lr == null || list.isEmpty()) {
-                continue;
-            }
-
-            BigDecimal sumPrincipal = BigDecimal.ZERO;
-            BigDecimal sumInterest = BigDecimal.ZERO;
-            for (LendItemReturn ir : list) {
-                sumPrincipal = sumPrincipal.add(nvl(ir.getPrincipal()));
-                sumInterest = sumInterest.add(nvl(ir.getInterest()));
-            }
-
-            BigDecimal diffPrincipal = nvl(lr.getPrincipal()).subtract(sumPrincipal);
-            BigDecimal diffInterest = nvl(lr.getInterest()).subtract(sumInterest);
-            if (diffPrincipal.signum() == 0 && diffInterest.signum() == 0) {
-                continue;
-            }
-
-            LendItemReturn target = list.get(0);
-            for (LendItemReturn ir : list) {
-                if (nvl(ir.getInvestAmount()).compareTo(nvl(target.getInvestAmount())) > 0) {
-                    target = ir;
-                }
-            }
-
-            target.setPrincipal(nvl(target.getPrincipal()).add(diffPrincipal));
-            target.setInterest(nvl(target.getInterest()).add(diffInterest));
-            target.setTotal(nvl(target.getPrincipal()).add(nvl(target.getInterest())));
-
-            log.warn("还款计划明细倒挤：lendReturnId={}, 第{}期, 本金差={}, 利息差={}, 补记到投资人{}",
-                    lr.getId(), lr.getCurrentPeriod(), diffPrincipal, diffInterest,
-                    target.getInvestUserId());
-        }
-    }
-
     /** null 安全：金额字段一律按 0 处理 */
     private static BigDecimal nvl(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;
     }
 
-    /** 金额保留 2 位（四舍五入）；投资人分摊时逐笔舍入，余量由倒挤补平 */
+    /** 把可能以 BigDecimal / Number / String 形式存在的金额统一成 BigDecimal（null → 0） */
+    private static BigDecimal toBigDecimal(Object v) {
+        if (v == null) {
+            return BigDecimal.ZERO;
+        }
+        if (v instanceof BigDecimal) {
+            return (BigDecimal) v;
+        }
+        return new BigDecimal(String.valueOf(v));
+    }
+
+    /** 金额保留 2 位（四舍五入）。注意：分摊已改由 AllocationUtil 保证 Σ 严格相等，不靠舍入后倒挤。 */
     private static BigDecimal money2(BigDecimal v) {
         return v.setScale(2, RoundingMode.HALF_UP);
     }
@@ -650,31 +673,29 @@ public class LendReturnServiceImpl extends ServiceImpl<LendReturnMapper, LendRet
             detailList.add(detail);
         }
 
-        // 5.5 【P4-53】运行期兜底倒挤：保证银行强等式 voteFeeAmt + ΣtransitAmt == totalAmt 恒成立。
-        //     新生成的还款计划已由 balanceItemReturns() 保证自洽，但**存量**计划
-        //     （2026-10-08 前生成的）可能存在 1 分分厘差，若不在这里补平，
-        //     那些期的还款会 100% 被银行拒绝。
-        //     差额（通常 ±0.01）补到最后一户的 transitAmt，与生成期倒挤口径一致。
+        // 5.5 【资金闭环·硬校验】原先这里是「运行期兜底倒挤」：把
+        //     payable − voteFeeAmt − ΣtransitAmt 的差额悄悄补到"最后一户"的 transitAmt 上。
+        //     它有两个致命缺陷：
+        //       ① **只改了发给银行的表单，没有落库**。回调 handleRepayNotify 记录的仍是
+        //          lend_item_return 里的原始值 ⇒「银行实转 ≠ 平台明细 ≠ 资金流水」，
+        //          三本账永久对不上，且不留任何痕迹；
+        //       ② 它把真正的数据缺陷（分摊残差）掩盖掉，问题只会在对账时以"钱少了"的形式爆出来。
+        //     现改为**硬等式校验**：明细合计必须严格等于「应扣 − 手续费/罚息」。
+        //     不相等就拒绝发起并 error 告警 —— 让问题停在"还款发起"这一步，而不是把钱打错之后。
         BigDecimal sumTransit = BigDecimal.ZERO;
         for (Map<String, Object> detail : detailList) {
-            Object amt = detail.get("transitAmt");
-            sumTransit = sumTransit.add(amt instanceof BigDecimal
-                    ? (BigDecimal) amt
-                    : new BigDecimal(String.valueOf(amt)));
+            sumTransit = sumTransit.add(toBigDecimal(detail.get("transitAmt")));
         }
         BigDecimal diff = payable.subtract(voteFeeAmt).subtract(sumTransit);
-        if (diff.signum() != 0 && !detailList.isEmpty()) {
-            Map<String, Object> last = detailList.get(detailList.size() - 1);
-            BigDecimal adjusted = (last.get("transitAmt") instanceof BigDecimal
-                    ? (BigDecimal) last.get("transitAmt")
-                    : new BigDecimal(String.valueOf(last.get("transitAmt")))).add(diff);
-            if (adjusted.signum() < 0) {
-                throw new ResourceNotFoundException(500,
-                        "还款金额分摊异常：倒挤后投资人回款为负，请检查还款计划 lendReturnId=" + lendReturnId);
-            }
-            last.put("transitAmt", adjusted);
-            log.warn("还款表单金额倒挤：lendReturnId={}, 期供={}, 手续费={}, 明细原合计={}, 差额={} 已补到最后一户",
-                    lendReturnId, payable, voteFeeAmt, sumTransit, diff);
+        if (diff.signum() != 0) {
+            log.error("【对账失败】还款明细与期供不符，已中止发起：lendReturnId={}, lendId={}, 第{}期, "
+                            + "应扣={}, 手续费/罚息={}, 明细合计={}, 差额={}, 明细笔数={}",
+                    lendReturnId, lendReturn.getLendId(), lendReturn.getCurrentPeriod(),
+                    payable, voteFeeAmt, sumTransit, diff, detailList.size());
+            throw new ResourceNotFoundException(500,
+                    "还款明细与应还金额不一致（差额 " + diff.toPlainString()
+                            + " 元），已中止本次还款以避免账实不符，请联系运营核对还款计划 #"
+                            + lendReturnId);
         }
 
         // 6. 组装旺旺银行还款参数并签名

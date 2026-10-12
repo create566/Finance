@@ -10,6 +10,7 @@ import com.example.demo.mapper.SysAdminMapper;
 import com.example.demo.service.LendItemService;
 import com.example.demo.service.LendReturnService;
 import com.example.demo.service.LendService;
+import com.example.demo.utils.ExpectReturnUtil;
 import com.example.demo.utils.LendNoUtils;
 import com.wwfinance.common.auth.AdminRoles;
 import com.wwfinance.common.auth.RequireAdminRole;
@@ -27,7 +28,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -286,7 +286,13 @@ public class AdminLendController {
     /**
      * 获取标的的投资列表
      * 包含投资人信息、投资金额、预期收益等详细信息
-     * 自动计算预期收益 = 金额 × 年化利率 × 天数 / 365
+     *
+     * <p>预期收益口径 = <b>该笔投资在还款计划里各期利息之和</b>
+     * （{@link com.example.demo.utils.ExpectReturnUtil}），与用户端「我的投资」、
+     * 与实际回款完全一致。改造前这里是第二套算法 {@code 金额×年化利率×天数/365}，
+     * 且 {@code lendStartDate/lendEndDate} 为空时 <b>默认按 30 天</b> —— 于是
+     * 同一笔投资在管理端与用户端显示两个不同的数，且都远大于实际能拿到的利息
+     * （1000 万 / 8% / 12 期：管理端 65.75 万、用户端 80 万、实际等额本息约 43.86 万）。</p>
      */
     @ApiOperation("获取标的的投资列表")
     @GetMapping("/{id}/investments")
@@ -296,6 +302,11 @@ public class AdminLendController {
         }
         try {
             List<LendItem> items = lendItemService.listByLendId(id);
+
+            // 预期收益取决于标的的期数(月)与还款方式，先取一次标的，避免在流里重复查库
+            Lend lendInfo = lendService.getById(id);
+            Integer period = lendInfo == null ? null : lendInfo.getPeriod();
+            Integer returnMethod = lendInfo == null ? null : lendInfo.getReturnMethod();
 
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -308,19 +319,16 @@ public class AdminLendController {
                 map.put("investorName", item.getInvestName());
                 map.put("amount", item.getInvestAmount());
 
+                // term = 募资窗口天数（lendStartDate→lendEndDate）。日期缺失时前端仍期望一个数字，
+                // 沿用旧行为回退 30，避免详情抽屉里出现 "undefined 天"。
                 int days = 30;
                 if (item.getLendEndDate() != null && item.getLendStartDate() != null) {
                     days = (int) ChronoUnit.DAYS.between(item.getLendStartDate(), item.getLendEndDate());
                 }
 
-                BigDecimal expectAmount = BigDecimal.ZERO;
-                if (item.getInvestAmount() != null && item.getLendYearRate() != null) {
-                    expectAmount = item.getInvestAmount()
-                            .multiply(item.getLendYearRate())
-                            .divide(new BigDecimal("100"), 10, RoundingMode.HALF_UP)
-                            .multiply(new BigDecimal(days))
-                            .divide(new BigDecimal("365"), 2, RoundingMode.HALF_UP);
-                }
+                // 统一口径：按还款计划逐期利息累加（不是单利、不是按天数折算）
+                BigDecimal expectAmount = ExpectReturnUtil.expectedInterest(
+                        item.getInvestAmount(), item.getLendYearRate(), period, returnMethod);
 
                 map.put("expectedReturn", expectAmount);
                 map.put("term", days);

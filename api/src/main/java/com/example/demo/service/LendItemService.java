@@ -34,6 +34,20 @@ public interface LendItemService extends IService<LendItem> {
 
     List<LendItem> listByLendId(Long lendId);
 
+    /**
+     * 【恒等式⑧】把某笔投资的「预期收益」改写为指定值。
+     *
+     * <p>投资发生的那一刻还没有还款计划，{@code expect_amount} 只能按
+     * (金额, 利率, 期数, 还款方式) 预估；放款生成回款计划之后，该户实际能收到的利息
+     * 已成为确定值（Σ {@code lend_item_return.interest}），此时用它覆盖预估值，
+     * 保证「页面显示预期收益 ≡ 投资人实际到账利息」。</p>
+     *
+     * @param lendItemId   投资记录ID
+     * @param expectAmount 利息合计（2 位小数）
+     * @return 是否更新成功
+     */
+    boolean updateExpectAmount(Long lendItemId, BigDecimal expectAmount);
+
     Page<LendItem> pageList(Integer pageNum, Integer pageSize, Long lendId, Long investUserId);
 
     User getUserForInvest(Long userId);

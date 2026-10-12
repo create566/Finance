@@ -31,6 +31,7 @@ import com.example.demo.service.UserAccountService;
 import com.example.demo.service.UserBindService;
 import com.example.demo.service.UserService;
 import com.example.demo.utils.BalanceGuard;
+import com.example.demo.utils.ExpectReturnUtil;
 import com.example.demo.utils.LendNoUtils;
 import com.wwfinance.common.exception.ResourceNotFoundException;
 import com.wwfinance.common.utils.BankSignUtil;
@@ -41,7 +42,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.HashMap;
@@ -354,7 +354,11 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         lendItem.setInvestAmount(amount);
         lendItem.setLendYearRate(lend.getLendYearRate());
         lendItem.setInvestTime(now);
-        BigDecimal expectAmount = calcExpectAmount(amount, lend.getLendYearRate(), lend.getPeriod());
+        // 预期收益 = 还款计划里各期利息之和（与借款人实际支付、投资人实际收到的利息完全一致）。
+        // 改造前这里是单利 amount×rate×period/12，1000 万/8%/12 期会显示 80 万，
+        // 而实际等额本息只有约 43.86 万 —— 投资人看到的"预期收益"是拿不到的钱。
+        BigDecimal expectAmount = ExpectReturnUtil.expectedInterest(
+                amount, lend.getLendYearRate(), lend.getPeriod(), lend.getReturnMethod());
         lendItem.setExpectAmount(expectAmount);
         lendItem.setStatus(0);
         lendItem.setCreateTime(now);
@@ -385,8 +389,13 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
             updatedLend.setUpdateTime(now);
             lendService.updateById(updatedLend);
             // 满标后同步把该标的全部投资记录置为满标状态（否则撤标校验的死分支永远进不去）
+            // 【bug ③】必须排除已撤标（status=1）的记录：改造前是无条件 set(status,2)，
+            // 一笔已经撤标、资金已退回投资人的记录会被重新标成"满标持有"，
+            // 于是进入后续的放款分摊与还款分摊 —— 平台凭空多出一份不存在的债权份额，
+            // 该份额没有对应的银行资金，直接破坏 Σ投资份额 ≡ 标的金额 这一恒等式。
             this.update(new LambdaUpdateWrapper<LendItem>()
                     .eq(LendItem::getLendId, lendId)
+                    .ne(LendItem::getStatus, 1)
                     .set(LendItem::getStatus, 2)
                     .set(LendItem::getUpdateTime, now));
             // 满标后缓存置 0，后续投标请求在入口前置拦截被直接拒绝
@@ -437,19 +446,28 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
             throw new ResourceNotFoundException(500, "标的已放款，无法撤销投资");
         }
 
+        BigDecimal amount = nvl(lendItem.getInvestAmount());
+
+        // 【bug ④】先扣减标的已投金额，**再**做任何有副作用的动作。
+        // 改造前是 `lend.setInvestAmount(getInvestAmount() - amount); updateById(lend);`
+        // 的"读-改-写"：并发撤标会互相覆盖，导致 invest_amount 永久偏高（详见 LendItemMapper）。
+        // 改为数据库原子自减，并且放在最前面 —— 失败即抛异常，此时尚未回补镜像、
+        // 尚未落退款流水，"撤标失败" 是一条零副作用的干净失败（@Transactional 再兜一层）。
+        int cancelRows = baseMapper.atomicCancelInvest(lendItem.getLendId(), amount);
+        if (cancelRows == 0) {
+            throw new ResourceNotFoundException(500, "撤标失败：标的已满标/已放款或已投金额不足，请刷新后重试");
+        }
+
         // 撤回：【P4-19】翻转「已撤标」+ 回补平台镜像余额 + 落一条退款流水。
         // 银行侧依据冻结关系自动解冻，平台侧镜像必须在同一事务内对称加回，
         // 否则任一次撤标都会让该投资人的镜像余额永久偏低（详见 refundInvestment）。
-        BigDecimal amount = nvl(lendItem.getInvestAmount());
         this.refundInvestment(lendItem, "撤标退款 " + lend.getLendNo());
 
-        // 更新标的已投金额和剩余缓存
-        lend.setInvestAmount(nvl(lend.getInvestAmount()).subtract(amount));
-        lend.setUpdateTime(LocalDateTime.now());
-        lendService.updateById(lend);
-        // 更新 Redis 缓存剩余额度
+        // 原子更新后重新查询，Redis 剩余额度必须基于数据库最新值，不能再用内存里的旧对象
+        Lend refreshed = lendService.getById(lendItem.getLendId());
         String leftKey = LEFT_AMOUNT_KEY + lendItem.getLendId();
-        BigDecimal leftAmount = nvl(lend.getAmount()).subtract(nvl(lend.getInvestAmount()));
+        BigDecimal leftAmount = nvl(refreshed == null ? null : refreshed.getAmount())
+                .subtract(nvl(refreshed == null ? null : refreshed.getInvestAmount()));
         redisTemplate.opsForValue().set(leftKey, leftAmount.toString());
 
         // 撤标后剩余额度增多，该标的对所有人的推荐价值变化 → 统一失效
@@ -466,21 +484,25 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean refundInvestment(LendItem lendItem, String memo) {
-        if (lendItem == null) {
+        if (lendItem == null || lendItem.getId() == null) {
             return false;
         }
-        // 幂等：只有「投标中(0) / 满标待放款(2)」需要退资，已撤标(1)直接跳过。
-        // 满标时本类会把全部投资记录统一置为 2，故必须以 status in (0,2) 为准。
-        Integer status = lendItem.getStatus();
-        if (status != null && status == 1) {
-            log.info("投资记录已撤标，跳过重复退资，lendItemId={}", lendItem.getId());
+        // 幂等闸门：只有「投标中(0) / 满标待放款(2)」需要退资。
+        // 这里用**数据库原子 CAS**（status IN (0,2) → 1）而不是"读内存状态 → updateById"：
+        // 后者在「用户点两次撤标」或「用户撤标 与 下架/流标批量退资 并发」时两道校验会同时放行，
+        // 同一笔投资被退款两次（镜像多加一次钱 + 多一条退款流水），而银行只解冻一次。
+        // 满标时本类会把全部投资记录统一置为 2，故以 status in (0,2) 为准。
+        int flipped = baseMapper.atomicMarkCancelled(lendItem.getId());
+        if (flipped == 0) {
+            log.info("投资记录已撤标或状态不可退资，跳过重复退资，lendItemId={}, status={}",
+                    lendItem.getId(), lendItem.getStatus());
             return false;
         }
 
         LocalDateTime now = LocalDateTime.now();
+        // 同步内存对象，供调用方判断与日志使用（数据库已置为 1）
         lendItem.setStatus(1);
         lendItem.setUpdateTime(now);
-        this.updateById(lendItem);
 
         BigDecimal amount = nvl(lendItem.getInvestAmount());
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -543,6 +565,14 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         return this.list(new LambdaQueryWrapper<LendItem>()
                 .eq(LendItem::getLendId, lendId)
                 .orderByDesc(LendItem::getInvestTime));
+    }
+
+    @Override
+    public boolean updateExpectAmount(Long lendItemId, BigDecimal expectAmount) {
+        if (lendItemId == null) {
+            return false;
+        }
+        return baseMapper.updateExpectAmount(lendItemId, expectAmount) > 0;
     }
 
     @Override
@@ -620,23 +650,5 @@ public class LendItemServiceImpl extends ServiceImpl<LendItemMapper, LendItem> i
         flow.setUpdateTime(now);
         transFlowService.save(flow);
         userAccountService.updateBalance(user.getId(), TransTypeEnum.INVEST, amount);
-    }
-
-    /**
-     * 计算预期收益（简单估算）
-     * 预期收益 = 投资金额 × 年化利率÷100 × 期限(月)÷12
-     * 精度策略：中间运算 10 位，输出 2 位 HALF_UP，避免末位精度损失
-     */
-    private BigDecimal calcExpectAmount(BigDecimal amount, BigDecimal yearRate, Integer period) {
-        if (amount == null || yearRate == null || period == null) {
-            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-        }
-        // 全程保持中间 10 位精度，最后统一保留 2 位
-        BigDecimal ratio = yearRate
-                .divide(new BigDecimal("100"), 10, RoundingMode.HALF_UP)
-                .multiply(new BigDecimal(period))
-                .divide(new BigDecimal("12"), 10, RoundingMode.HALF_UP);
-        BigDecimal expect = amount.multiply(ratio);
-        return expect.setScale(2, RoundingMode.HALF_UP);
     }
 }

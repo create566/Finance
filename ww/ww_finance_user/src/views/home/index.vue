@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getUserInfo } from '@/api/user'
 import { getAccount } from '@/api/account'
 import { getBorrowerAuthStatus } from '@/api/borrower'
+import AppCard from '@/components/common/AppCard.vue'
+import GradientBanner from '@/components/common/GradientBanner.vue'
+import MoneyText from '@/components/common/MoneyText.vue'
+import StatCard from '@/components/common/StatCard.vue'
 
 const router = useRouter()
 const userInfo = ref<any>(null)
@@ -22,244 +26,213 @@ async function fetchData() {
   } catch {}
 }
 
-const authStatusMap: Record<number, { text: string; type: string }> = {
-  0: { text: '未认证', type: 'info' },
-  1: { text: '认证中', type: 'warning' },
-  2: { text: '已通过', type: 'success' },
-  [-1]: { text: '认证失败', type: 'danger' },
-}
+/**
+ * 待办事项：把"现在卡在哪一步、该点哪里"直接摆到首页。
+ *
+ * 改造前首页是一屏静态复制信息（与「账户总览」「个人中心」重复），
+ * 用户看不出自己还缺哪道关口，只能逐个菜单点开试。
+ * 仅在数据已加载后判断，避免刷新瞬间闪出假的待办。
+ */
+const todos = computed<{ text: string; actionText: string; action: () => void }[]>(() => {
+  const list: { text: string; actionText: string; action: () => void }[] = []
+  if (userInfo.value && userInfo.value.bindStatus !== 1) {
+    list.push({
+      text: '您还未绑定银行卡，无法充值、提现与投资',
+      actionText: '去绑卡',
+      action: () => router.push('/profile'),
+    })
+  }
+  if (userInfo.value && userInfo.value.investAuthStatus !== 2) {
+    list.push({
+      text: '您还未通过投资人认证，无法投标',
+      actionText: '去认证',
+      action: () => router.push('/auth'),
+    })
+  }
+  if (authStatus.value && authStatus.value.borrowAuthStatus !== 2) {
+    list.push({
+      text: '您还未通过借款人认证，无法申请借款',
+      actionText: '去认证',
+      action: () => router.push('/auth'),
+    })
+  }
+  return list
+})
 
-function goInvest() {
-  router.push('/invest/list')
-}
+const investEntries = [
+  { text: '浏览标的', icon: 'TrendCharts', path: '/invest/list' },
+  { text: '我的投资', icon: 'DataLine', path: '/invest/my' },
+  { text: '回款计划', icon: 'Coin', path: '/invest/return' },
+  { text: '绑卡充值', icon: 'CreditCard', path: '/profile' },
+]
 
-function goBorrowAuth() {
-  router.push('/auth')
-}
-
-function goBorrowApply() {
-  router.push('/borrow/apply')
-}
-
-function goProfile() {
-  router.push('/profile')
-}
+const borrowEntries = [
+  { text: '认证中心', icon: 'Postcard', path: '/auth' },
+  { text: '借款申请', icon: 'EditPen', path: '/borrow/apply' },
+  { text: '我的借款', icon: 'List', path: '/borrow/my' },
+  { text: '还款计划', icon: 'Timer', path: '/borrow/repay' },
+]
 
 onMounted(fetchData)
 </script>
 
 <template>
-  <div class="home-page">
-    <el-row :gutter="16">
-      <el-col :span="8">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-icon" style="background: linear-gradient(135deg, #36d1dc, #5b86e5)">
-            <el-icon :size="28"><Wallet /></el-icon>
-          </div>
-          <div class="stat-info">
-            <div class="stat-label">可用余额</div>
-            <div class="stat-value">¥{{ account?.amount?.toFixed(2) ?? '0.00' }}</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb, #f5576c)">
-            <el-icon :size="28"><TrendCharts /></el-icon>
-          </div>
-          <div class="stat-info">
-            <div class="stat-label">投资金额</div>
-            <div class="stat-value">¥{{ account?.investAmount?.toFixed(2) ?? '0.00' }}</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-icon" style="background: linear-gradient(135deg, #a18cd1, #fbc2eb)">
-            <el-icon :size="28"><Money /></el-icon>
-          </div>
-          <div class="stat-info">
-            <div class="stat-label">借款金额</div>
-            <div class="stat-value">¥{{ account?.lendAmount?.toFixed(2) ?? '0.00' }}</div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+  <div class="home">
+    <GradientBanner
+      :title="`你好，${userInfo?.nickName || '用户'}`"
+      desc="资金由存管银行独立管理，平台不持有资金"
+    >
+      <div class="home__balance">
+        <div class="home__balance-value">
+          <MoneyText :value="account?.amount ?? 0" size="lg" strong />
+        </div>
+        <div class="home__balance-label">可用余额</div>
+      </div>
+    </GradientBanner>
 
-    <el-row :gutter="16" style="margin-top: 16px">
-      <el-col :span="12">
-        <el-card shadow="never">
-          <template #header>
-            <div style="display: flex; align-items: center; justify-content: space-between">
-              <span style="font-weight: 500">用户信息</span>
-              <el-tag
-                v-if="userInfo?.userType"
-                :type="userInfo.userType === 1 ? 'primary' : 'warning'"
-                size="small"
-              >
-                {{ userInfo.userType === 1 ? '投资人' : '借款人' }}
-              </el-tag>
-            </div>
-          </template>
-          <el-descriptions :column="1" border v-if="userInfo">
-            <el-descriptions-item label="手机号">{{ userInfo.mobile }}</el-descriptions-item>
-            <el-descriptions-item label="昵称">{{ userInfo.nickName || '—' }}</el-descriptions-item>
-            <el-descriptions-item label="真实姓名">{{ userInfo.name || '—' }}</el-descriptions-item>
-            <el-descriptions-item label="积分">{{ userInfo.integral ?? 0 }}</el-descriptions-item>
-            <el-descriptions-item label="绑卡状态">
-              <el-tag :type="userInfo.bindStatus === 1 ? 'success' : 'info'" size="small">
-                {{ userInfo.bindStatus === 1 ? '已绑卡' : '未绑卡' }}
-              </el-tag>
-            </el-descriptions-item>
-          </el-descriptions>
-        </el-card>
-      </el-col>
-      <el-col :span="12">
-        <el-card shadow="never">
-          <template #header><span style="font-weight: 500">认证与账户</span></template>
-          <el-descriptions :column="1" border>
-            <el-descriptions-item label="借款人认证">
-              <el-tag :type="(authStatusMap[authStatus?.borrowAuthStatus]?.type as string) || 'info'" size="small">
-                {{ authStatusMap[authStatus?.borrowAuthStatus]?.text || '未认证' }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="冻结金额">¥{{ account?.freezeAmount?.toFixed(2) ?? '0.00' }}</el-descriptions-item>
-            <el-descriptions-item label="待提现金额">¥{{ account?.noWithdrawAmount?.toFixed(2) ?? '0.00' }}</el-descriptions-item>
-          </el-descriptions>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="home__stats">
+      <StatCard icon="Wallet" label="可用余额" :value="account?.amount ?? 0" gradient="brand" />
+      <StatCard icon="TrendCharts" label="投资金额" :value="account?.investAmount ?? 0" gradient="accent" />
+      <StatCard icon="Money" label="借款金额" :value="account?.lendAmount ?? 0" gradient="warm" />
+    </div>
 
-    <!-- 快捷操作区 -->
-    <el-row :gutter="16" style="margin-top: 16px">
-      <el-col :span="12">
-        <el-card shadow="never" class="action-card">
-          <template #header><span style="font-weight: 500">投资服务</span></template>
-          <div class="action-grid">
-            <div class="action-item" @click="goInvest">
-              <div class="action-icon" style="background: linear-gradient(135deg, #36d1dc, #5b86e5)">
-                <el-icon :size="24"><TrendCharts /></el-icon>
-              </div>
-              <span>浏览标的</span>
-            </div>
-            <div class="action-item" @click="router.push('/invest/my')">
-              <div class="action-icon" style="background: linear-gradient(135deg, #667eea, #764ba2)">
-                <el-icon :size="24"><DataLine /></el-icon>
-              </div>
-              <span>我的投资</span>
-            </div>
-            <div class="action-item" @click="router.push('/invest/return')">
-              <div class="action-icon" style="background: linear-gradient(135deg, #fbc2eb, #a18cd1)">
-                <el-icon :size="24"><Coin /></el-icon>
-              </div>
-              <span>回款计划</span>
-            </div>
-            <div class="action-item" @click="goProfile">
-              <div class="action-icon" style="background: linear-gradient(135deg, #d4fc79, #96e6a1)">
-                <el-icon :size="24"><CreditCard /></el-icon>
-              </div>
-              <span>绑卡充值</span>
-            </div>
+    <AppCard v-if="todos.length" title="待办事项" subtitle="完成以下事项即可解锁全部功能">
+      <div class="todos">
+        <div v-for="t in todos" :key="t.text" class="todo">
+          <el-icon class="todo__icon"><WarningFilled /></el-icon>
+          <span class="todo__text">{{ t.text }}</span>
+          <el-button size="small" type="primary" plain @click="t.action()">{{ t.actionText }}</el-button>
+        </div>
+      </div>
+    </AppCard>
+
+    <div class="home__quick">
+      <AppCard title="投资服务" subtitle="浏览标的、查看投资与回款">
+        <div class="quick-grid">
+          <div
+            v-for="q in investEntries"
+            :key="q.path"
+            class="quick-item"
+            @click="router.push(q.path)"
+          >
+            <span class="quick-icon"><el-icon><component :is="q.icon" /></el-icon></span>
+            <span class="quick-text">{{ q.text }}</span>
           </div>
-        </el-card>
-      </el-col>
-      <el-col :span="12">
-        <el-card shadow="never" class="action-card">
-          <template #header><span style="font-weight: 500">借款服务</span></template>
-          <div class="action-grid">
-            <div class="action-item" @click="goBorrowAuth">
-              <div class="action-icon" style="background: linear-gradient(135deg, #f093fb, #f5576c)">
-                <el-icon :size="24"><Checked /></el-icon>
-              </div>
-              <span>借款人认证</span>
-            </div>
-            <div class="action-item" @click="goBorrowApply">
-              <div class="action-icon" style="background: linear-gradient(135deg, #ffecd2, #fcb69f)">
-                <el-icon :size="24"><EditPen /></el-icon>
-              </div>
-              <span>借款申请</span>
-            </div>
-            <div class="action-item" @click="router.push('/borrow/my')">
-              <div class="action-icon" style="background: linear-gradient(135deg, #a1c4fd, #c2e9fb)">
-                <el-icon :size="24"><List /></el-icon>
-              </div>
-              <span>我的借款</span>
-            </div>
-            <div class="action-item" @click="router.push('/borrow/repay')">
-              <div class="action-icon" style="background: linear-gradient(135deg, #fad0c4, #ffd1ff)">
-                <el-icon :size="24"><Timer /></el-icon>
-              </div>
-              <span>还款计划</span>
-            </div>
+        </div>
+      </AppCard>
+
+      <AppCard title="借款服务" subtitle="认证、申请、查看借款与还款">
+        <div class="quick-grid">
+          <div
+            v-for="q in borrowEntries"
+            :key="q.path"
+            class="quick-item"
+            @click="router.push(q.path)"
+          >
+            <span class="quick-icon"><el-icon><component :is="q.icon" /></el-icon></span>
+            <span class="quick-text">{{ q.text }}</span>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
+        </div>
+      </AppCard>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.stat-card {
-  border-radius: 8px;
-}
-.stat-card :deep(.el-card__body) {
+.home {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 20px;
+  flex-direction: column;
+  gap: var(--space-4);
 }
-.stat-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.home__balance {
+  text-align: right;
   color: #fff;
+}
+.home__balance-label {
+  font-size: var(--font-xs);
+  color: rgba(255, 255, 255, 0.85);
+  margin-top: 2px;
+}
+.home__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.home__quick {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+@media (max-width: 1080px) {
+  .home__stats,
+  .home__quick {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.todos {
+  display: flex;
+  flex-direction: column;
+}
+.todo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-light);
+}
+.todo:first-child {
+  padding-top: 0;
+}
+.todo:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.todo__icon {
+  color: var(--color-warning);
+  font-size: 16px;
   flex-shrink: 0;
 }
-.stat-label {
-  font-size: 13px;
-  color: #9ca3af;
-  margin-bottom: 4px;
+.todo__text {
+  flex: 1;
+  font-size: var(--font-sm);
+  color: var(--text-regular);
+  min-width: 0;
 }
-.stat-value {
-  font-size: 22px;
-  font-weight: 600;
-  color: #1f2937;
-}
-.action-card {
-  border-radius: 8px;
-}
-.action-grid {
+
+.quick-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: var(--space-2);
 }
-.action-item {
+.quick-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 12px 8px;
-  border-radius: 8px;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-2);
+  border-radius: var(--radius-base);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background var(--transition-fast), transform var(--transition-fast);
 }
-.action-item:hover {
-  background: #f5f7fa;
+.quick-item:hover {
+  background: var(--bg-hover);
+  transform: translateY(-2px);
 }
-.action-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
+.quick-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-base);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #fff;
+  font-size: 20px;
+  background: var(--gradient-brand);
+  box-shadow: 0 8px 18px rgba(91, 134, 229, 0.28);
 }
-.action-item span {
-  font-size: 13px;
-  color: #374151;
+.quick-text {
+  font-size: var(--font-sm);
+  color: var(--text-regular);
 }
 </style>

@@ -10,8 +10,16 @@ import {
   type RecommendLend,
 } from '@/api/lend'
 import { prepareContract } from '@/api/contract'
-import { LEND_STATUS_MAP, enumTag } from '@/utils/enumText'
+import { returnMethodText, LEND_STATUS_MAP, enumTag } from '@/utils/enumText'
 import { openBankForm } from '@/utils/bankForm'
+import AppCard from '@/components/common/AppCard.vue'
+import AppEmpty from '@/components/common/AppEmpty.vue'
+import AppPage from '@/components/common/AppPage.vue'
+import LendCard from '@/components/common/LendCard.vue'
+import MetricRow, { type MetricItem } from '@/components/common/MetricRow.vue'
+import MoneyText from '@/components/common/MoneyText.vue'
+import SplitPane from '@/components/common/SplitPane.vue'
+import StatusTag from '@/components/common/StatusTag.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -138,16 +146,22 @@ const progressPercent = computed(() => {
   return Math.min(100, Math.round((invested / detail.value.amount) * 100))
 })
 
-// 状态文案统一走 utils/enumText.ts 的真源，避免与后端 LendStatusEnum 漂移
-// （原先这张表少了 5/6/7，「还款中」「已完结」「已流标」都会显示成「未知」）
-const statusTag = (status: number) => enumTag(LEND_STATUS_MAP, status)
+/** 状态文案（供「暂不支持投资」提示复用，与 StatusTag 同源） */
+const statusText = computed(() =>
+  detail.value ? enumTag(LEND_STATUS_MAP, detail.value.status).text : '未知',
+)
 
-const returnMethodMap: Record<number, string> = {
-  1: '等额本息',
-  2: '等额本金',
-  3: '每月还息一次还本',
-  4: '一次还本付息',
-}
+/** 概览指标（年化利率等非金额项走 text+unit，避免被当成金额加 ¥） */
+const overviewMetrics = computed<MetricItem[]>(() => {
+  const d = detail.value
+  if (!d) return []
+  return [
+    { label: '年化利率', text: Number(d.lendYearRate || 0).toFixed(2), unit: '%' },
+    { label: '借款期限', text: String(d.period ?? '-'), unit: ' 个月' },
+    { label: '借款金额', value: d.amount },
+    { label: '剩余可投', value: remainingAmount.value, tone: 'danger' },
+  ]
+})
 
 /**
  * 真正发起下单。
@@ -249,214 +263,175 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page-container">
-    <div class="page-header">
-      <el-button type="default" @click="router.push('/invest/list')" :icon="'ArrowLeft'">返回列表</el-button>
-    </div>
+  <AppPage :title="detail?.title || '标的详情'" :subtitle="`标的编号 ${lendId}`">
+    <template #actions>
+      <StatusTag v-if="detail" :status="detail.status" kind="lend" size="default" />
+      <el-button @click="router.push('/invest/list')">
+        <el-icon><ArrowLeft /></el-icon>返回列表
+      </el-button>
+    </template>
 
     <el-alert
       v-if="hasPendingSign"
       type="warning"
       show-icon
       :closable="false"
-      class="pending-alert"
+      class="detail__alert"
       title="协议尚未签署"
       :description="pendingSignHint"
     />
 
-    <el-card shadow="never" v-loading="loading">
+    <SplitPane aside="wide" v-loading="loading">
       <template v-if="detail">
-        <h2 style="margin-top: 0; margin-bottom: 20px;">{{ detail.title }}</h2>
+        <div class="detail__main">
+          <MetricRow :items="overviewMetrics" :cols="2" />
 
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="标的编号">{{ detail.id }}</el-descriptions-item>
-          <el-descriptions-item label="标的名称">{{ detail.title }}</el-descriptions-item>
-          <el-descriptions-item label="借款金额">
-            <span class="money">¥{{ detail.amount?.toLocaleString() }}</span>
-          </el-descriptions-item>
-          <el-descriptions-item label="年化利率">{{ detail.lendYearRate }}%</el-descriptions-item>
-          <el-descriptions-item label="借款期限">{{ detail.period }} 个月</el-descriptions-item>
-          <el-descriptions-item label="还款方式">
-            {{ returnMethodMap[detail.returnMethod] || '-' }}
-          </el-descriptions-item>
-          <el-descriptions-item label="状态">
-            <el-tag :type="statusTag(detail.status).type">
-              {{ statusTag(detail.status).text }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="借款用途" :span="2">
-            {{ detail.lendInfo || '-' }}
-          </el-descriptions-item>
-        </el-descriptions>
-
-        <div v-if="detail.status === 1" class="invest-section">
-          <el-divider />
-          <h3>立即投资</h3>
-          <div class="invest-progress">
-            <span>募集进度：</span>
-            <el-progress :percentage="progressPercent" :stroke-width="16" :text-inside="true"
-              :color="['#67c23a', '#409eff', '#e6a23c']" style="flex: 1; max-width: 500px;" />
-          </div>
-          <p class="remain-amount">
-            剩余可投：<span class="money">¥{{ remainingAmount.toLocaleString() }}</span>
-          </p>
-
-          <el-form :inline="true" @submit.prevent="handleInvest" style="margin-top: 16px;">
-            <el-form-item label="投资金额">
-              <el-input-number v-model="investAmount" :min="1000" :max="remainingAmount" :step="1000"
-                controls-position="right" style="width: 240px;" />
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" :loading="submitting" @click="handleInvest"
-                :disabled="remainingAmount <= 0">
-                确认投资
-              </el-button>
-            </el-form-item>
-          </el-form>
-          <p class="sign-hint">下单前须签署《出借协议》，未签署将被系统拦截。</p>
-        </div>
-
-        <div v-else style="margin-top: 20px;">
-          <el-alert :title="`该标的当前状态为「${statusTag(detail.status).text}」，暂不支持投资`"
-            type="info" show-icon :closable="false" />
+          <AppCard title="标的信息" subtitle="借款用途与还款安排">
+            <el-descriptions :column="1" border>
+              <el-descriptions-item label="标的编号">{{ detail.id }}</el-descriptions-item>
+              <el-descriptions-item label="标的名称">{{ detail.title }}</el-descriptions-item>
+              <el-descriptions-item label="还款方式">
+                {{ returnMethodText(detail.returnMethod) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="借款用途">
+                {{ detail.lendInfo || '-' }}
+              </el-descriptions-item>
+            </el-descriptions>
+          </AppCard>
         </div>
       </template>
 
-      <el-empty v-else-if="!loading" description="标的不存在或已下架" />
-    </el-card>
+      <template #aside>
+        <AppCard v-if="detail" title="立即投资" subtitle="签署协议后前往银行完成支付">
+          <div v-if="detail.status === 1" class="order">
+            <div class="order__progress">
+              <span class="order__progress-label">募集进度</span>
+              <el-progress :percentage="progressPercent" :stroke-width="14" :text-inside="true" />
+            </div>
 
-    <el-card shadow="never" class="similar-card" v-loading="similarLoading">
-      <template #header>
-        <div class="similar-header">
-          <span class="similar-title">相似标的</span>
-          <span class="similar-sub">基于投资行为的协同过滤 + 期限/利率内容相似度</span>
-        </div>
-      </template>
+            <div class="order__row">
+              <span class="order__row-label">剩余可投</span>
+              <MoneyText :value="remainingAmount" strong />
+            </div>
 
-      <div class="similar-row" v-if="similar.length > 0">
-        <div v-for="item in similar" :key="item.lend.id" class="similar-item" @click="goSimilar(item.lend.id)">
-          <div class="si-title" :title="item.lend.title">{{ item.lend.title }}</div>
-          <div class="si-rate">{{ item.lend.lendYearRate }}<i>%</i></div>
-          <div class="si-meta">{{ item.lend.period }} 个月 · 剩余 ¥{{ Number(item.remainAmount || 0).toLocaleString() }}</div>
-          <div class="si-reason">「{{ item.reason }}」</div>
-          <div class="si-tags">
-            <el-tag v-for="t in item.tags" :key="t" size="small" effect="light">{{ t }}</el-tag>
+            <div class="order__field">
+              <span class="order__row-label">投资金额</span>
+              <el-input-number
+                v-model="investAmount"
+                :min="1000"
+                :max="remainingAmount"
+                :step="1000"
+                controls-position="right"
+                style="width: 100%"
+              />
+            </div>
+
+            <el-button
+              type="primary"
+              class="order__submit"
+              :loading="submitting"
+              :disabled="remainingAmount <= 0"
+              @click="handleInvest"
+            >
+              确认投资
+            </el-button>
+
+            <p class="order__hint">
+              下单前须签署《出借协议》，未签署将被系统拦截；支付由存管银行完成。
+            </p>
           </div>
-        </div>
+
+          <AppEmpty
+            v-else
+            size="sm"
+            :description="`该标的当前状态为「${statusText}」，暂不支持投资`"
+          />
+        </AppCard>
+      </template>
+    </SplitPane>
+
+    <AppCard
+      v-loading="similarLoading"
+      title="相似标的"
+      subtitle="基于投资行为的协同过滤 + 期限/利率内容相似度"
+      class="detail__similar"
+    >
+      <div v-if="similar.length > 0" class="similar-row">
+        <LendCard
+          v-for="item in similar"
+          :key="item.lend.id"
+          mode="similar"
+          :name="item.lend.title"
+          :status="item.lend.status"
+          :rate="Number(item.lend.lendYearRate || 0)"
+          :period="`${item.lend.period} 个月`"
+          :remain-amount="Number(item.remainAmount || 0)"
+          :reason="item.reason"
+          :tags="item.tags"
+          action-text="查看详情"
+          action-plain
+          @select="goSimilar(item.lend.id)"
+          @action="goSimilar(item.lend.id)"
+        />
       </div>
-      <el-empty v-else-if="!similarLoading" description="暂无相似标的" :image-size="60" />
-    </el-card>
-  </div>
+      <AppEmpty v-else-if="!similarLoading" description="暂无相似标的" size="sm" />
+    </AppCard>
+
+    <AppEmpty v-if="!detail && !loading" description="标的不存在或已下架" />
+  </AppPage>
 </template>
 
 <style scoped>
-.page-container {
+.detail__alert {
+  margin-bottom: var(--space-4);
+}
+.detail__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.detail__similar {
+  margin-top: var(--space-4);
+}
+
+/* ---------- 右侧下单卡 ---------- */
+.order {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.order__progress-label,
+.order__row-label {
+  display: block;
+  font-size: var(--font-xs);
+  color: var(--text-placeholder);
+  margin-bottom: 6px;
+}
+.order__row {
+  display: flex;
+  flex-direction: column;
+}
+.order__field {
+  display: flex;
+  flex-direction: column;
+}
+.order__submit {
   width: 100%;
+  height: 40px;
 }
-.page-header {
-  margin-bottom: 16px;
+.order__hint {
+  font-size: var(--font-xs);
+  color: var(--text-placeholder);
+  line-height: var(--lh-base);
+  margin: 0;
 }
-.pending-alert {
-  margin-bottom: 16px;
-}
-.money {
-  font-weight: 600;
-  color: #e6a23c;
-}
-.invest-section {
-  margin-top: 8px;
-}
-.invest-section h3 {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 12px;
-}
-.invest-progress {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-.remain-amount {
-  font-size: 14px;
-  color: #606266;
-  margin: 4px 0 0 0;
-}
-.sign-hint {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: #909399;
-}
-.similar-card {
-  margin-top: 16px;
-}
-.similar-header {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.similar-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1f2937;
-}
-.similar-sub {
-  font-size: 12px;
-  color: #909399;
-}
+
 .similar-row {
-  display: flex;
-  gap: 12px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 210px;
+  gap: var(--space-3);
   overflow-x: auto;
   padding-bottom: 6px;
-}
-.similar-item {
-  flex: 0 0 200px;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  padding: 12px 14px;
-  cursor: pointer;
-  transition: box-shadow 0.2s, border-color 0.2s;
-}
-.similar-item:hover {
-  box-shadow: 0 4px 14px rgba(64, 158, 255, 0.16);
-  border-color: #409eff;
-}
-.si-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: #303133;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.si-rate {
-  color: #f56c6c;
-  font-size: 20px;
-  font-weight: 700;
-  margin: 8px 0 4px;
-}
-.si-rate i {
-  font-size: 12px;
-  font-style: normal;
-}
-.si-meta {
-  font-size: 12px;
-  color: #606266;
-}
-.si-reason {
-  font-size: 12px;
-  color: #e6a23c;
-  margin: 6px 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.si-tags {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  min-height: 22px;
 }
 </style>

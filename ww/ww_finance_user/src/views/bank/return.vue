@@ -52,7 +52,9 @@ onBeforeUnmount(() => {
   <div class="bank-return">
     <el-card shadow="always" class="bank-return-card">
       <div class="icon-wrap">
-        <el-icon :size="52" color="#67c23a"><CircleCheckFilled /></el-icon>
+        <span class="icon-ring">
+          <el-icon :size="42"><CircleCheckFilled /></el-icon>
+        </span>
       </div>
       <h2>操作已提交</h2>
       <p class="sub">
@@ -81,38 +83,52 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f7fa;
-  padding: 24px;
+  background: var(--bg-page);
+  padding: var(--space-6);
 }
 .bank-return-card {
-  width: 420px;
+  width: 440px;
   max-width: 100%;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   text-align: center;
-  padding: 12px 8px;
+  padding: var(--space-5) var(--space-4);
 }
 .icon-wrap {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-4);
+  display: flex;
+  justify-content: center;
+}
+.icon-ring {
+  width: 76px;
+  height: 76px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-success);
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
 }
 .bank-return-card h2 {
-  margin: 0 0 10px;
-  font-size: 20px;
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-xl);
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-primary);
 }
 .sub {
-  margin: 0 0 14px;
-  font-size: 14px;
-  line-height: 1.7;
-  color: #606266;
+  margin: 0 0 var(--space-4);
+  font-size: var(--font-base);
+  line-height: var(--lh-base);
+  color: var(--text-regular);
 }
 .hint {
-  margin: 0 0 16px;
-  font-size: 13px;
-  color: #909399;
+  margin: 0 0 var(--space-4);
+  font-size: var(--font-sm);
+  color: var(--text-placeholder);
 }
 .hint .num {
-  color: #409eff;
+  color: var(--color-primary);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 </style>

@@ -1,0 +1,11 @@
+detected_doc_type: "技术速记表（复习/背诵用参考文档）"
+target_length: 2000
+target_tone: "结论先行、表格化、条目化，正式度★★★★☆"
+target_reader: "项目作者本人（答辩/复盘/向他人讲解资金安全设计时快速回忆）"
+core_points:
+  - "入口幂等：重复回调不重复入账，幂等判据只认成功态"
+  - "并发原子：条件 UPDATE（CAS）从机制上防超募，行锁+剩余额度双条件"
+  - "事后对账：每日逐笔核对+心跳行+账实兜底，异常留痕"
+  - "三个机制的文件位置速记"
+research_status: "已完成——素材来自 2026-10-15 对代码库的直接核实（BankNotifyController / TransFlowServiceImpl / LendItemServiceImpl / LendItemMapper / UserAccountMapper / BalanceGuard / ReconciliationServiceImpl / FinanceJobHandler / BankTradeLog 全文读取），属项目内部知识，不需要也不应做网络检索"
+critic_mode: "skip（genre=general 低风险档；内容为代码事实整理，可逐条回源复核）"

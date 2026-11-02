@@ -127,12 +127,7 @@ class FinanceJobHandlerTest {
     void refund_oneFails_othersStillProcessed() {
         Lend bad = completedLend(124L);
         Lend good = completedLend(125L);
-        when(lendService.list(any())).thenReturn(List
-
-
-
-
-                .of(bad, good));
+        when(lendService.list(any())).thenReturn(List.of(bad, good));
         when(contractService.list(any())).thenReturn(
                 Collections.singletonList(paymentContract(ContractStatusEnum.PENDING.getCode())));
         when(lendService.offlineBySystem(124L)).thenThrow(new RuntimeException("银行侧解冻失败"));

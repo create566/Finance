@@ -3,7 +3,7 @@ import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import type { MenuItem } from '@/config/menu'
-import { menuList } from '@/config/menu'
+import { menuList, activeMenuOf, openedMenuOf, assertMenuRoutes } from '@/config/menu'
 import { logout as apiLogout, getUserInfo } from '@/api/user'
 import { revokeEntry } from '@/utils/entryGuard'
 import ChatBubble from '@/components/ChatBubble.vue'
@@ -13,18 +13,39 @@ const route = useRoute()
 const router = useRouter()
 
 const isCollapse = ref(false)
-const activeMenu = computed(() => route.path)
+/** 详情页回落到其列表页高亮，避免"进入详情后侧栏没有任何高亮" */
+const activeMenu = computed(() => activeMenuOf(route.path))
 const userInfo = ref<any>(null)
 
-const openedMenus = computed<string[]>(() => {
-  const result: string[] = []
-  for (const menu of menuList) {
-    if (menu.children?.some((c) => c.path === route.path)) {
-      result.push(menu.path)
-      break
+/** 当前路由所属的一级菜单（由 config/menu.ts 推导，不再在此重复遍历） */
+const openedMenus = computed<string[]>(() => openedMenuOf(route.path))
+
+/**
+ * 面包屑：由菜单结构 + 路由 meta 生成，不再写死「首页」。
+ * 层级为「首页 / 一级域 / 当前页 / 详情页」，详情页自动补末级。
+ */
+const breadcrumbs = computed<{ path: string; title: string }[]>(() => {
+  const items: { path: string; title: string }[] = [{ path: '/home', title: '首页' }]
+  const active = activeMenu.value
+
+  for (const group of menuList) {
+    const leaves = group.children?.length ? group.children : [group]
+    const hit = leaves.find((leaf) => leaf.path === active)
+    if (!hit) continue
+    // 无子级的一级项 hit === group，只入一次，否则面包屑会出现「认证中心 / 认证中心」
+    if (group.path !== '/home') items.push({ path: group.path, title: group.title })
+    if (hit.path !== group.path && hit.path !== '/home') {
+      items.push({ path: hit.path, title: hit.title })
     }
+    break
   }
-  return result
+
+  // 详情页等不在菜单中的页面，补上自身标题
+  const selfTitle = route.meta?.title as string | undefined
+  if (selfTitle && !items.some((item) => item.title === selfTitle)) {
+    items.push({ path: route.path, title: selfTitle })
+  }
+  return items
 })
 
 const openMenus = ref<string[]>([])
@@ -78,7 +99,11 @@ function doLogout() {
     .catch(() => {})
 }
 
-onMounted(fetchUserInfo)
+onMounted(() => {
+  // 启动期校验菜单与路由是否漂移（不一致会 console.warn，避免点菜单进空白页）
+  assertMenuRoutes(router)
+  fetchUserInfo()
+})
 </script>
 
 <template>
@@ -95,9 +120,9 @@ onMounted(fetchUserInfo)
         @open-change="handleOpenChange"
         :unique-opened="true"
         :collapse="isCollapse"
-        background-color="#001529"
-        text-color="#b7bdc6"
-        active-text-color="#409EFF"
+        background-color="#151a30"
+        text-color="#a8b0c8"
+        active-text-color="#ffffff"
         class="side-menu"
         router
       >
@@ -126,10 +151,9 @@ onMounted(fetchUserInfo)
             <Fold v-if="!isCollapse" />
             <Expand v-else />
           </el-icon>
-          <el-breadcrumb separator="/">
-            <el-breadcrumb-item>首页</el-breadcrumb-item>
-            <el-breadcrumb-item v-if="route.meta?.title">
-              {{ route.meta.title }}
+          <el-breadcrumb separator="/" class="layout-breadcrumb">
+            <el-breadcrumb-item v-for="(crumb, index) in breadcrumbs" :key="crumb.path">
+              <span :class="{ 'crumb-current': index === breadcrumbs.length - 1 }">{{ crumb.title }}</span>
             </el-breadcrumb-item>
           </el-breadcrumb>
         </div>
@@ -182,25 +206,34 @@ onMounted(fetchUserInfo)
 .layout-container {
   height: 100vh;
 }
+
+/* ---------- 侧栏 ---------- */
 .layout-aside {
-  background-color: #001529;
-  transition: width 0.28s;
+  background-color: var(--sidebar-bg);
+  transition: width var(--transition-base);
   overflow: hidden;
 }
+
 .logo {
   height: 60px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 18px;
-  font-weight: bold;
-  background: #002140;
+  gap: 8px;
+  color: var(--sidebar-text-active);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  background: var(--sidebar-bg-deep);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
+
 .side-menu {
   border-right: none;
-  font-size: 14px;
+  font-size: var(--font-sm);
 }
+
+/* 图标尺寸对齐（Element Plus 图标默认 1em，深色底上易挤） */
 .side-menu :deep(.el-sub-menu__title > svg),
 .side-menu :deep(.el-sub-menu__title > .el-icon > svg),
 .side-menu :deep(.el-menu-item > svg),
@@ -220,36 +253,62 @@ onMounted(fetchUserInfo)
   align-items: center;
   justify-content: center;
 }
-.side-menu :deep(.el-menu-item.is-active) {
-  background-color: #1890ff !important;
-  color: #fff !important;
-}
+/* 说明：菜单文字/激活态色由全局 style.css 的 .el-menu-item 系列统一接管
+   （激活态为品牌渐变 --gradient-brand）。此处不再覆盖 is-active，
+   否则旧的 #1890ff 会因 scoped 选择器权重更高而压过品牌色。 */
+
+/* ---------- 顶栏 ---------- */
 .layout-header {
-  background: #fff;
+  height: 56px;
+  background: var(--bg-card);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid #e6e6e6;
+  border-bottom: 1px solid var(--border-light);
+  box-shadow: var(--shadow-xs);
   padding: 0 20px;
 }
 .header-left {
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
 }
 .collapse-btn {
   font-size: 20px;
   cursor: pointer;
+  color: var(--text-secondary);
+  transition: color var(--transition-fast);
+}
+.collapse-btn:hover {
+  color: var(--color-primary);
+}
+.layout-breadcrumb {
+  font-size: var(--font-sm);
+}
+.layout-breadcrumb :deep(.el-breadcrumb__inner) {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.layout-breadcrumb :deep(.crumb-current) {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 .user-info {
   display: flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  transition: background var(--transition-fast);
+}
+.user-info:hover {
+  background: var(--bg-hover);
 }
 .username {
-  font-size: 14px;
-  color: #333;
+  font-size: var(--font-base);
+  color: var(--text-primary);
 }
 .header-right {
   display: flex;
@@ -257,18 +316,14 @@ onMounted(fetchUserInfo)
   gap: 12px;
 }
 .logout-btn {
-  font-size: 13px;
+  font-size: var(--font-sm);
 }
+
+/* ---------- 内容区 ---------- */
 .layout-main {
-  background: #f0f2f5;
-  padding: 16px;
+  background: var(--bg-page);
+  padding: 20px;
+  overflow-y: auto;
 }
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
+/* 路由过渡 .fade-* 已在全局 style.css 定义（含位移），此处不再重复 */
 </style>

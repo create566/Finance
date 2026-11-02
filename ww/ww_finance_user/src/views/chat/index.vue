@@ -375,13 +375,13 @@ onMounted(async () => {
   flex-direction: column;
   background: #fff;
   border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 
 .sidebar-header {
   padding: 10px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-light);
 }
 
 .session-list {
@@ -416,7 +416,7 @@ onMounted(async () => {
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: #b6bcc8;
+  color: var(--text-disabled);
   font-size: 16px;
   cursor: pointer;
   opacity: 0.75;
@@ -425,33 +425,33 @@ onMounted(async () => {
 
 .session-item:hover .session-delete {
   opacity: 1;
-  color: #f56c6c;
+  color: var(--color-danger);
 }
 
 .session-delete:hover {
-  background: #fce4e4;
-  color: #e24b4a;
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
   opacity: 1;
 }
 
 .session-item:hover {
-  background: #f5f7fa;
+  background: var(--bg-hover);
 }
 
 .session-item.active {
-  background: #eef2ff;
+  background: var(--color-primary-bg);
 }
 
 .session-title {
   font-size: 13px;
-  color: #303133;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .session-item.active .session-title {
-  color: #667eea;
+  color: var(--color-primary);
   font-weight: 600;
 }
 
@@ -474,7 +474,7 @@ onMounted(async () => {
   flex-direction: column;
   background: #fff;
   border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 
@@ -484,7 +484,7 @@ onMounted(async () => {
   align-items: center;
   padding: 16px 24px;
   border-bottom: 1px solid #eee;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--gradient-brand);
   color: #fff;
 }
 
@@ -513,7 +513,7 @@ onMounted(async () => {
   flex: 1;
   overflow-y: auto;
   padding: 20px 24px;
-  background: #f5f7fa;
+  background: var(--bg-sunken);
 }
 
 .chat-empty {
@@ -557,7 +557,7 @@ onMounted(async () => {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #e8e8e8;
+  background: var(--border-base);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -566,7 +566,7 @@ onMounted(async () => {
 }
 
 .message-item.user .message-avatar {
-  background: #667eea;
+  background: var(--gradient-brand);
 }
 
 .message-content {
@@ -577,14 +577,14 @@ onMounted(async () => {
   padding: 10px 14px;
   border-radius: 8px;
   background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-xs);
   font-size: 14px;
   line-height: 1.6;
   word-break: break-word;
 }
 
 .message-item.user .message-text {
-  background: #667eea;
+  background: var(--gradient-brand);
   color: #fff;
 }
 

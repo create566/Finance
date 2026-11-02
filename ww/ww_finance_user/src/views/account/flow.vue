@@ -7,6 +7,9 @@ import {
   transTypeText,
   type TransFlowItem,
 } from '@/api/account'
+import AppPage from '@/components/common/AppPage.vue'
+import AppCard from '@/components/common/AppCard.vue'
+import AppEmpty from '@/components/common/AppEmpty.vue'
 
 const tableData = ref<TransFlowItem[]>([])
 const total = ref(0)
@@ -65,9 +68,8 @@ onMounted(fetchList)
 </script>
 
 <template>
-  <div class="page-container">
-    <div class="page-header">
-      <h2>资金流水</h2>
+  <AppPage title="资金流水" subtitle="充值、提现、投标、回款等全部资金变动记录">
+    <template #actions>
       <el-select
         v-model="filterType"
         placeholder="全部交易类型"
@@ -82,10 +84,10 @@ onMounted(fetchList)
           :value="opt.value"
         />
       </el-select>
-    </div>
+    </template>
 
-    <el-card shadow="never">
-      <el-table :data="tableData" v-loading="loading" stripe border empty-text="暂无资金流水">
+    <AppCard body-flush>
+      <el-table :data="tableData" v-loading="loading" stripe>
         <el-table-column type="index" label="序号" width="70" align="center" />
         <el-table-column prop="transNo" label="交易号" min-width="180" show-overflow-tooltip />
         <el-table-column label="交易类型" width="110" align="center">
@@ -101,7 +103,7 @@ onMounted(fetchList)
         </el-table-column>
         <el-table-column label="交易金额" min-width="130" align="right">
           <template #default="{ row }">
-            <span :class="amountClass(row)">{{ signedAmount(row) }}</span>
+            <span class="money" :class="amountClass(row)">{{ signedAmount(row) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="100" align="center">
@@ -113,8 +115,13 @@ onMounted(fetchList)
         </el-table-column>
         <el-table-column prop="createTime" label="交易时间" min-width="170" />
         <el-table-column prop="memo" label="备注" min-width="180" show-overflow-tooltip />
+
+        <template #empty>
+          <AppEmpty description="暂无资金流水" />
+        </template>
       </el-table>
-      <div class="pagination-wrap">
+
+      <div v-if="total > 0" class="flow__pager">
         <el-pagination
           v-model:current-page="pageNum"
           v-model:page-size="pageSize"
@@ -124,20 +131,24 @@ onMounted(fetchList)
           @current-change="handlePageChange"
         />
       </div>
-    </el-card>
-  </div>
+    </AppCard>
+  </AppPage>
 </template>
 
 <style scoped>
-.page-container { width: 100%; }
-.page-header {
+.flow__pager {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+  justify-content: flex-end;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-light);
 }
-.page-header h2 { font-size: 18px; font-weight: 500; color: #1f2937; }
-.pagination-wrap { margin-top: 16px; display: flex; justify-content: flex-end; }
-.income { color: #cf1322; font-weight: 600; }
-.expense { color: #389e0d; font-weight: 600; }
+/* 收/支：遵循国内习惯，收入红、支出绿 */
+.income {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+.expense {
+  color: var(--color-success);
+  font-weight: 600;
+}
 </style>

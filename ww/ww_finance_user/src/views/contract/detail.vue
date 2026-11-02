@@ -12,6 +12,13 @@ import {
   type ContractDetail,
   type ContractType,
 } from '@/api/contract'
+import { adaptTagMap } from '@/utils/enumText'
+import AppCard from '@/components/common/AppCard.vue'
+import AppEmpty from '@/components/common/AppEmpty.vue'
+import AppPage from '@/components/common/AppPage.vue'
+import MoneyText from '@/components/common/MoneyText.vue'
+import SplitPane from '@/components/common/SplitPane.vue'
+import StatusTag from '@/components/common/StatusTag.vue'
 import SignPad from '@/components/SignPad.vue'
 
 const route = useRoute()
@@ -41,6 +48,9 @@ const isLargeAmount = computed(() => {
   const a = contract.value?.amount
   return a !== null && a !== undefined && Number(a) >= LARGE_AMOUNT
 })
+
+/** 合同状态表由 api/contract.ts 拥有，这里只做形状适配（不复制内容） */
+const contractStatusMap = adaptTagMap(CONTRACT_STATUS_META)
 
 /**
  * 是否是本合同的签署方。
@@ -163,97 +173,94 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page-container" v-loading="loading">
-    <div class="page-header">
-      <el-button @click="router.push('/contract/my')">返回我的合同</el-button>
-    </div>
+  <AppPage
+    :title="contract ? `《${typeMeta.text}》` : '合同详情'"
+    :subtitle="typeMeta?.hint"
+  >
+    <template #actions>
+      <template v-if="contract && detail">
+        <StatusTag :status="contract.status" :map="contractStatusMap" size="default" />
+        <el-button @click="router.push('/contract/my')">返回我的合同</el-button>
+        <el-button @click="handleExport">下载合同</el-button>
+        <el-button v-if="!isSigned && !isRevoked && isSignable" type="danger" @click="openSignDialog">
+          立即签署
+        </el-button>
+        <el-tag v-else-if="!isSigned && !isRevoked && !isSignable" type="info">非签署方（只读）</el-tag>
+      </template>
+    </template>
 
-    <template v-if="contract && detail">
-      <el-card shadow="never" class="head-card">
-        <div class="head-row">
-          <div>
-            <h2>
-              《{{ typeMeta.text }}》
-              <el-tag :type="CONTRACT_STATUS_META[contract.status]?.tag || 'info'" effect="dark" class="status-tag">
-                {{ CONTRACT_STATUS_META[contract.status]?.text || '未知' }}
-              </el-tag>
-            </h2>
-            <p class="tip">{{ typeMeta.hint }}</p>
-          </div>
-          <div class="head-actions">
-            <el-button size="large" @click="handleExport">下载合同</el-button>
-            <el-button v-if="!isSigned && !isRevoked && isSignable" type="danger" size="large" @click="openSignDialog">
-              立即签署
-            </el-button>
-            <el-tag v-else-if="!isSigned && !isRevoked && !isSignable" type="info" size="large">
-              非签署方（只读）
-            </el-tag>
-          </div>
-        </div>
-
-        <el-descriptions :column="2" border class="meta">
-          <el-descriptions-item label="合同编号">{{ contract.contractNo }}</el-descriptions-item>
-          <el-descriptions-item label="合同类型">{{ contractTypeText(contract.contractType) }}</el-descriptions-item>
-          <el-descriptions-item :label="partyALabel">{{ contract.partyAName || '-' }}</el-descriptions-item>
-          <el-descriptions-item :label="partyBLabel">{{ contract.partyBName || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="合同金额">
-            <span v-if="contract.amount !== null" class="money">¥{{ Number(contract.amount).toFixed(2) }}</span>
-            <span v-else>-</span>
-          </el-descriptions-item>
-          <el-descriptions-item label="年化利率">
-            {{ contract.lendYearRate !== null ? contract.lendYearRate + '%' : '-' }}
-          </el-descriptions-item>
-          <el-descriptions-item label="借款期数">{{ contract.period !== null ? contract.period + ' 期' : '-' }}</el-descriptions-item>
-          <el-descriptions-item label="模板版本">v{{ contract.templateVersion }}</el-descriptions-item>
-          <el-descriptions-item label="生成时间" :span="2">{{ contract.createTime }}</el-descriptions-item>
-        </el-descriptions>
-      </el-card>
-
-      <el-card shadow="never" class="content-card">
-        <template #header>
-          <div class="card-header">
-            <span>合同正文</span>
-            <div class="hash-box">
+    <div v-loading="loading">
+      <SplitPane v-if="contract && detail" aside="wide">
+        <div class="cd__main">
+          <AppCard title="合同正文" subtitle="正文在生成时冻结，可对照下方哈希验真">
+            <template #extra>
               <el-tag :type="hashValid ? 'success' : 'danger'" effect="plain" size="small">
                 {{ hashValid ? '哈希校验通过 · 正文未被篡改' : '警告：正文哈希与存证不一致' }}
               </el-tag>
               <span class="hash-text" :title="contract.contentHash">SHA-256：{{ shortHash }}</span>
+            </template>
+            <!-- 纯文本插值渲染，不用 v-html，从根上避免模板变量带 XSS -->
+            <pre class="contract-body">{{ detail.content }}</pre>
+          </AppCard>
+
+          <AppCard title="签署存证" subtitle="签名影像、时间、IP 与客户端信息">
+            <template v-if="detail.signRecord">
+              <el-descriptions :column="2" border>
+                <el-descriptions-item label="签署人">{{ detail.signRecord.signerName }}</el-descriptions-item>
+                <el-descriptions-item label="签署角色">
+                  {{ detail.signRecord.signerRole === 'PARTY_A' ? '甲方' : '乙方' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="证件号">{{ detail.signRecord.signerIdCard || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="签署时间">{{ detail.signRecord.signTime }}</el-descriptions-item>
+                <el-descriptions-item label="签署 IP">{{ detail.signRecord.signIp || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="客户端">{{ detail.signRecord.userAgent || '-' }}</el-descriptions-item>
+              </el-descriptions>
+              <div class="sign-img-wrap">
+                <p class="sign-img-label">手写签名影像</p>
+                <img :src="detail.signRecord.signImgUrl" alt="手写签名" class="sign-img" />
+              </div>
+            </template>
+
+            <div v-else class="sign-pending">
+              <el-icon class="sign-pending__icon"><WarningFilled /></el-icon>
+              <div>
+                <div class="sign-pending__title">本合同尚未签署</div>
+                <div class="sign-pending__desc">
+                  {{ isRevoked ? '合同已作废，无法签署。' : '请点击右上角「立即签署」完成手写签名。' }}
+                </div>
+              </div>
             </div>
-          </div>
+          </AppCard>
+        </div>
+
+        <template #aside>
+          <AppCard title="合同要素">
+            <el-descriptions :column="1" border size="small">
+              <el-descriptions-item label="合同编号">{{ contract.contractNo }}</el-descriptions-item>
+              <el-descriptions-item label="合同类型">
+                {{ contractTypeText(contract.contractType) }}
+              </el-descriptions-item>
+              <el-descriptions-item :label="partyALabel">{{ contract.partyAName || '-' }}</el-descriptions-item>
+              <el-descriptions-item :label="partyBLabel">{{ contract.partyBName || '—' }}</el-descriptions-item>
+              <el-descriptions-item label="合同金额">
+                <MoneyText v-if="contract.amount !== null" :value="contract.amount" />
+                <span v-else class="muted">-</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="年化利率">
+                {{ contract.lendYearRate !== null ? contract.lendYearRate + '%' : '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="借款期数">
+                {{ contract.period !== null ? contract.period + ' 期' : '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="模板版本">v{{ contract.templateVersion }}</el-descriptions-item>
+              <el-descriptions-item label="生成时间">{{ contract.createTime }}</el-descriptions-item>
+            </el-descriptions>
+          </AppCard>
         </template>
-        <!-- 纯文本插值渲染，不用 v-html，从根上避免模板变量带 XSS -->
-        <pre class="contract-body">{{ detail.content }}</pre>
-      </el-card>
+      </SplitPane>
 
-      <el-card shadow="never" class="sign-card">
-        <template #header>
-          <span>签署存证</span>
-        </template>
-
-        <template v-if="detail.signRecord">
-          <el-descriptions :column="2" border>
-            <el-descriptions-item label="签署人">{{ detail.signRecord.signerName }}</el-descriptions-item>
-            <el-descriptions-item label="签署角色">
-              {{ detail.signRecord.signerRole === 'PARTY_A' ? '甲方' : '乙方' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="证件号">{{ detail.signRecord.signerIdCard || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="签署时间">{{ detail.signRecord.signTime }}</el-descriptions-item>
-            <el-descriptions-item label="签署 IP">{{ detail.signRecord.signIp || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="客户端">{{ detail.signRecord.userAgent || '-' }}</el-descriptions-item>
-          </el-descriptions>
-          <div class="sign-img-wrap">
-            <p class="sign-img-label">手写签名影像</p>
-            <img :src="detail.signRecord.signImgUrl" alt="手写签名" class="sign-img" />
-          </div>
-        </template>
-
-        <el-alert v-else type="warning" :closable="false" show-icon
-          title="本合同尚未签署"
-          :description="isRevoked ? '合同已作废，无法签署。' : '请点击右上角「立即签署」完成手写签名。'" />
-      </el-card>
-    </template>
-
-    <el-empty v-else-if="!loading" description="合同不存在或无权查看" />
+      <AppEmpty v-else-if="!loading" description="合同不存在或无权查看" />
+    </div>
 
     <!-- 手写签名弹窗 -->
     <el-dialog
@@ -282,66 +289,21 @@ onMounted(async () => {
         <el-button type="primary" :loading="submitting" @click="handleSign">确认签署</el-button>
       </template>
     </el-dialog>
-  </div>
+  </AppPage>
 </template>
 
 <style scoped>
-.page-container {
-  width: 100%;
-}
-.page-header {
-  margin-bottom: 16px;
-}
-.head-card,
-.content-card,
-.sign-card {
-  margin-bottom: 16px;
-}
-.head-row {
+.cd__main {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
+  flex-direction: column;
+  gap: var(--space-4);
 }
-.head-row h2 {
-  font-size: 20px;
-  font-weight: 600;
-  color: #1f2937;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.status-tag {
-  font-weight: 400;
-}
-.tip {
-  margin: 8px 0 0;
-  font-size: 13px;
-  color: #909399;
-}
-.meta {
-  margin-top: 16px;
-}
-.money {
-  font-weight: 600;
-  color: #e6a23c;
-}
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.hash-box {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.muted {
+  color: var(--text-disabled);
 }
 .hash-text {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--font-xs);
+  color: var(--text-placeholder);
   font-family: Consolas, Monaco, monospace;
 }
 .contract-body {
@@ -351,36 +313,60 @@ onMounted(async () => {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--font-base);
   line-height: 2;
-  color: #303133;
-  background: #fafafa;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
-  padding: 20px 24px;
+  color: var(--text-regular);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-base);
+  padding: var(--space-5);
   /* 降低"随手复制正文"的可能（不是安全边界，真正的防篡改靠哈希） */
   user-select: text;
 }
 .sign-img-wrap {
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }
 .sign-img-label {
-  margin: 0 0 8px;
-  font-size: 13px;
-  color: #606266;
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
 }
 .sign-img {
   max-width: 320px;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-base);
   background: #fff;
 }
+.sign-pending {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-base);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+}
+.sign-pending__icon {
+  font-size: 18px;
+  color: var(--color-warning);
+  flex-shrink: 0;
+}
+.sign-pending__title {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.sign-pending__desc {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
 .dialog-alert {
-  margin-bottom: 14px;
+  margin-bottom: var(--space-4);
 }
 .after-sign-tip {
-  margin: 12px 0 0;
-  font-size: 13px;
-  color: #909399;
+  margin: var(--space-3) 0 0;
+  font-size: var(--font-sm);
+  color: var(--text-placeholder);
 }
 </style>

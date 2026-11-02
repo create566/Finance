@@ -3,6 +3,13 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getMyBorrowList, type MyBorrowItem } from '@/api/lendReturn'
 import { getBorrowInfoList, type BorrowInfoItem } from '@/api/borrowInfo'
+import { returnMethodText } from '@/utils/enumText'
+import AppCard from '@/components/common/AppCard.vue'
+import AppEmpty from '@/components/common/AppEmpty.vue'
+import AppPage from '@/components/common/AppPage.vue'
+import MetricRow, { type MetricItem } from '@/components/common/MetricRow.vue'
+import MoneyText from '@/components/common/MoneyText.vue'
+import StatusTag from '@/components/common/StatusTag.vue'
 
 const router = useRouter()
 
@@ -71,34 +78,28 @@ const loanGroups = computed<LoanGroup[]>(() => {
   return groups.sort((a, b) => b.lendId - a.lendId)
 })
 
+const metrics = computed<MetricItem[]>(() => {
+  const paid = loanGroups.value.reduce((s, g) => s + g.paidPeriods, 0)
+  const total = loanGroups.value.reduce((s, g) => s + g.totalPeriods, 0)
+  return [
+    { label: '借款标的', text: String(loanGroups.value.length), unit: ' 笔' },
+    {
+      label: '剩余应还',
+      value: loanGroups.value.reduce((s, g) => s + g.remainTotal, 0),
+      tone: 'danger',
+    },
+    { label: '还款进度', text: `${paid} / ${total}`, unit: ' 期' },
+    {
+      label: '逾期标的',
+      text: String(loanGroups.value.filter((g) => g.status === 'overdue').length),
+      unit: ' 笔',
+    },
+  ]
+})
+
 /** 【还款】跳转到还款计划页，并带上标的下标让页面只显示这一笔 */
 function goRepayPlan(lendId: number) {
   router.push({ path: '/borrow/repay', query: { lendId: String(lendId) } })
-}
-
-const loanStatusMap: Record<LoanGroup['status'], { text: string; type: string }> = {
-  repaying: { text: '还款中', type: 'warning' },
-  settled: { text: '已结清', type: 'success' },
-  overdue: { text: '已逾期', type: 'danger' },
-}
-
-/** el-table 插槽里的 row 是 any，直接索引 Record 联合类型会报 TS7053，统一从这里取 */
-function loanStatusMeta(status: LoanGroup['status']) {
-  return loanStatusMap[status] || { text: '未知', type: 'info' }
-}
-
-const applyStatusMap: Record<number, { text: string; type: string }> = {
-  0: { text: '草稿', type: 'info' },
-  1: { text: '审核中', type: 'warning' },
-  2: { text: '审核通过', type: 'success' },
-  [-1]: { text: '审核拒绝', type: 'danger' },
-}
-
-const returnMethodMap: Record<number, string> = {
-  1: '等额本息',
-  2: '等额本金',
-  3: '每月还息一次还本',
-  4: '一次还本付息',
 }
 
 onMounted(() => {
@@ -108,12 +109,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page-container">
-    <div class="page-header"><h2>我的借款</h2></div>
+  <AppPage title="我的借款" subtitle="按标的聚合的借款债务与还款进度">
+    <MetricRow :items="metrics" class="my-borrow__metrics" />
 
-    <el-card shadow="never" style="margin-bottom: 16px">
-      <template #header><span style="font-weight: 600">借款标的</span></template>
-      <el-table :data="loanGroups" v-loading="loading" stripe border empty-text="暂无借款标的">
+    <AppCard title="借款标的" subtitle="每笔借款对应一个募资标的" body-flush class="my-borrow__block">
+      <el-table :data="loanGroups" v-loading="loading" stripe>
         <el-table-column type="index" label="序号" width="60" align="center" />
         <el-table-column prop="lendId" label="标的编号" width="100" align="center" />
         <el-table-column label="还款进度" min-width="150" align="center">
@@ -122,14 +122,14 @@ onMounted(() => {
           </template>
         </el-table-column>
         <el-table-column label="剩余应还" min-width="140" align="right">
-          <template #default="{ row }">¥{{ row.remainTotal.toFixed(2) }}</template>
+          <template #default="{ row }">
+            <span class="money"><MoneyText :value="row.remainTotal" /></span>
+          </template>
         </el-table-column>
         <el-table-column prop="nextReturnDate" label="下期还款日" min-width="130" align="center" />
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
-            <el-tag :type="loanStatusMeta(row.status).type" size="small">
-              {{ loanStatusMeta(row.status).text }}
-            </el-tag>
+            <StatusTag :status="row.status" kind="loanGroup" />
           </template>
         </el-table-column>
         <el-table-column label="操作" width="120" fixed="right" align="center">
@@ -143,36 +143,44 @@ onMounted(() => {
             <el-button v-else type="info" link @click="goRepayPlan(row.lendId)">查看计划</el-button>
           </template>
         </el-table-column>
-      </el-table>
-    </el-card>
 
-    <el-card shadow="never">
-      <template #header><span style="font-weight: 600">借款申请记录</span></template>
-      <el-table :data="applyList" v-loading="applyLoading" stripe border empty-text="暂无借款申请记录">
+        <template #empty>
+          <AppEmpty description="暂无借款标的" />
+        </template>
+      </el-table>
+    </AppCard>
+
+    <AppCard title="借款申请记录" subtitle="申请审核状态与要素" body-flush>
+      <el-table :data="applyList" v-loading="applyLoading" stripe>
         <el-table-column type="index" label="序号" width="60" align="center" />
         <el-table-column prop="id" label="申请编号" min-width="90" />
         <el-table-column prop="amount" label="申请金额" min-width="120" align="right">
-          <template #default="{ row }">¥{{ row.amount?.toFixed(2) }}</template>
+          <template #default="{ row }"><MoneyText :value="row.amount" /></template>
         </el-table-column>
         <el-table-column prop="period" label="期限(月)" width="90" align="center" />
-        <el-table-column prop="returnMethod" label="还款方式" min-width="120">
-          <template #default="{ row }">{{ returnMethodMap[row.returnMethod] || '-' }}</template>
+        <el-table-column prop="returnMethod" label="还款方式" min-width="140">
+          <template #default="{ row }">{{ returnMethodText(row.returnMethod) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="100" align="center">
+        <el-table-column label="状态" width="110" align="center">
           <template #default="{ row }">
-            <el-tag :type="(applyStatusMap[row.status]?.type as string) || 'info'" size="small">
-              {{ applyStatusMap[row.status]?.text || '未知' }}
-            </el-tag>
+            <StatusTag :status="row.status" kind="borrowApply" />
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="申请时间" min-width="170" />
+
+        <template #empty>
+          <AppEmpty description="暂无借款申请记录" />
+        </template>
       </el-table>
-    </el-card>
-  </div>
+    </AppCard>
+  </AppPage>
 </template>
 
 <style scoped>
-.page-container { width: 100%; }
-.page-header { margin-bottom: 16px; }
-.page-header h2 { font-size: 18px; font-weight: 500; color: #1f2937; }
+.my-borrow__metrics {
+  margin-bottom: var(--space-4);
+}
+.my-borrow__block {
+  margin-bottom: var(--space-4);
+}
 </style>

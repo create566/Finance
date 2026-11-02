@@ -4,6 +4,9 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAccount, recharge, withdraw } from '@/api/account'
 import { openBankForm } from '@/utils/bankForm'
+import AppPage from '@/components/common/AppPage.vue'
+import GradientBanner from '@/components/common/GradientBanner.vue'
+import MoneyText from '@/components/common/MoneyText.vue'
 
 const router = useRouter()
 
@@ -77,52 +80,96 @@ onMounted(fetchAccount)
 </script>
 
 <template>
-  <div class="page-container">
-    <div class="page-header">
-      <h2>账户总览</h2>
-      <div>
-        <el-button type="primary" @click="handleRecharge">充值</el-button>
-        <el-button @click="handleWithdraw">提现</el-button>
-        <el-button link type="primary" @click="router.push('/account/flow')">资金流水</el-button>
+  <AppPage title="账户总览" subtitle="可用余额同步自存管银行账户，实时可用">
+    <template #actions>
+      <el-button type="primary" @click="handleRecharge">充值</el-button>
+      <el-button @click="handleWithdraw">提现</el-button>
+      <el-button link type="primary" @click="router.push('/account/flow')">资金流水</el-button>
+    </template>
+
+    <div v-loading="loading" class="ov">
+      <GradientBanner
+        class="ov__hero"
+        :title="`¥${balance().toFixed(2)}`"
+        desc="可用余额 · 数据来自存管银行账户"
+      >
+        <div class="ov__freeze">
+          <div class="ov__freeze-label">冻结金额</div>
+          <div class="ov__freeze-value">
+            <MoneyText :value="account?.freezeAmount ?? 0" size="lg" strong />
+          </div>
+        </div>
+      </GradientBanner>
+
+      <div v-if="account && account.bindStatus !== 1" class="ov__notice">
+        <el-icon class="ov__notice-icon"><WarningFilled /></el-icon>
+        <div class="ov__notice-text">
+          <strong>您还未完成绑卡</strong>
+          <span>绑卡后方可充值与提现，资金由存管银行独立管理。</span>
+        </div>
+        <el-button type="primary" plain size="small" @click="router.push('/profile')">
+          去绑卡
+        </el-button>
       </div>
     </div>
-
-    <el-row :gutter="16" v-loading="loading">
-      <el-col :span="12">
-        <el-card shadow="hover" class="amount-card">
-          <div class="amount-label">可用余额</div>
-          <div class="amount-value">¥{{ balance().toFixed(2) }}</div>
-        </el-card>
-      </el-col>
-      <el-col :span="12">
-        <el-card shadow="hover" class="amount-card">
-          <div class="amount-label">冻结金额</div>
-          <div class="amount-value">¥{{ (account?.freezeAmount ?? 0).toFixed(2) }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <el-alert
-      v-if="account && account.bindStatus !== 1"
-      title="您还未完成绑卡，无法充值和提现"
-      type="warning"
-      show-icon
-      :closable="false"
-      style="margin-top: 16px"
-    />
-  </div>
+  </AppPage>
 </template>
 
 <style scoped>
-.page-container { width: 100%; }
-.page-header {
+.ov {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+  flex-direction: column;
+  gap: var(--space-4);
 }
-.page-header h2 { font-size: 18px; font-weight: 500; color: #1f2937; }
-.amount-card { border-radius: 8px; text-align: center; }
-.amount-label { font-size: 13px; color: #9ca3af; margin-bottom: 8px; }
-.amount-value { font-size: 24px; font-weight: 600; color: #1f2937; }
+
+/* 余额为主视觉，放大渐变头中的数值 */
+.ov__hero :deep(.gbanner__title) {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-variant-numeric: tabular-nums;
+}
+.ov__freeze {
+  text-align: right;
+  color: #fff;
+}
+.ov__freeze-label {
+  font-size: var(--font-xs);
+  color: rgba(255, 255, 255, 0.85);
+}
+.ov__freeze-value {
+  margin-top: 6px;
+  font-size: var(--font-xl);
+}
+
+.ov__notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+}
+.ov__notice-icon {
+  font-size: 18px;
+  color: var(--color-warning);
+  flex-shrink: 0;
+}
+.ov__notice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.ov__notice-text strong {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.ov__notice-text span {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
 </style>

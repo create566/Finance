@@ -103,19 +103,21 @@ const routes: RouteRecordRaw[] = [
         path: 'auth',
         name: 'RealnameAuth',
         component: () => import('@/views/auth/index.vue'),
-        meta: { title: '实名认证' },
+        meta: { title: '认证中心', icon: 'Postcard' },
       },
+      // ---- 认证能力收口 ----
+      // `views/auth/index.vue` 本身已实现「认证中心」：authType 分段切换投资人 / 借款人，
+      // 并分派 submitInvestorAuth / submitBorrowerAuth。原先独立的
+      // `views/invest/auth.vue`（297 行）与 `views/borrow/auth.vue`（444 行）功能完全重复、
+      // 且在 src 内**零跳转引用**（孤儿页，用户从菜单根本无法到达）。
+      // 故此处仅保留 redirect 兜底（历史书签 / 外部跳转不 404），不再加载冗余组件。
       {
         path: 'invest/auth',
-        name: 'InvestAuth',
-        component: () => import('@/views/invest/auth.vue'),
-        meta: { title: '投资人认证' },
+        redirect: '/auth',
       },
       {
         path: 'borrow/auth',
-        name: 'BorrowAuth',
-        component: () => import('@/views/borrow/auth.vue'),
-        meta: { title: '借款人认证' },
+        redirect: '/auth',
       },
       {
         path: 'borrow/apply',

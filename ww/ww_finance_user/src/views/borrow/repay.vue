@@ -5,6 +5,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { getMyBorrowList, repay, type MyBorrowItem } from '@/api/lendReturn'
 import { getAccount } from '@/api/account'
 import { openBankForm } from '@/utils/bankForm'
+import AppCard from '@/components/common/AppCard.vue'
+import AppEmpty from '@/components/common/AppEmpty.vue'
+import GradientBanner from '@/components/common/GradientBanner.vue'
+import MetricRow, { type MetricItem } from '@/components/common/MetricRow.vue'
+import MoneyText from '@/components/common/MoneyText.vue'
+import StatusTag from '@/components/common/StatusTag.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -51,6 +57,28 @@ function insufficient(row: MyBorrowItem): boolean {
   return balance.value < payableOf(row)
 }
 
+const metrics = computed<MetricItem[]>(() => {
+  const unpaid = tableData.value.filter((r) => r.status !== 1)
+  return [
+    {
+      label: '待还总额',
+      value: unpaid.reduce((s, r) => s + payableOf(r), 0),
+      tone: 'danger',
+    },
+    { label: '待还期数', text: String(unpaid.length), unit: ' 期' },
+    {
+      label: '已还清期数',
+      text: String(tableData.value.filter((r) => r.status === 1).length),
+      unit: ' 期',
+    },
+    {
+      label: '逾期期数',
+      text: String(tableData.value.filter((r) => r.status === 2).length),
+      unit: ' 期',
+    },
+  ]
+})
+
 async function handleRepay(row: MyBorrowItem) {
   if (insufficient(row)) {
     ElMessage.warning(
@@ -81,60 +109,56 @@ async function handleRepay(row: MyBorrowItem) {
     .catch(() => {})
 }
 
-const statusMap: Record<number, { text: string; type: string }> = {
-  0: { text: '待还款', type: 'warning' },
-  1: { text: '已还清', type: 'success' },
-  2: { text: '已逾期', type: 'danger' },
-}
-
 onMounted(fetchData)
 watch(() => route.query.lendId, fetchData)
 </script>
 
 <template>
-  <div class="page-container">
-    <div class="page-banner">
-      <h2>还款计划</h2>
-      <p>查看您的借款还款计划，按时还款维护良好信用</p>
-    </div>
-
-    <div class="toolbar">
-      <div class="balance-box">
-        <span class="label">可用余额</span>
-        <span class="value">¥{{ (balance ?? 0).toFixed(2) }}</span>
+  <div class="rp">
+    <GradientBanner title="还款计划" desc="查看您的借款还款计划，按时还款维护良好信用">
+      <div class="rp__balance">
+        <div class="rp__balance-value"><MoneyText :value="balance ?? 0" size="lg" strong /></div>
+        <div class="rp__balance-label">可用余额（存管银行）</div>
       </div>
-      <div class="toolbar-right">
-        <el-tag v-if="lendId !== null" type="info" effect="plain" style="margin-right: 8px">
-          标的编号 {{ lendId }}
-        </el-tag>
+    </GradientBanner>
+
+    <div class="rp__toolbar">
+      <div class="rp__toolbar-left">
+        <template v-if="lendId !== null">
+          <el-tag type="info" effect="plain" size="small">标的编号 {{ lendId }}</el-tag>
+          <span class="rp__toolbar-hint">仅显示该标的的还款计划</span>
+        </template>
+        <span v-else class="rp__toolbar-hint">显示全部借款的还款计划</span>
+      </div>
+      <div class="rp__toolbar-right">
         <el-button v-if="lendId !== null" link type="primary" @click="router.push('/borrow/my')">
           查看全部借款
         </el-button>
-        <el-button v-if="lendId !== null" link type="primary" @click="router.push('/account/overview')">
-          去充值
-        </el-button>
+        <el-button link type="primary" @click="router.push('/account/overview')">去充值</el-button>
       </div>
     </div>
 
-    <el-card shadow="never">
-      <el-table :data="tableData" v-loading="loading" stripe border empty-text="暂无还款计划">
+    <MetricRow :items="metrics" class="rp__metrics" />
+
+    <AppCard body-flush>
+      <el-table :data="tableData" v-loading="loading" stripe>
         <el-table-column prop="currentPeriod" label="期次" width="75" align="center" />
         <el-table-column prop="lendId" label="标的编号" width="100" align="center" />
         <el-table-column prop="returnDate" label="还款日期" min-width="120" align="center" />
         <el-table-column label="应还总额" min-width="120" align="right">
-          <template #default="{ row }">¥{{ payableOf(row).toFixed(2) }}</template>
+          <template #default="{ row }">
+            <span class="money"><MoneyText :value="payableOf(row)" /></span>
+          </template>
         </el-table-column>
         <el-table-column label="本金" min-width="110" align="right">
-          <template #default="{ row }">¥{{ row.principal?.toFixed(2) ?? '0.00' }}</template>
+          <template #default="{ row }"><MoneyText :value="row.principal" /></template>
         </el-table-column>
         <el-table-column label="利息" min-width="110" align="right">
-          <template #default="{ row }">¥{{ row.interest?.toFixed(2) ?? '0.00' }}</template>
+          <template #default="{ row }"><MoneyText :value="row.interest" /></template>
         </el-table-column>
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
-            <el-tag :type="(statusMap[row.status]?.type as string) || 'info'" size="small">
-              {{ statusMap[row.status]?.text || '未知' }}
-            </el-tag>
+            <StatusTag :status="row.status" kind="repay" />
           </template>
         </el-table-column>
         <el-table-column label="操作" width="130" fixed="right" align="center">
@@ -149,35 +173,61 @@ watch(() => route.query.lendId, fetchData)
               </el-tooltip>
               <el-button v-else type="primary" link @click="handleRepay(row)">还款</el-button>
             </template>
-            <span v-else style="color: #9ca3af; font-size: 13px">—</span>
+            <span v-else class="rp__done">—</span>
           </template>
         </el-table-column>
+
+        <template #empty>
+          <AppEmpty description="暂无还款计划" />
+        </template>
       </el-table>
-    </el-card>
+    </AppCard>
   </div>
 </template>
 
 <style scoped>
-.page-container { width: 100%; }
-.page-banner {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  padding: 20px 28px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-}
-.page-banner h2 { font-size: 20px; font-weight: 600; color: #fff; margin: 0 0 4px; }
-.page-banner p { font-size: 13px; color: rgba(255, 255, 255, 0.85); margin: 0; }
-.toolbar {
+.rp {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  flex-direction: column;
+  gap: var(--space-4);
 }
-.balance-box .label { font-size: 13px; color: #6b7280; margin-right: 8px; }
-.balance-box .value { font-size: 18px; font-weight: 600; color: #1f2937; }
-.toolbar-right { display: flex; align-items: center; }
+.rp__balance {
+  text-align: right;
+  color: #fff;
+}
+.rp__balance-label {
+  font-size: var(--font-xs);
+  color: rgba(255, 255, 255, 0.85);
+  margin-top: 2px;
+}
+.rp__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-base);
+}
+.rp__toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.rp__toolbar-hint {
+  font-size: var(--font-xs);
+  color: var(--text-placeholder);
+}
+.rp__toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+.rp__done {
+  color: var(--text-disabled);
+  font-size: var(--font-sm);
+}
 </style>

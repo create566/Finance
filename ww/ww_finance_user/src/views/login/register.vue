@@ -189,7 +189,7 @@ function handleRegister() {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: #fff;
+  background: var(--bg-card);
 }
 .intro-side {
   flex: 0 0 46%;
@@ -215,12 +215,12 @@ function handleRegister() {
 .register-header h1 {
   font-size: 26px;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--text-primary);
   margin: 0 0 8px;
 }
 .register-header p {
   font-size: 13px;
-  color: #9ca3af;
+  color: var(--text-placeholder);
   margin: 0;
 }
 .register-btn {
@@ -234,10 +234,10 @@ function handleRegister() {
   margin: 26px 0 0;
   text-align: center;
   font-size: 12px;
-  color: #a8b3c1;
+  color: var(--text-placeholder);
 }
 .link {
-  color: #5b86e5;
+  color: var(--color-primary);
   cursor: pointer;
 }
 .link:hover {

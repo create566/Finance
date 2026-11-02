@@ -4,6 +4,10 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { getUserInfo, updateProfile } from '@/api/user'
 import { getBindStatus, bindDirect } from '@/api/bind'
+import { BANK_BIND_STATUS_MAP } from '@/utils/enumText'
+import AppCard from '@/components/common/AppCard.vue'
+import AppPage from '@/components/common/AppPage.vue'
+import StatusTag from '@/components/common/StatusTag.vue'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
@@ -97,43 +101,66 @@ function handleBindDirect() {
   })
 }
 
-const authStatusMap: Record<number, { text: string; type: string }> = {
-  0: { text: '未认证', type: 'info' },
-  1: { text: '认证中', type: 'warning' },
-  2: { text: '已通过', type: 'success' },
-  [-1]: { text: '认证失败', type: 'danger' },
-}
-
-const roleMap: Record<number, { text: string; type: string }> = {
-  0: { text: '未认证', type: 'info' },
-  1: { text: '投资人', type: 'primary' },
-  2: { text: '借款人', type: 'warning' },
-}
-
 const isRealNameAuthed = computed(
   () => userInfo.value?.borrowAuthStatus === 2 || userInfo.value?.investAuthStatus === 2
 )
+
+/** 卡号脱敏：只保留前 4 后 4 */
+const maskedBankNo = computed(() => {
+  const no = bindInfo.value?.bankNo
+  if (!no) return '—'
+  return String(no).replace(/^(.{4}).*(.{4})$/, '$1 **** **** $2')
+})
 
 onMounted(fetchUserInfo)
 </script>
 
 <template>
-  <div class="page-container">
-    <div class="page-header"><h2>个人中心</h2></div>
-
-    <el-row :gutter="16">
-      <el-col :span="8">
-        <el-card shadow="never">
-          <div style="text-align: center; padding: 20px 0">
-            <el-avatar :size="80" src="https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png" />
-            <h3 style="margin-top: 12px">{{ userInfo?.nickName || '用户' }}</h3>
-            <p style="color: #9ca3af; font-size: 13px">{{ userInfo?.mobile }}</p>
+  <AppPage title="个人中心" subtitle="账号资料、实名认证与银行卡存管信息">
+    <div class="pf">
+      <aside class="pf__side">
+        <AppCard class="pf__card">
+          <div class="idcard">
+            <el-avatar
+              :size="76"
+              src="https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png"
+            />
+            <div class="idcard__name">{{ userInfo?.nickName || '用户' }}</div>
+            <div class="idcard__mobile">{{ userInfo?.mobile || '—' }}</div>
+            <div class="idcard__tags">
+              <StatusTag :status="userInfo?.userType" kind="userType" />
+              <StatusTag :status="userInfo?.bindStatus" :map="BANK_BIND_STATUS_MAP" />
+            </div>
           </div>
-        </el-card>
-      </el-col>
-      <el-col :span="16">
-        <el-card shadow="never">
-          <template #header><span style="font-weight: 500">基本信息</span></template>
+        </AppCard>
+
+        <AppCard title="认证与绑定" subtitle="关口决定可用的业务范围">
+          <div class="kv">
+            <span class="kv__label">投资人认证</span>
+            <StatusTag :status="userInfo?.investAuthStatus" kind="auth" />
+          </div>
+          <div class="kv">
+            <span class="kv__label">借款人认证</span>
+            <StatusTag :status="userInfo?.borrowAuthStatus" kind="auth" />
+          </div>
+          <div class="kv">
+            <span class="kv__label">绑卡状态</span>
+            <StatusTag :status="userInfo?.bindStatus" :map="BANK_BIND_STATUS_MAP" />
+          </div>
+          <el-button
+            v-if="userInfo?.borrowAuthStatus !== 2 || userInfo?.investAuthStatus !== 2"
+            link
+            type="primary"
+            class="kv__link"
+            @click="router.push('/auth')"
+          >
+            前往认证中心
+          </el-button>
+        </AppCard>
+      </aside>
+
+      <div class="pf__main">
+        <AppCard title="基本信息" subtitle="实名信息与账号标识">
           <el-descriptions v-if="userInfo" :column="2" border>
             <el-descriptions-item label="用户ID">{{ userInfo.id }}</el-descriptions-item>
             <el-descriptions-item label="手机号">{{ userInfo.mobile }}</el-descriptions-item>
@@ -142,31 +169,11 @@ onMounted(fetchUserInfo)
             <el-descriptions-item label="身份证号">{{ userInfo.idCard || '—' }}</el-descriptions-item>
             <el-descriptions-item label="邮箱">{{ userInfo.email || '—' }}</el-descriptions-item>
             <el-descriptions-item label="积分">{{ userInfo.integral ?? 0 }}</el-descriptions-item>
-            <el-descriptions-item label="角色">
-              <el-tag :type="(roleMap[userInfo.userType]?.type as string) || 'info'">
-                {{ roleMap[userInfo.userType]?.text || '未认证' }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="借款人认证">
-              <el-tag :type="(authStatusMap[userInfo.borrowAuthStatus]?.type as string) || 'info'">
-                {{ authStatusMap[userInfo.borrowAuthStatus]?.text || '未认证' }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="投资人认证">
-              <el-tag :type="(authStatusMap[userInfo.investAuthStatus]?.type as string) || 'info'">
-                {{ authStatusMap[userInfo.investAuthStatus]?.text || '未认证' }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="绑卡状态">
-              <el-tag :type="userInfo.bindStatus === 1 ? 'success' : 'info'">
-                {{ userInfo.bindStatus === 1 ? '已绑卡' : '未绑卡' }}
-              </el-tag>
-            </el-descriptions-item>
+            <el-descriptions-item label="注册时间">{{ userInfo.createTime || '—' }}</el-descriptions-item>
           </el-descriptions>
-        </el-card>
+        </AppCard>
 
-        <el-card shadow="never" style="margin-top: 16px">
-          <template #header><span style="font-weight: 500">修改信息</span></template>
+        <AppCard title="修改信息" subtitle="昵称与联系方式">
           <el-form ref="formRef" :model="formData" :rules="formRules" label-width="80px">
             <el-form-item label="昵称" prop="nickName">
               <el-input v-model="formData.nickName" placeholder="请输入昵称" />
@@ -178,30 +185,35 @@ onMounted(fetchUserInfo)
               <el-button type="primary" :loading="loading" @click="handleSubmit">保存</el-button>
             </el-form-item>
           </el-form>
-        </el-card>
+        </AppCard>
 
-        <el-card shadow="never" style="margin-top: 16px">
-          <template #header><span style="font-weight: 500">银行卡绑定</span></template>
-          <div v-if="userInfo?.bindStatus === 1">
-            <el-result icon="success" title="已绑定银行卡" sub-title="您可以进行充值、提现、投资、借款等操作">
-              <template #extra>
-                <el-descriptions v-if="bindInfo" :column="1" border size="small">
-                  <el-descriptions-item label="银行">{{ bindInfo.bankType || '—' }}</el-descriptions-item>
-                  <el-descriptions-item label="卡号">{{ bindInfo.bankNo ? bindInfo.bankNo.replace(/^(.{4}).*(.{4})$/, '$1 **** **** $2') : '—' }}</el-descriptions-item>
-                  <el-descriptions-item label="持卡人">{{ bindInfo.name || '—' }}</el-descriptions-item>
-                </el-descriptions>
-              </template>
-            </el-result>
-          </div>
-          <div v-else>
-            <el-alert
-              v-if="!isRealNameAuthed"
-              title="请先完成实名认证后再绑卡"
-              type="warning"
-              show-icon
-              :closable="false"
-              style="margin-bottom: 16px"
-            />
+        <AppCard title="银行卡绑定" subtitle="绑卡即开立资金存管账户，资金由存管银行独立管理">
+          <template v-if="userInfo?.bindStatus === 1">
+            <div class="bind-ok">
+              <el-icon class="bind-ok__icon"><CircleCheckFilled /></el-icon>
+              <div>
+                <div class="bind-ok__title">已绑定银行卡</div>
+                <div class="bind-ok__desc">您可以进行充值、提现、投资、借款等操作。</div>
+              </div>
+            </div>
+            <el-descriptions v-if="bindInfo" :column="1" border size="small" class="bind-info">
+              <el-descriptions-item label="银行">{{ bindInfo.bankType || '—' }}</el-descriptions-item>
+              <el-descriptions-item label="卡号">{{ maskedBankNo }}</el-descriptions-item>
+              <el-descriptions-item label="持卡人">{{ bindInfo.name || '—' }}</el-descriptions-item>
+            </el-descriptions>
+          </template>
+
+          <template v-else>
+            <div v-if="!isRealNameAuthed" class="pf__notice">
+              <el-icon class="pf__notice-icon"><WarningFilled /></el-icon>
+              <div class="pf__notice-text">
+                <strong>请先完成实名认证后再绑卡</strong>
+                <span>实名认证通过后方可开立资金存管账户。</span>
+              </div>
+              <el-button type="primary" plain size="small" @click="router.push('/auth')">
+                去认证
+              </el-button>
+            </div>
             <el-form ref="bindFormRef" :model="bindFormData" :rules="bindFormRules" label-width="100px">
               <el-form-item label="银行卡号" prop="bankNo">
                 <el-input v-model="bindFormData.bankNo" placeholder="请输入银行卡号" maxlength="30" />
@@ -222,15 +234,135 @@ onMounted(fetchUserInfo)
                 </el-button>
               </el-form-item>
             </el-form>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-  </div>
+          </template>
+        </AppCard>
+      </div>
+    </div>
+  </AppPage>
 </template>
 
 <style scoped>
-.page-container { width: 100%; }
-.page-header { margin-bottom: 16px; }
-.page-header h2 { font-size: 18px; font-weight: 500; color: #1f2937; }
+.pf {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 1080px) {
+  .pf {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.pf__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.pf__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.idcard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+}
+.idcard__name {
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: var(--space-2);
+}
+.idcard__mobile {
+  font-size: var(--font-sm);
+  color: var(--text-placeholder);
+}
+.idcard__tags {
+  display: flex;
+  gap: 6px;
+  margin-top: var(--space-2);
+}
+
+.kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+.kv:last-of-type {
+  border-bottom: none;
+}
+.kv__label {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+.kv__link {
+  margin-top: var(--space-2);
+}
+
+.bind-ok {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-base);
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
+}
+.bind-ok__icon {
+  font-size: 20px;
+  color: var(--color-success);
+  flex-shrink: 0;
+}
+.bind-ok__title {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.bind-ok__desc {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+.bind-info {
+  margin-top: var(--space-4);
+}
+
+.pf__notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-base);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  margin-bottom: var(--space-4);
+}
+.pf__notice-icon {
+  font-size: 18px;
+  color: var(--color-warning);
+  flex-shrink: 0;
+}
+.pf__notice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.pf__notice-text strong {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.pf__notice-text span {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
 </style>

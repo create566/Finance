@@ -1,0 +1,75 @@
+schema_version: 1
+request_id: safety-tables-20261016-082201
+created_at: "2026-10-16T00:22:01Z"
+updated_at: "2026-10-16T01:40:00Z"
+
+entry_type: full_pipeline
+stage_chain: [1, 2, 3]
+
+output_docx_path: "D:\\桌面\\实训\\demo\\output\\safety-tables-20261016-082201\\stage3\\资金安全三机制速记表.docx"
+output_docx_user_specified: false
+
+current_stage: completed
+
+post_s3_edits:
+  - at: "2026-10-16T01:40:00Z"
+    request: "加一个 redis"
+    summary: >-
+      新增「五、Redis 的用武之地（两用一弃）」章节（导语 + 4 行表格 + 分布式锁三要点 callout），
+      原「五、文件速记表」重编号为六；目录新增五项并重链书签。经 editor_sdk 插入后发现
+      markdown 插入把标题与第四节结尾段合并、且新元素格式与全文不一致，改用 python-docx
+      按模板 XML 定向修复（标题 pStyle 000067/15pt 非加粗、正文行距 1.7、callout 边框底纹、
+      表格 100% 宽 + E5E7EB 边框 + 表头底纹 + PingFang SC 9pt）。
+    artifacts:
+      - working/redis-section.md
+      - working/args-insert-redis.json
+      - working/fix_redis_section.py
+      - working/资金安全三机制速记表.bak-before-redis-fix.docx
+    verification: "结构校验 25/25 通过；LibreOffice 转 PDF 渲染 6 页目视复核（目录 6 项、Redis 章节、callout、六节编号均正确）"
+
+stages:
+  stage_0:
+    status: completed
+    completed_at: "2026-10-16T00:23:13Z"
+    decision: full_pipeline
+
+  stage_1:
+    status: completed
+    started_at: "2026-10-16T00:23:13Z"
+    completed_at: "2026-10-16T00:24:30Z"
+    output_path: "stage1/final_draft.md"
+    genre: "general"
+    expert_used: "general-writer"
+    route_tag: "general_writing"
+    critic_decision: null
+
+  stage_2:
+    status: completed
+    started_at: "2026-10-16T00:25:00Z"
+    completed_at: "2026-10-16T00:29:10Z"
+    route: html
+    html_sub: template
+    output_path: "stage2/formatted-资金安全三机制速记表.html"
+    output_format: html
+    skills_invoked: ["design-token", "doc-typeset", "html-review"]
+    design_tokens_path: "stage2/design_tokens.json"
+    fallback: false
+    fallback_reason: null
+
+  stage_3:
+    status: completed
+    started_at: "2026-10-16T00:30:00Z"
+    completed_at: "2026-10-16T00:33:20Z"
+    executor: "doc-converter"
+    input_format: html
+    output_path: "D:\\桌面\\实训\\demo\\output\\safety-tables-20261016-082201\\stage3\\资金安全三机制速记表.docx"
+    skill_used: ["html-to-docx"]
+    present_files_opened: true
+    fallback: false
+    fallback_reason: null
+
+consistency_check:
+  output_files_exist: pass
+  stage_chain_complete: pass
+  last_checked_at: "2026-10-16T00:33:20Z"
+  errors: []
